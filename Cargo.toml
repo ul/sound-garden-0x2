@@ -11,6 +11,7 @@ members = [
     "audio_program",
     "audio_vm",
     "play_program",
+    "sound_garden"
 ]
 
 [dependencies]
