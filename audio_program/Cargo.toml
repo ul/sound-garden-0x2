@@ -1,0 +1,16 @@
+[package]
+name = "audio_program"
+version = "0.1.0"
+authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+smallvec = "0.6.10"
+
+[dependencies.audio_ops]
+path = "../audio_ops"
+
+[dependencies.audio_vm]
+path = "../audio_vm"
