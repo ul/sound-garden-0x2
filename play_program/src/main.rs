@@ -1,5 +1,5 @@
 use audio_program::parse_program;
-use audio_vm::Sample;
+use audio_vm::{Sample, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
 use std::io::Read;
 
@@ -17,7 +17,8 @@ fn main() {
         .default_output_format()
         .expect("Failed to get default output format");
 
-    let mut vm = parse_program(&text, format.sample_rate.0);
+    let mut vm = VM::new();
+    vm.load_program(parse_program(&text, format.sample_rate.0));
 
     let event_loop = host.event_loop();
     let stream_id = event_loop.build_output_stream(&device, &format).unwrap();
@@ -36,7 +37,7 @@ fn main() {
                 buffer: cpal::UnknownTypeOutputBuffer::U16(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
-                    for (out, sample) in frame.iter_mut().zip(&vm.next_frame()) {
+                    for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
                         *out = ((sample * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
                     }
                 }
@@ -45,7 +46,7 @@ fn main() {
                 buffer: cpal::UnknownTypeOutputBuffer::I16(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
-                    for (out, sample) in frame.iter_mut().zip(&vm.next_frame()) {
+                    for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
                         *out = (sample * std::i16::MAX as Sample) as i16;
                     }
                 }
@@ -54,8 +55,8 @@ fn main() {
                 buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
-                    for (out, sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = *sample as f32;
+                    for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
+                        *out = sample as f32;
                     }
                 }
             }

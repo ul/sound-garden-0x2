@@ -1,57 +1,53 @@
 use audio_ops::*;
-use audio_vm::{Op, Sample, VM};
+use audio_vm::{Op, Program, Sample};
 use smallvec::SmallVec;
 
-macro_rules! connect0 {
-    ( $ops:ident, $class:ident ) => {
-        $ops.push(Box::new($class::new()) as Box<dyn Op + Send>)
-    };
-}
-
-macro_rules! connect {
-    ( $ops:ident, $class:ident, $($rest:tt)* ) => {
-        $ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op+Send>)
-    };
-}
-
-pub fn parse_program(s: &str, sample_rate: u32) -> VM {
-    let mut vm = VM::new();
+pub fn parse_program(s: &str, sample_rate: u32) -> Program {
     let mut ops = SmallVec::new();
-    let s = s.replace(|c| c == '[' || c == ']' || c == ',', " ");
+    macro_rules! push {
+        ( $class:ident ) => {
+            ops.push(Box::new($class::new()) as Box<dyn Op + Send>)
+        };
+    }
+    macro_rules! push_args {
+        ( $class:ident, $($rest:tt)* ) => {
+            ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op+Send>)
+        };
+    }
     for token in s
+        .replace(|c| c == '[' || c == ']' || c == ',', " ")
         .split_terminator('\n')
         .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
     {
         match token {
-            "*" => connect!(ops, Fn2, pure::mul),
-            "+" => connect!(ops, Fn2, pure::add),
-            "-" => connect!(ops, Fn2, pure::sub),
-            "/" => connect!(ops, Fn2, pure::div),
-            "\\" => connect!(ops, Fn1, pure::recip),
-            "^" | "pow" => connect!(ops, Fn2, pure::pow),
-            "cheb2" => connect!(ops, Fn1, pure::cheb2),
-            "cheb3" => connect!(ops, Fn1, pure::cheb3),
-            "cheb4" => connect!(ops, Fn1, pure::cheb4),
-            "cheb5" => connect!(ops, Fn1, pure::cheb5),
-            "cheb6" => connect!(ops, Fn1, pure::cheb6),
-            "cos" => connect!(ops, Fn1, pure::cos),
-            "m2f" | "midi2freq" => connect!(ops, Fn1, pure::midi2freq),
-            "p" | "pulse" => connect!(ops, Pulse, sample_rate),
-            "s" => connect!(ops, Osc, sample_rate, pure::sine),
-            "saw" => connect!(ops, Phasor0, sample_rate),
-            "sine" => connect!(ops, OscPhase, sample_rate, pure::sine),
-            "t" => connect!(ops, Osc, sample_rate, pure::triangle),
-            "tri" => connect!(ops, OscPhase, sample_rate, pure::triangle),
-            "w" => connect!(ops, Phasor, sample_rate),
-            "dup" => connect0!(ops, Dup),
-            "swap" => connect0!(ops, Swap),
-            "rot" => connect0!(ops, Rot),
+            "*" => push_args!(Fn2, pure::mul),
+            "+" => push_args!(Fn2, pure::add),
+            "-" => push_args!(Fn2, pure::sub),
+            "/" => push_args!(Fn2, pure::div),
+            "\\" => push_args!(Fn1, pure::recip),
+            "^" | "pow" => push_args!(Fn2, pure::pow),
+            "cheb2" => push_args!(Fn1, pure::cheb2),
+            "cheb3" => push_args!(Fn1, pure::cheb3),
+            "cheb4" => push_args!(Fn1, pure::cheb4),
+            "cheb5" => push_args!(Fn1, pure::cheb5),
+            "cheb6" => push_args!(Fn1, pure::cheb6),
+            "cos" => push_args!(Fn1, pure::cos),
+            "m2f" | "midi2freq" => push_args!(Fn1, pure::midi2freq),
+            "p" | "pulse" => push_args!(Pulse, sample_rate),
+            "s" => push_args!(Osc, sample_rate, pure::sine),
+            "saw" => push_args!(Phasor0, sample_rate),
+            "sine" => push_args!(OscPhase, sample_rate, pure::sine),
+            "t" => push_args!(Osc, sample_rate, pure::triangle),
+            "tri" => push_args!(OscPhase, sample_rate, pure::triangle),
+            "w" => push_args!(Phasor, sample_rate),
+            "dup" => push!(Dup),
+            "swap" => push!(Swap),
+            "rot" => push!(Rot),
             _ => match token.parse::<Sample>() {
-                Ok(x) => connect!(ops, Constant, x),
+                Ok(x) => push_args!(Constant, x),
                 Err(_) => {}
             },
         }
     }
-    vm.load_program(ops);
-    vm
+    ops
 }
