@@ -25,6 +25,9 @@ impl Stack {
     #[inline]
     pub fn peek(&self) -> Frame {
         let mut frame = [0.0; CHANNELS];
+        if self.top < CHANNELS {
+            return frame;
+        }
         frame.copy_from_slice(&self.data[(self.top - CHANNELS)..self.top]);
         frame
     }
@@ -32,14 +35,20 @@ impl Stack {
     #[inline]
     pub fn push(&mut self, frame: &Frame) {
         let new_top = self.top + CHANNELS;
+        if new_top > STACK_CAPACITY {
+            return;
+        }
         self.data[self.top..new_top].copy_from_slice(frame);
         self.top = new_top;
     }
 
     #[inline]
     pub fn pop(&mut self) -> Frame {
-        let new_top = self.top - CHANNELS;
         let mut frame = [0.0; CHANNELS];
+        if self.top < CHANNELS {
+            return frame;
+        }
+        let new_top = self.top - CHANNELS;
         frame.copy_from_slice(&self.data[new_top..self.top]);
         self.top = new_top;
         frame
