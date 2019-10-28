@@ -1,11 +1,9 @@
 use crate::error::Error;
-use crate::logic::{Command, Direction};
-use crate::world::World;
+use crate::logic::Command;
+use crate::world::{PlantEditor, Screen, World};
 use anyhow::Result;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use sdl2::{
-    event::Event,
-    keyboard::Keycode,
     pixels::Color,
     rect::{Point, Rect},
     render::{Canvas, TextureQuery},
@@ -75,7 +73,24 @@ fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> 
     canvas.clear();
 
     // Update & draw stuff.
-    render_char(canvas, &main_fnt, '@', world.anima.position)?;
+    match world.screen {
+        Screen::Garden => {
+            for p in &world.plants {
+                render_char(canvas, &main_fnt, p.symbol, p.position)?;
+            }
+            render_char(canvas, &main_fnt, '@', world.garden.anima_position)?;
+        }
+        Screen::Plant(PlantEditor {
+            ix,
+            cursor_position,
+        }) => {
+            let p = &world.plants[ix];
+            for node in &p.nodes {
+                render_str(canvas, &main_fnt, &node.op, node.position)?;
+            }
+            render_char(canvas, &main_fnt, '_', cursor_position)?;
+        }
+    }
 
     // Flip!
     canvas.present();
@@ -84,52 +99,33 @@ fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> 
 
 fn process_events(event_pump: &mut EventPump, tx: &Sender<Command>) -> Result<()> {
     for event in event_pump.poll_iter() {
-        match event {
-            Event::Quit { .. }
-            | Event::KeyDown {
-                keycode: Some(Keycode::Escape),
-                ..
-            } => tx.send(Command::Quit)?,
-            Event::KeyDown {
-                keycode: Some(Keycode::Left),
-                ..
-            }
-            | Event::KeyDown {
-                keycode: Some(Keycode::H),
-                ..
-            } => tx.send(Command::Move(Direction::Left))?,
-            Event::KeyDown {
-                keycode: Some(Keycode::Right),
-                ..
-            }
-            | Event::KeyDown {
-                keycode: Some(Keycode::L),
-                ..
-            } => tx.send(Command::Move(Direction::Right))?,
-            Event::KeyDown {
-                keycode: Some(Keycode::Up),
-                ..
-            }
-            | Event::KeyDown {
-                keycode: Some(Keycode::K),
-                ..
-            } => tx.send(Command::Move(Direction::Up))?,
-            Event::KeyDown {
-                keycode: Some(Keycode::Down),
-                ..
-            }
-            | Event::KeyDown {
-                keycode: Some(Keycode::J),
-                ..
-            } => tx.send(Command::Move(Direction::Down))?,
-            _ => {}
-        }
+        tx.send(Command::SDLEvent(event))?;
     }
     Ok(())
 }
 
 fn render_char(canvas: &mut Canvas<Window>, fnt: &Font, ch: char, topleft: Point) -> Result<()> {
     let surface = fnt.render_char(ch).solid(Color::RGB(0, 0, 0))?;
+    let texture_creator = canvas.texture_creator();
+    let texture = texture_creator.create_texture_from_surface(surface)?;
+    let TextureQuery { width, height, .. } = texture.query();
+    canvas
+        .copy(
+            &texture,
+            None,
+            Some(Rect::new(
+                topleft.x * (width as i32),
+                topleft.y * (height as i32),
+                width,
+                height,
+            )),
+        )
+        .map_err(|s| Error::TextureCopy(s))?;
+    Ok(())
+}
+
+fn render_str(canvas: &mut Canvas<Window>, fnt: &Font, s: &str, topleft: Point) -> Result<()> {
+    let surface = fnt.render(s).solid(Color::RGB(0, 0, 0))?;
     let texture_creator = canvas.texture_creator();
     let texture = texture_creator.create_texture_from_surface(surface)?;
     let TextureQuery { width, height, .. } = texture.query();

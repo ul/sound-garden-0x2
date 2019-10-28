@@ -1,32 +1,106 @@
-use crate::world::World;
+use crate::world::*;
 use anyhow::Result;
 use crossbeam_channel::{Receiver, Sender};
-
-pub enum Direction {
-    Left,
-    Right,
-    Up,
-    Down,
-}
+use sdl2::{event::Event, keyboard::Keycode, rect::Point};
 
 pub enum Command {
-    Move(Direction),
-    Quit,
+    SDLEvent(Event),
 }
 
 pub fn main(rx: Receiver<Command>, tx: Sender<World>) -> Result<()> {
-    let mut world = World::new();
-    tx.send(world.clone())?;
-    use Command::*;
+    let mut w = World::new();
+    tx.send(w.clone())?;
     for cmd in rx {
-        match cmd {
-            Move(Direction::Left) => world.anima.position.x -= 1,
-            Move(Direction::Right) => world.anima.position.x += 1,
-            Move(Direction::Up) => world.anima.position.y -= 1,
-            Move(Direction::Down) => world.anima.position.y += 1,
-            Quit => return Ok(()),
+        if let Command::SDLEvent(Event::Quit { .. }) = cmd {
+            return Ok(());
         }
-        tx.send(world.clone())?;
+        if let Screen::Garden = w.screen {
+            if let Command::SDLEvent(Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            }) = cmd
+            {
+                return Ok(());
+            }
+        }
+        match w.screen {
+            Screen::Garden => handle_garden(cmd, &mut w),
+            Screen::Plant(_) => handle_plant(cmd, &mut w),
+        }
+        tx.send(w.clone())?;
     }
     Ok(())
+}
+
+pub fn handle_garden(cmd: Command, w: &mut World) {
+    use Command::*;
+    match cmd {
+        SDLEvent(event) => match event {
+            Event::KeyDown {
+                keycode: Some(Keycode::Left),
+                ..
+            }
+            | Event::KeyDown {
+                keycode: Some(Keycode::H),
+                ..
+            } => w.garden.anima_position.x -= 1,
+            Event::KeyDown {
+                keycode: Some(Keycode::Right),
+                ..
+            }
+            | Event::KeyDown {
+                keycode: Some(Keycode::L),
+                ..
+            } => w.garden.anima_position.x += 1,
+            Event::KeyDown {
+                keycode: Some(Keycode::Up),
+                ..
+            }
+            | Event::KeyDown {
+                keycode: Some(Keycode::K),
+                ..
+            } => w.garden.anima_position.y -= 1,
+            Event::KeyDown {
+                keycode: Some(Keycode::Down),
+                ..
+            }
+            | Event::KeyDown {
+                keycode: Some(Keycode::J),
+                ..
+            } => w.garden.anima_position.y += 1,
+            Event::KeyDown {
+                keycode: Some(Keycode::Space),
+                ..
+            } => {
+                if let Some((ix, _)) = w
+                    .plants
+                    .iter()
+                    .enumerate()
+                    .find(|(_, p)| p.position == w.garden.anima_position)
+                {
+                    w.screen = Screen::Plant(PlantEditor {
+                        ix,
+                        cursor_position: Point::new(0, 0),
+                    });
+                }
+            }
+            _ => {}
+        },
+    }
+}
+
+pub fn handle_plant(cmd: Command, w: &mut World) {
+    use Command::*;
+    match cmd {
+        SDLEvent(event) => match event {
+            Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => {
+                // TODO Save tree.
+                w.screen = Screen::Garden;
+            }
+            _ => {}
+        },
+    }
 }
