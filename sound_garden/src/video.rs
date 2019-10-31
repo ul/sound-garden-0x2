@@ -4,6 +4,7 @@ use crate::world::{PlantEditor, Screen, World};
 use anyhow::Result;
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use sdl2::{
+    gfx::primitives::DrawRenderer,
     pixels::Color,
     rect::{Point, Rect},
     render::{Canvas, TextureQuery},
@@ -18,8 +19,9 @@ const WINDOW_HEIGHT: u32 = 800;
 const TITLE: &str = "Sound Garden";
 const TARGET_FPS: u32 = 60;
 const TARGET_FRAME_DURATION_NS: u32 = 1_000_000_000u32 / TARGET_FPS;
-const REGULAR_FONT: &str = "dat/fnt/IBMPlexMono-Regular.ttf";
+const REGULAR_FONT: &str = "dat/fnt/Agave-Regular.ttf";
 const CHAR_SIZE: u16 = 16;
+const GOLD_CHAR: char = '@';
 
 pub fn main(rx: Receiver<World>, tx: Sender<Command>) -> Result<()> {
     let sdl_ctx = sdl2::init().map_err(|s| Error::SDLInit(s))?;
@@ -83,10 +85,25 @@ fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> 
         Screen::Plant(PlantEditor {
             ix,
             cursor_position,
+            ..
         }) => {
             let p = &world.plants[ix];
             for node in &p.nodes {
                 render_str(canvas, &main_fnt, &node.op, node.position)?;
+            }
+            let sz = main_fnt.size_of_char(GOLD_CHAR)?;
+            for (i, j) in &p.edges {
+                let n1 = &p.nodes[*i];
+                let n2 = &p.nodes[*j];
+                canvas
+                    .line(
+                        (n1.position.x as i16) * (sz.0 as i16) + (sz.0 as i16) / 2,
+                        (n1.position.y as i16 + 1) * (sz.1 as i16),
+                        (n2.position.x as i16) * (sz.0 as i16) + (sz.0 as i16) / 2,
+                        (n2.position.y as i16) * (sz.1 as i16),
+                        Color::from((0, 0, 0)),
+                    )
+                    .map_err(|s| Error::Draw(s))?;
             }
             render_char(canvas, &main_fnt, '_', cursor_position)?;
         }
@@ -109,13 +126,14 @@ fn render_char(canvas: &mut Canvas<Window>, fnt: &Font, ch: char, topleft: Point
     let texture_creator = canvas.texture_creator();
     let texture = texture_creator.create_texture_from_surface(surface)?;
     let TextureQuery { width, height, .. } = texture.query();
+    let sz = fnt.size_of_char(GOLD_CHAR)?;
     canvas
         .copy(
             &texture,
             None,
             Some(Rect::new(
-                topleft.x * (width as i32),
-                topleft.y * (height as i32),
+                topleft.x * (sz.0 as i32),
+                topleft.y * (sz.1 as i32),
                 width,
                 height,
             )),
@@ -129,13 +147,14 @@ fn render_str(canvas: &mut Canvas<Window>, fnt: &Font, s: &str, topleft: Point) 
     let texture_creator = canvas.texture_creator();
     let texture = texture_creator.create_texture_from_surface(surface)?;
     let TextureQuery { width, height, .. } = texture.query();
+    let sz = fnt.size_of_char(GOLD_CHAR)?;
     canvas
         .copy(
             &texture,
             None,
             Some(Rect::new(
-                topleft.x * (width as i32),
-                topleft.y * (height as i32),
+                topleft.x * (sz.0 as i32),
+                topleft.y * (sz.1 as i32),
                 width,
                 height,
             )),

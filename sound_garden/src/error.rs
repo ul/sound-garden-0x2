@@ -10,4 +10,6 @@ pub enum Error {
     EventPump(String),
     #[error("{0}")]
     LoadFont(String),
+    #[error("{0}")]
+    Draw(String),
 }

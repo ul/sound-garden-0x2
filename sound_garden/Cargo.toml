@@ -16,7 +16,7 @@ sloggers = "0.3.4"
 
 [dependencies.slog]
 version = "2.5.2"
-features = ["release_max_level_debug"]
+# features = ["release_max_level_debug"]
 
 [dependencies.sdl2]
 version = "0.32"

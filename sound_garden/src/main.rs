@@ -34,15 +34,16 @@ pub fn main() -> Result<()> {
     let audio_tx = audio_wrk.sender().clone();
     let world_brodacaster = std::thread::spawn(move || {
         for world in world_rx {
+            debug!("{:?}", world);
             // Most likely audio should have a specialized subscription for sub-program modifications,
             // rather than process entire world by itself.
-            let _ = audio_tx.try_send(world.clone());
+            // let _ = audio_tx.try_send(world.clone());
             let _ = video_tx.try_send(world.clone());
         }
     });
 
     // Video must be on the main thread, at least for macOS.
-    video::main(video_rx, logic_wrk.sender().clone())?;
+    video::main(video_rx, logic_wrk.sender().clone()).unwrap();
 
     world_brodacaster.join().unwrap();
 
