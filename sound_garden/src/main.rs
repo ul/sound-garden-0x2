@@ -10,42 +10,41 @@ mod video;
 mod world;
 
 use anyhow::Result;
+use audio_vm::VM;
+use crossbeam_channel::Sender;
 use sloggers::terminal::{Destination, TerminalLoggerBuilder};
 use sloggers::types::Severity;
 use sloggers::Build;
+use std::sync::{Arc, Mutex};
 use thread_worker::Worker;
+use world::World;
 
 const CHANNEL_CAPACITY: usize = 60;
 
 pub fn main() -> Result<()> {
     let _guard = set_logger()?;
 
-    let audio_wrk = Worker::spawn("Audio", CHANNEL_CAPACITY, move |i, o| {
-        audio::main(i, o).unwrap();
-    });
+    let vm = Arc::new(Mutex::new(VM::new()));
+    let world = Arc::new(Mutex::new(World::new()));
 
-    let logic_wrk = Worker::spawn("Logic", CHANNEL_CAPACITY, move |i, o| {
-        logic::main(i, o).unwrap();
-    });
+    let _audio_wrk = {
+        let vm = Arc::clone(&vm);
+        let world = Arc::clone(&world);
+        Worker::spawn("Audio", CHANNEL_CAPACITY, move |i, _: Sender<()>| {
+            audio::main(vm, world, i).unwrap();
+        })
+    };
 
-    let (video_tx, video_rx) = crossbeam_channel::bounded(CHANNEL_CAPACITY);
-
-    let world_rx = logic_wrk.receiver().clone();
-    let audio_tx = audio_wrk.sender().clone();
-    let world_brodacaster = std::thread::spawn(move || {
-        for world in world_rx {
-            debug!("{:?}", world);
-            // Most likely audio should have a specialized subscription for sub-program modifications,
-            // rather than process entire world by itself.
-            // let _ = audio_tx.try_send(world.clone());
-            let _ = video_tx.try_send(world.clone());
-        }
-    });
+    let logic_wrk = {
+        let vm = Arc::clone(&vm);
+        let world = Arc::clone(&world);
+        Worker::spawn("Logic", CHANNEL_CAPACITY, move |i, _: Sender<()>| {
+            logic::main(vm, world, i).unwrap();
+        })
+    };
 
     // Video must be on the main thread, at least for macOS.
-    video::main(video_rx, logic_wrk.sender().clone()).unwrap();
-
-    world_brodacaster.join().unwrap();
+    video::main(Arc::clone(&world), logic_wrk.sender().clone()).unwrap();
 
     Ok(())
 }

@@ -2,7 +2,7 @@ use audio_ops::*;
 use audio_vm::{Op, Program, Sample};
 use smallvec::SmallVec;
 
-pub fn parse_program(s: &str, sample_rate: u32) -> Program {
+pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
     let mut ops = SmallVec::new();
     macro_rules! push {
         ( $class:ident ) => {
@@ -14,12 +14,8 @@ pub fn parse_program(s: &str, sample_rate: u32) -> Program {
             ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op+Send>)
         };
     }
-    for token in s
-        .replace(|c| c == '[' || c == ']' || c == ',', " ")
-        .split_terminator('\n')
-        .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
-    {
-        match token {
+    for token in tokens {
+        match token.as_str() {
             "*" => push_args!(Fn2, pure::mul),
             "+" => push_args!(Fn2, pure::add),
             "-" => push_args!(Fn2, pure::sub),
@@ -50,4 +46,14 @@ pub fn parse_program(s: &str, sample_rate: u32) -> Program {
         }
     }
     ops
+}
+
+pub fn parse_program(s: &str, sample_rate: u32) -> Program {
+    let s = s.replace(|c| c == '[' || c == ']' || c == ',', " ");
+    let tokens = s
+        .split_terminator('\n')
+        .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
+        .map(|x| String::from(x))
+        .collect::<Vec<_>>();
+    parse_tokens(&tokens, sample_rate)
 }

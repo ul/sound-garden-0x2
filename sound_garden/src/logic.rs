@@ -1,16 +1,19 @@
 use crate::world::*;
 use anyhow::Result;
-use crossbeam_channel::{Receiver, Sender};
+use audio_program::parse_tokens;
+use audio_vm::VM;
+use crossbeam_channel::Receiver;
 use sdl2::{event::Event, keyboard::Keycode, rect::Point};
+use std::sync::{Arc, Mutex};
 
 pub enum Command {
     SDLEvent(Event),
 }
 
-pub fn main(rx: Receiver<Command>, tx: Sender<World>) -> Result<()> {
-    let mut w = World::new();
-    tx.send(w.clone())?;
+pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<Command>) -> Result<()> {
+    let mut ops = Vec::new();
     for cmd in rx {
+        let mut w = world.lock().unwrap();
         if let Command::SDLEvent(Event::Quit { .. }) = cmd {
             return Ok(());
         }
@@ -23,11 +26,53 @@ pub fn main(rx: Receiver<Command>, tx: Sender<World>) -> Result<()> {
                 return Ok(());
             }
         }
-        match w.screen {
-            Screen::Garden => handle_garden(cmd, &mut w),
-            Screen::Plant(_) => handle_plant(cmd, &mut w),
+        match cmd {
+            _ => match w.screen {
+                Screen::Garden => handle_garden(cmd, &mut w),
+                Screen::Plant(_) => handle_plant(cmd, &mut w),
+            },
         }
-        tx.send(w.clone())?;
+        let new_ops = match w.screen {
+            Screen::Garden => Vec::new(),
+            Screen::Plant(PlantEditor { ix, .. }) => {
+                let Plant { nodes, edges, .. } = &w.plants[ix];
+                let mut order = Vec::new();
+                // All the code below relies on edges and leaves being sorted by x.
+                // Start with the leftmost leaf.
+                let mut cursor = edges.iter().find_map(|(i, _)| {
+                    if edges.iter().any(|(_, j)| i == j) {
+                        None
+                    } else {
+                        Some(*i)
+                    }
+                });
+                // TODO Fix algorithmic complexity.
+                // It's not critical right now because `edges` is expected to be small
+                // and low constant factor linear scan should be good enough even for a loop
+                // but we can do better.
+                while let Some(node) = cursor {
+                    if let Some((unordered_child, _)) =
+                        edges.iter().find(|(i, j)| node == *j && !order.contains(i))
+                    {
+                        cursor = Some(*unordered_child);
+                    } else {
+                        order.push(node);
+                        cursor = edges
+                            .iter()
+                            .find_map(|(i, j)| if node == *i { Some(*j) } else { None });
+                    }
+                }
+                order
+                    .iter()
+                    .map(|i| nodes[*i].op.clone())
+                    .collect::<Vec<_>>()
+            }
+        };
+        if ops != new_ops {
+            ops = new_ops;
+            let program = parse_tokens(&ops, w.sample_rate);
+            vm.lock().unwrap().load_program(program);
+        }
     }
     Ok(())
 }
@@ -109,7 +154,6 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => {
-                    // TODO Save tree.
                     w.screen = Screen::Garden;
                 }
                 Event::KeyDown {
@@ -129,6 +173,10 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) {
                 | Event::KeyDown {
                     keycode: Some(Keycode::H),
                     ..
+                }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Backspace),
+                    ..
                 } => editor.cursor_position.x -= 1,
                 Event::KeyDown {
                     keycode: Some(Keycode::Right),
@@ -136,6 +184,10 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) {
                 }
                 | Event::KeyDown {
                     keycode: Some(Keycode::L),
+                    ..
+                }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Space),
                     ..
                 } => editor.cursor_position.x += 1,
                 Event::KeyDown {
@@ -174,6 +226,10 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
                 | Event::KeyDown {
                     keycode: Some(Keycode::Return),
                     ..
+                }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Space),
+                    ..
                 } => {
                     editor.mode = PlantEditorMode::Normal;
                 }
@@ -198,7 +254,7 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
                             node.op.replace_range(x..(x + 1), &"");
                         } else {
                             plant.nodes.swap_remove(i);
-                            find_edges(plant);
+                            find_edges(plant, w.cell_size);
                             info!("Removed a node.");
                         };
                     }
@@ -223,7 +279,7 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
                             position,
                         };
                         w.plants[editor.ix].nodes.push(node);
-                        find_edges(&mut w.plants[editor.ix]);
+                        find_edges(&mut w.plants[editor.ix], w.cell_size);
                         info!("Created new node.");
                     };
                     editor.cursor_position.x += 1;
@@ -246,30 +302,31 @@ fn node_at_cursor<'a>(plant: &'a mut Plant, cursor: &Point) -> Option<(usize, &'
 }
 
 // Inefficient as hell, but good enough for the start.
-fn find_edges(plant: &mut Plant) {
-    let edges = &mut plant.edges;
+fn find_edges(plant: &mut Plant, cell_size: (u32, u32)) {
+    let Plant { edges, nodes, .. } = plant;
     edges.clear();
-    for (i, node) in plant.nodes.iter().enumerate() {
+    for (i, node) in nodes.iter().enumerate() {
         let mut parent = None;
-        for (j, n) in plant
-            .nodes
+        for (j, n) in nodes
             .iter()
             .enumerate()
             .filter(|(j, n)| i != *j && n.position.y > node.position.y)
         {
-            let delta = (n.position.x - node.position.x).abs();
+            let dist = (cell_size.0 as i32 * (n.position.x - node.position.x)).pow(2)
+                + (cell_size.1 as i32 * (n.position.y - node.position.y)).pow(2);
             match parent {
-                Some((_, y, d)) => {
-                    if n.position.y < y || (n.position.y == y && delta < d) {
-                        parent = Some((j, n.position.y, delta));
+                Some((_, d)) => {
+                    if dist < d {
+                        parent = Some((j, dist));
                     }
                 }
 
-                None => parent = Some((j, n.position.y, delta)),
+                None => parent = Some((j, dist)),
             }
         }
-        if let Some((j, _, _)) = parent {
+        if let Some((j, _)) = parent {
             edges.push((i, j));
         }
     }
+    edges.sort_by(|(i1, _), (i2, _)| nodes[*i1].position.x.cmp(&nodes[*i2].position.x));
 }

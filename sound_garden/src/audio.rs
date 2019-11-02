@@ -1,11 +1,11 @@
 use crate::world::World;
 use anyhow::Result;
-use audio_program::parse_program;
 use audio_vm::{Sample, CHANNELS, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_channel::{Receiver, TryRecvError};
+use std::sync::{Arc, Mutex};
 
-pub fn main(rx: Receiver<World>, _tx: Sender<()>) -> Result<()> {
+pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<()>) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -23,7 +23,8 @@ pub fn main(rx: Receiver<World>, _tx: Sender<()>) -> Result<()> {
         ));
     }
     let sample_rate = format.sample_rate.0;
-    let mut vm = VM::new();
+    world.lock().unwrap().sample_rate = sample_rate;
+    drop(world);
 
     let event_loop = host.event_loop();
     let stream_id = event_loop
@@ -35,10 +36,7 @@ pub fn main(rx: Receiver<World>, _tx: Sender<()>) -> Result<()> {
 
     event_loop.run(move |id, result| {
         match rx.try_recv() {
-            Ok(_) => {
-                // Just for the basic test, not going to re-parse program for each change inside audio loop.
-                vm.load_program(parse_program(&"1 w 440 * s", sample_rate));
-            }
+            Ok(_) => {}
             Err(TryRecvError::Disconnected) => {
                 // cpal doesn't provide a civilized way to stop event loop.
                 info!("Audio: Don't wait for me, gonna nuke entire process.");
@@ -54,13 +52,14 @@ pub fn main(rx: Receiver<World>, _tx: Sender<()>) -> Result<()> {
                 return;
             }
         };
+        let mut vm = vm.lock().unwrap();
         match data {
             cpal::StreamData::Output {
                 buffer: cpal::UnknownTypeOutputBuffer::U16(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
                     for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = ((sample * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
+                        *out = ((clip(sample) * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
                     }
                 }
             }
@@ -69,7 +68,7 @@ pub fn main(rx: Receiver<World>, _tx: Sender<()>) -> Result<()> {
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
                     for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = (sample * std::i16::MAX as Sample) as i16;
+                        *out = (clip(sample) * std::i16::MAX as Sample) as i16;
                     }
                 }
             }
@@ -78,11 +77,21 @@ pub fn main(rx: Receiver<World>, _tx: Sender<()>) -> Result<()> {
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
                     for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = sample as f32;
+                        *out = clip(sample) as f32;
                     }
                 }
             }
             _ => (),
         }
     });
+}
+
+fn clip(sample: Sample) -> Sample {
+    if sample < -1.0 {
+        -1.0
+    } else if 1.0 < sample {
+        1.0
+    } else {
+        sample
+    }
 }
