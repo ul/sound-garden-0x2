@@ -13,6 +13,7 @@ use sdl2::{
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use unic_char_range::CharRange;
 
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGHT: u32 = 800;
@@ -42,11 +43,13 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     let texture_creator = canvas.texture_creator();
     let mut char_cache = HashMap::new();
 
-    for c in (0x20..0x7e).map(|c| char::from(c)) {
+    info!("Caching glyphs in range 0x0020..0x3000");
+    for c in CharRange::open_right('\u{0020}', '\u{3000}') {
         let surface = main_fnt.render_char(c).blended(Color::RGB(0, 0, 0))?;
         let texture = texture_creator.create_texture_from_surface(surface)?;
         char_cache.insert(c, texture);
     }
+    info!("Glyphs are cached!");
 
     world.lock().unwrap().cell_size = main_fnt.size_of_char('M')?;
 

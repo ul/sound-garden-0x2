@@ -288,7 +288,17 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
                     if let Some((i, node)) = node {
                         if editor.cursor_position.x > node.position.x {
                             let x = (editor.cursor_position.x - node.position.x) as usize;
-                            node.op.replace_range(x..(x + 1), &"");
+                            let ixs = node
+                                .op
+                                .char_indices()
+                                .skip(x)
+                                .take(2)
+                                .map(|x| x.0)
+                                .collect::<Vec<_>>();
+                            node.op.replace_range(
+                                ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
+                                &"",
+                            );
                         } else {
                             plant.nodes.swap_remove(i);
                             find_edges(plant, w.cell_size);
@@ -304,11 +314,16 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
                     let node = node_at_cursor(plant, &editor.cursor_position);
                     let position = editor.cursor_position.clone();
                     if let Some((_, node)) = node {
-                        if position.x >= node.position.x + node.op.len() as i32 {
+                        if position.x >= node.position.x + node.op.chars().count() as i32 {
                             node.op.push_str(&text);
                         } else {
-                            node.op
-                                .insert_str((position.x - node.position.x) as usize, &text);
+                            let ix = node
+                                .op
+                                .char_indices()
+                                .nth((position.x - node.position.x) as usize)
+                                .map(|x| x.0)
+                                .unwrap();
+                            node.op.insert_str(ix, &text);
                         }
                     } else {
                         let node = Node {
@@ -334,7 +349,7 @@ fn node_at_cursor<'a>(plant: &'a mut Plant, cursor: &Point) -> Option<(usize, &'
     plant.nodes.iter_mut().enumerate().find(|(_, n)| {
         n.position.y == cursor.y
             && n.position.x <= cursor.x
-            && cursor.x <= n.position.x + n.op.len() as i32
+            && cursor.x <= n.position.x + n.op.chars().count() as i32
     })
 }
 
