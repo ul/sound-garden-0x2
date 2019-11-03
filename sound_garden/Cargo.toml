@@ -22,7 +22,7 @@ version = "2.5.2"
 [dependencies.sdl2]
 version = "0.32"
 default-features = false
-features = ["ttf", "gfx"]
+features = ["ttf"]
 
 [dependencies.audio_ops]
 path = "../audio_ops"

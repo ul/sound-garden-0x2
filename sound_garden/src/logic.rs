@@ -117,6 +117,10 @@ pub fn handle_garden(cmd: Command, w: &mut World) {
             Event::KeyDown {
                 keycode: Some(Keycode::Return),
                 ..
+            }
+            | Event::KeyDown {
+                keycode: Some(Keycode::I),
+                ..
             } => {
                 if let Some((ix, _)) = w
                     .plants
@@ -135,7 +139,7 @@ pub fn handle_garden(cmd: Command, w: &mut World) {
                         nodes: Vec::new(),
                         edges: Vec::new(),
                         symbol: char::from(thread_rng().gen_range(0x41, 0x5A)),
-                        color: Color::from((0x22, 0x88, 0x11)),
+                        color: Color::RGB(0x22, 0x88, 0x11),
                     });
                     let ix = w.plants.len() - 1;
                     w.screen = Screen::Plant(PlantEditor {

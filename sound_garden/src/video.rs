@@ -4,7 +4,6 @@ use crate::world::{PlantEditor, Screen, World};
 use anyhow::Result;
 use crossbeam_channel::Sender;
 use sdl2::{
-    gfx::primitives::DrawRenderer,
     pixels::Color,
     rect::{Point, Rect},
     render::{Canvas, Texture, TextureQuery},
@@ -111,16 +110,20 @@ fn render_world(
             for node in &p.nodes {
                 render_str(canvas, &char_cache, &node.op, node.position, cell_size)?;
             }
+            canvas.set_draw_color(Color::RGB(0, 0, 0));
             for (i, j) in &p.edges {
                 let n1 = &p.nodes[*i];
                 let n2 = &p.nodes[*j];
                 canvas
-                    .line(
-                        (n1.position.x as i16) * (cell_size.0 as i16) + (cell_size.0 as i16) / 2,
-                        (n1.position.y as i16 + 1) * (cell_size.1 as i16),
-                        (n2.position.x as i16) * (cell_size.0 as i16) + (cell_size.0 as i16) / 2,
-                        (n2.position.y as i16) * (cell_size.1 as i16),
-                        Color::from((0, 0, 0)),
+                    .draw_line(
+                        Point::from((
+                            n1.position.x * (cell_size.0 as i32) + (cell_size.0 as i32) / 2,
+                            (n1.position.y + 1) * (cell_size.1 as i32),
+                        )),
+                        Point::from((
+                            n2.position.x * (cell_size.0 as i32) + (cell_size.0 as i32) / 2,
+                            n2.position.y * (cell_size.1 as i32),
+                        )),
                     )
                     .map_err(|s| Error::Draw(s))?;
             }
