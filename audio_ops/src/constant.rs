@@ -1,7 +1,7 @@
-use audio_vm::{Op, Sample, Stack, CHANNELS};
+use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 
 pub struct Constant {
-    values: [Sample; CHANNELS],
+    values: Frame,
 }
 
 impl Constant {

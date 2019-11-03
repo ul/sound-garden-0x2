@@ -88,27 +88,35 @@ fn render_world(
 
     // Update & draw stuff.
     let cell_size = world.cell_size;
-    match world.screen {
+    match &world.screen {
         Screen::Garden => {
             for p in &world.plants {
-                render_char(canvas, &char_cache, p.symbol, p.position, cell_size)?;
+                render_char(
+                    canvas,
+                    &char_cache,
+                    p.symbol,
+                    Point::new(p.position.x, p.position.y),
+                    cell_size,
+                )?;
             }
-            render_char(
-                canvas,
-                &char_cache,
-                '@',
-                world.garden.anima_position,
-                cell_size,
-            )?;
+            let p = &world.garden.anima_position;
+            render_char(canvas, &char_cache, '@', Point::new(p.x, p.y), cell_size)?;
         }
         Screen::Plant(PlantEditor {
             ix,
             cursor_position,
             ..
         }) => {
-            let p = &world.plants[ix];
+            let p = &world.plants[*ix];
             for node in &p.nodes {
-                render_str(canvas, &char_cache, &node.op, node.position, cell_size)?;
+                let p = &node.position;
+                render_str(
+                    canvas,
+                    &char_cache,
+                    &node.op,
+                    Point::new(p.x, p.y),
+                    cell_size,
+                )?;
             }
             canvas.set_draw_color(Color::RGB(0, 0, 0));
             for (i, j) in &p.edges {
@@ -127,7 +135,8 @@ fn render_world(
                     )
                     .map_err(|s| Error::Draw(s))?;
             }
-            render_char(canvas, &char_cache, '_', cursor_position, cell_size)?;
+            let p = cursor_position;
+            render_char(canvas, &char_cache, '_', Point::new(p.x, p.y), cell_size)?;
         }
     }
 

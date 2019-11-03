@@ -4,7 +4,7 @@ use audio_program::parse_tokens;
 use audio_vm::VM;
 use crossbeam_channel::Receiver;
 use rand::prelude::*;
-use sdl2::{event::Event, keyboard::Keycode, pixels::Color, rect::Point};
+use sdl2::{event::Event, keyboard::Keycode};
 use std::sync::{Arc, Mutex};
 
 pub enum Command {
@@ -12,6 +12,10 @@ pub enum Command {
 }
 
 pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<Command>) -> Result<()> {
+    if let Ok(f) = std::fs::File::open("./world.json") {
+        let mut w = world.lock().unwrap();
+        *w = serde_json::from_reader(f)?;
+    }
     let mut ops = Vec::new();
     for cmd in rx {
         let mut w = world.lock().unwrap();
@@ -74,6 +78,9 @@ pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<Command>)
             let program = parse_tokens(&ops, w.sample_rate);
             vm.lock().unwrap().load_program(program);
         }
+        if let Ok(f) = std::fs::File::create("./world.json") {
+            serde_json::to_writer(f, &*w)?;
+        }
     }
     Ok(())
 }
@@ -122,15 +129,13 @@ pub fn handle_garden(cmd: Command, w: &mut World) {
                 keycode: Some(Keycode::I),
                 ..
             } => {
-                if let Some((ix, _)) = w
-                    .plants
-                    .iter()
-                    .enumerate()
-                    .find(|(_, p)| p.position == w.garden.anima_position)
-                {
+                if let Some((ix, _)) = w.plants.iter().enumerate().find(|(_, p)| {
+                    p.position.x == w.garden.anima_position.x
+                        && p.position.y == w.garden.anima_position.y
+                }) {
                     w.screen = Screen::Plant(PlantEditor {
                         ix,
-                        cursor_position: Point::new(0, 0),
+                        cursor_position: Point { x: 0, y: 0 },
                         mode: PlantEditorMode::Normal,
                     });
                 } else {
@@ -139,12 +144,11 @@ pub fn handle_garden(cmd: Command, w: &mut World) {
                         nodes: Vec::new(),
                         edges: Vec::new(),
                         symbol: char::from(thread_rng().gen_range(0x41, 0x5A)),
-                        color: Color::RGB(0x22, 0x88, 0x11),
                     });
                     let ix = w.plants.len() - 1;
                     w.screen = Screen::Plant(PlantEditor {
                         ix,
-                        cursor_position: Point::new(0, 0),
+                        cursor_position: Point { x: 0, y: 0 },
                         mode: PlantEditorMode::Normal,
                     });
                 }
