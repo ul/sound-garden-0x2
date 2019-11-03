@@ -62,13 +62,7 @@ impl World {
             garden: Garden {
                 anima_position: Point::new(0, 0),
             },
-            plants: vec![Plant {
-                position: Point::new(4, 4),
-                nodes: Vec::new(),
-                edges: Vec::new(),
-                symbol: 'F',
-                color: Color::from((0x22, 0x88, 0x11)),
-            }],
+            plants: Vec::new(),
             screen: Screen::Garden,
             cell_size: (0, 0),
             sample_rate: 48000,

@@ -3,7 +3,8 @@ use anyhow::Result;
 use audio_program::parse_tokens;
 use audio_vm::VM;
 use crossbeam_channel::Receiver;
-use sdl2::{event::Event, keyboard::Keycode, rect::Point};
+use rand::prelude::*;
+use sdl2::{event::Event, keyboard::Keycode, pixels::Color, rect::Point};
 use std::sync::{Arc, Mutex};
 
 pub enum Command {
@@ -123,6 +124,20 @@ pub fn handle_garden(cmd: Command, w: &mut World) {
                     .enumerate()
                     .find(|(_, p)| p.position == w.garden.anima_position)
                 {
+                    w.screen = Screen::Plant(PlantEditor {
+                        ix,
+                        cursor_position: Point::new(0, 0),
+                        mode: PlantEditorMode::Normal,
+                    });
+                } else {
+                    w.plants.push(Plant {
+                        position: w.garden.anima_position.clone(),
+                        nodes: Vec::new(),
+                        edges: Vec::new(),
+                        symbol: char::from(thread_rng().gen_range(0x41, 0x5A)),
+                        color: Color::from((0x22, 0x88, 0x11)),
+                    });
+                    let ix = w.plants.len() - 1;
                     w.screen = Screen::Plant(PlantEditor {
                         ix,
                         cursor_position: Point::new(0, 0),
