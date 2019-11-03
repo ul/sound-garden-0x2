@@ -7,11 +7,11 @@ use sdl2::{
     gfx::primitives::DrawRenderer,
     pixels::Color,
     rect::{Point, Rect},
-    render::{Canvas, TextureQuery},
-    ttf::Font,
+    render::{Canvas, Texture, TextureQuery},
     video::Window,
     EventPump,
 };
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -41,6 +41,15 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
         .load_font(REGULAR_FONT, CHAR_SIZE)
         .map_err(|s| Error::LoadFont(s))?;
 
+    let texture_creator = canvas.texture_creator();
+    let mut char_cache = HashMap::new();
+
+    for c in (0x20..0x7e).map(|c| char::from(c)) {
+        let surface = main_fnt.render_char(c).solid(Color::RGB(0, 0, 0))?;
+        let texture = texture_creator.create_texture_from_surface(surface)?;
+        char_cache.insert(c, texture);
+    }
+
     world.lock().unwrap().cell_size = main_fnt.size_of_char(GOLD_CHAR)?;
 
     // Start with a blank canvas.
@@ -63,7 +72,7 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
 
         process_events(&mut event_pump, &tx)?;
 
-        render_world(&mut canvas, &main_fnt, &world.lock().unwrap())?;
+        render_world(&mut canvas, &char_cache, &world.lock().unwrap())?;
 
         if let Some(budget) = frame_budget(frame_start) {
             std::thread::sleep(budget);
@@ -71,7 +80,11 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     }
 }
 
-fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> Result<()> {
+fn render_world(
+    canvas: &mut Canvas<Window>,
+    char_cache: &HashMap<char, Texture>,
+    world: &World,
+) -> Result<()> {
     canvas.set_draw_color(Color::RGB(255, 255, 255));
     canvas.clear();
 
@@ -80,11 +93,11 @@ fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> 
     match world.screen {
         Screen::Garden => {
             for p in &world.plants {
-                render_char(canvas, &main_fnt, p.symbol, p.position, cell_size)?;
+                render_char(canvas, &char_cache, p.symbol, p.position, cell_size)?;
             }
             render_char(
                 canvas,
-                &main_fnt,
+                &char_cache,
                 '@',
                 world.garden.anima_position,
                 cell_size,
@@ -97,7 +110,7 @@ fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> 
         }) => {
             let p = &world.plants[ix];
             for node in &p.nodes {
-                render_str(canvas, &main_fnt, &node.op, node.position, cell_size)?;
+                render_str(canvas, &char_cache, &node.op, node.position, cell_size)?;
             }
             for (i, j) in &p.edges {
                 let n1 = &p.nodes[*i];
@@ -112,7 +125,7 @@ fn render_world(canvas: &mut Canvas<Window>, main_fnt: &Font, world: &World) -> 
                     )
                     .map_err(|s| Error::Draw(s))?;
             }
-            render_char(canvas, &main_fnt, '_', cursor_position, cell_size)?;
+            render_char(canvas, &char_cache, '_', cursor_position, cell_size)?;
         }
     }
 
@@ -130,14 +143,12 @@ fn process_events(event_pump: &mut EventPump, tx: &Sender<Command>) -> Result<()
 
 fn render_char(
     canvas: &mut Canvas<Window>,
-    fnt: &Font,
+    char_cache: &HashMap<char, Texture>,
     ch: char,
     topleft: Point,
     cell_size: (u32, u32),
 ) -> Result<()> {
-    let surface = fnt.render_char(ch).solid(Color::RGB(0, 0, 0))?;
-    let texture_creator = canvas.texture_creator();
-    let texture = texture_creator.create_texture_from_surface(surface)?;
+    let texture = char_cache.get(&ch).unwrap();
     let TextureQuery { width, height, .. } = texture.query();
     canvas
         .copy(
@@ -156,26 +167,15 @@ fn render_char(
 
 fn render_str(
     canvas: &mut Canvas<Window>,
-    fnt: &Font,
+    char_cache: &HashMap<char, Texture>,
     s: &str,
     topleft: Point,
     cell_size: (u32, u32),
 ) -> Result<()> {
-    let surface = fnt.render(s).solid(Color::RGB(0, 0, 0))?;
-    let texture_creator = canvas.texture_creator();
-    let texture = texture_creator.create_texture_from_surface(surface)?;
-    let TextureQuery { width, height, .. } = texture.query();
-    canvas
-        .copy(
-            &texture,
-            None,
-            Some(Rect::new(
-                topleft.x * (cell_size.0 as i32),
-                topleft.y * (cell_size.1 as i32),
-                width,
-                height,
-            )),
-        )
-        .map_err(|s| Error::TextureCopy(s))?;
+    let mut topleft = topleft.clone();
+    for c in s.chars() {
+        render_char(canvas, char_cache, c, topleft, cell_size)?;
+        topleft.x += 1;
+    }
     Ok(())
 }
