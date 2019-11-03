@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::logic::Command;
-use crate::world::{PlantEditor, Screen, World};
+use crate::world::{PlantEditor, PlantEditorMode, Screen, World};
 use anyhow::Result;
 use crossbeam_channel::Sender;
 use sdl2::{
@@ -105,7 +105,7 @@ fn render_world(
         Screen::Plant(PlantEditor {
             ix,
             cursor_position,
-            ..
+            mode,
         }) => {
             let p = &world.plants[*ix];
             for node in &p.nodes {
@@ -136,7 +136,11 @@ fn render_world(
                     .map_err(|s| Error::Draw(s))?;
             }
             let p = cursor_position;
-            render_char(canvas, &char_cache, '_', Point::new(p.x, p.y), cell_size)?;
+            let c = match mode {
+                PlantEditorMode::Normal => '@',
+                PlantEditorMode::Insert => '_',
+            };
+            render_char(canvas, &char_cache, c, Point::new(p.x, p.y), cell_size)?;
         }
     }
 
