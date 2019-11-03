@@ -169,6 +169,9 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => {
+                    if w.plants[editor.ix].nodes.is_empty() {
+                        w.plants.swap_remove(editor.ix);
+                    }
                     w.screen = Screen::Garden;
                 }
                 Event::KeyDown {
@@ -221,6 +224,17 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) {
                     keycode: Some(Keycode::J),
                     ..
                 } => editor.cursor_position.y += 1,
+                Event::KeyDown {
+                    keycode: Some(Keycode::D),
+                    ..
+                } => {
+                    let plant = &mut w.plants[editor.ix];
+                    let node = node_at_cursor(plant, &editor.cursor_position);
+                    if let Some((i, _)) = node {
+                        plant.nodes.swap_remove(i);
+                        find_edges(plant, w.cell_size);
+                    }
+                }
                 _ => {}
             },
         }

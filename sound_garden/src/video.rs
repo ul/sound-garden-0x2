@@ -22,7 +22,6 @@ const TARGET_FPS: u32 = 60;
 const TARGET_FRAME_DURATION_NS: u32 = 1_000_000_000u32 / TARGET_FPS;
 const REGULAR_FONT: &str = "dat/fnt/Agave-Regular.ttf";
 const CHAR_SIZE: u16 = 16;
-const GOLD_CHAR: char = '@';
 
 pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     let sdl_ctx = sdl2::init().map_err(|s| Error::SDLInit(s))?;
@@ -50,7 +49,7 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
         char_cache.insert(c, texture);
     }
 
-    world.lock().unwrap().cell_size = main_fnt.size_of_char(GOLD_CHAR)?;
+    world.lock().unwrap().cell_size = main_fnt.size_of_char('M')?;
 
     // Start with a blank canvas.
     canvas.set_draw_color(Color::RGB(255, 255, 255));
