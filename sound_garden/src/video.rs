@@ -21,7 +21,7 @@ const TITLE: &str = "Sound Garden";
 const TARGET_FPS: u32 = 60;
 const TARGET_FRAME_DURATION_NS: u32 = 1_000_000_000u32 / TARGET_FPS;
 const REGULAR_FONT: &str = "dat/fnt/Agave-Regular.ttf";
-const CHAR_SIZE: u16 = 16;
+const CHAR_SIZE: u16 = 24;
 
 pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     let sdl_ctx = sdl2::init().map_err(|s| Error::SDLInit(s))?;
@@ -44,7 +44,7 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     let mut char_cache = HashMap::new();
 
     for c in (0x20..0x7e).map(|c| char::from(c)) {
-        let surface = main_fnt.render_char(c).solid(Color::RGB(0, 0, 0))?;
+        let surface = main_fnt.render_char(c).blended(Color::RGB(0, 0, 0))?;
         let texture = texture_creator.create_texture_from_surface(surface)?;
         char_cache.insert(c, texture);
     }
