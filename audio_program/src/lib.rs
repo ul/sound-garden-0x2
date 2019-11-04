@@ -36,6 +36,7 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             "t" => push_args!(Osc, sample_rate, pure::triangle),
             "tri" => push_args!(OscPhase, sample_rate, pure::triangle),
             "w" => push_args!(Phasor, sample_rate),
+            "q" | "quantize" => push_args!(Fn2, pure::quantize),
             "dup" => push!(Dup),
             "swap" => push!(Swap),
             "rot" => push!(Rot),
