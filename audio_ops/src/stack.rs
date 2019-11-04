@@ -49,3 +49,17 @@ impl Op for Rot {
         stack.push(&c);
     }
 }
+
+pub struct Pop;
+
+impl Pop {
+    pub fn new() -> Self {
+        Pop {}
+    }
+}
+
+impl Op for Pop {
+    fn perform(&mut self, stack: &mut Stack) {
+        stack.pop();
+    }
+}

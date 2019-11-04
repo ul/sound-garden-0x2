@@ -28,21 +28,46 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             "cheb5" => push_args!(Fn1, pure::cheb5),
             "cheb6" => push_args!(Fn1, pure::cheb6),
             "cos" => push_args!(Fn1, pure::cos),
+            "dup" => push!(Dup),
             "m2f" | "midi2freq" => push_args!(Fn1, pure::midi2freq),
+            "n" | "noise" => push!(WhiteNoise),
             "p" | "pulse" => push_args!(Pulse, sample_rate),
+            "pop" => push!(Pop),
+            "q" | "quantize" => push_args!(Fn2, pure::quantize),
+            "r" | "range" => push_args!(Fn3, pure::range),
+            "round" => push_args!(Fn1, pure::round),
+            "rot" => push!(Rot),
             "s" => push_args!(Osc, sample_rate, pure::sine),
             "saw" => push_args!(Phasor0, sample_rate),
+            "sin" => push_args!(Fn1, pure::sin),
             "sine" => push_args!(OscPhase, sample_rate, pure::sine),
+            "swap" => push!(Swap),
             "t" => push_args!(Osc, sample_rate, pure::triangle),
             "tri" => push_args!(OscPhase, sample_rate, pure::triangle),
+            "unit" => push_args!(Fn1, pure::unit),
             "w" => push_args!(Phasor, sample_rate),
-            "q" | "quantize" => push_args!(Fn2, pure::quantize),
-            "dup" => push!(Dup),
-            "swap" => push!(Swap),
-            "rot" => push!(Rot),
             _ => match token.parse::<Sample>() {
                 Ok(x) => push_args!(Constant, x),
-                Err(_) => {}
+                Err(_) => {
+                    let tokens = token.split(':').collect::<Vec<_>>();
+                    match tokens[0] {
+                        "dl" | "delay" => match tokens.get(1) {
+                            Some(x) => match x.parse::<f64>() {
+                                Ok(max_delay) => push_args!(Delay, sample_rate, max_delay),
+                                Err(_) => {}
+                            },
+                            None => {}
+                        },
+                        "fb" | "feedback" => match tokens.get(1) {
+                            Some(x) => match x.parse::<f64>() {
+                                Ok(max_delay) => push_args!(Feedback, sample_rate, max_delay),
+                                Err(_) => {}
+                            },
+                            None => {}
+                        },
+                        _ => {}
+                    }
+                }
             },
         }
     }

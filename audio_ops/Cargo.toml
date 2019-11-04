@@ -11,3 +11,7 @@ itertools = "0.8.0"
 
 [dependencies.audio_vm]
 path = "../audio_vm"
+
+[dependencies.rand]
+version = "0.7.2"
+features = ["small_rng"]
