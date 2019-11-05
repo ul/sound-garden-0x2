@@ -43,6 +43,7 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             "round" => push_args!(Fn1, pure::round),
             "rot" => push!(Rot),
             "s" => push_args!(Osc, sample_rate, pure::sine),
+            "sh" | "sample&hold" => push!(SampleAndHold),
             "saw" => push_args!(Phasor0, sample_rate),
             "sin" => push_args!(Fn1, pure::sin),
             "sine" => push_args!(OscPhase, sample_rate, pure::sine),

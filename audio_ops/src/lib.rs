@@ -9,9 +9,10 @@ mod osc;
 mod phasor;
 mod pulse;
 pub mod pure;
+mod sample_and_hold;
 mod stack;
 
 pub use self::{
     constant::*, delay::*, envelopes::*, feedback::*, function::*, metro::*, noise::*, osc::*,
-    phasor::*, pulse::*, stack::*,
+    phasor::*, pulse::*, sample_and_hold::*, stack::*,
 };
