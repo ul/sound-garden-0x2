@@ -1,5 +1,6 @@
 mod constant;
 mod delay;
+mod envelopes;
 mod feedback;
 mod function;
 mod metro;
@@ -11,6 +12,6 @@ pub mod pure;
 mod stack;
 
 pub use self::{
-    constant::*, delay::*, feedback::*, function::*, noise::*, osc::*, phasor::*, pulse::*,
-    stack::*, metro::*,
+    constant::*, delay::*, envelopes::*, feedback::*, function::*, metro::*, noise::*, osc::*,
+    phasor::*, pulse::*, stack::*,
 };

@@ -31,6 +31,7 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             "dm" | "dmetro" => push_args!(DMetro, sample_rate),
             "dmh" | "dmetro_hold" => push_args!(DMetroHold, sample_rate),
             "dup" => push!(Dup),
+            "impulse" => push_args!(Impulse, sample_rate),
             "m2f" | "midi2freq" => push_args!(Fn1, pure::midi2freq),
             "m" | "metro" => push_args!(Metro, sample_rate),
             "mh" | "metro_hold" => push_args!(MetroHold, sample_rate),
