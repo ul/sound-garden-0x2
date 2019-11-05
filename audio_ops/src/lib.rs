@@ -8,6 +8,7 @@ mod function;
 mod metro;
 mod noise;
 mod osc;
+mod pan;
 mod phasor;
 mod pulse;
 pub mod pure;
@@ -16,5 +17,5 @@ mod stack;
 
 pub use self::{
     biquad::*, constant::*, delay::*, envelopes::*, feedback::*, filters::*, function::*, metro::*,
-    noise::*, osc::*, phasor::*, pulse::*, sample_and_hold::*, stack::*,
+    noise::*, osc::*, pan::*, phasor::*, pulse::*, sample_and_hold::*, stack::*,
 };
