@@ -11,8 +11,9 @@ mod pulse;
 pub mod pure;
 mod sample_and_hold;
 mod stack;
+mod biquad;
 
 pub use self::{
     constant::*, delay::*, envelopes::*, feedback::*, function::*, metro::*, noise::*, osc::*,
-    phasor::*, pulse::*, sample_and_hold::*, stack::*,
+    phasor::*, pulse::*, sample_and_hold::*, stack::*, biquad::*
 };

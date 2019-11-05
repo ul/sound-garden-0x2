@@ -110,6 +110,11 @@ pub fn midi2freq(x: Sample) -> Sample {
     440.0 * 2.0f64.powf((x - 69.0) / 12.0)
 }
 
+/// Convert frequency in Hz to MIDI pitch
+pub fn freq2midi(x: Sample) -> Sample {
+    69.0 + 12.0 * (x / 440.0).log2()
+}
+
 /// Stereo intensity-preserving panner
 pub fn pan(l: Sample, r: Sample, c: Sample) -> (Sample, Sample) {
     (
