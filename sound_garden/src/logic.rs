@@ -2,6 +2,7 @@ use crate::world::*;
 use anyhow::Result;
 use audio_program::parse_tokens;
 use audio_vm::VM;
+use clipboard::{ClipboardContext, ClipboardProvider};
 use crossbeam_channel::Receiver;
 use rand::prelude::*;
 use sdl2::{event::Event, keyboard::Keycode};
@@ -34,7 +35,7 @@ pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<Command>)
         match cmd {
             _ => match w.screen {
                 Screen::Garden => handle_garden(cmd, &mut w),
-                Screen::Plant(_) => handle_plant(cmd, &mut w),
+                Screen::Plant(_) => handle_plant(cmd, &mut w)?,
             },
         }
         let new_ops = match w.screen {
@@ -158,17 +159,18 @@ pub fn handle_garden(cmd: Command, w: &mut World) {
     }
 }
 
-pub fn handle_plant(cmd: Command, w: &mut World) {
+pub fn handle_plant(cmd: Command, w: &mut World) -> Result<()> {
     match w.screen {
         Screen::Plant(ref editor) => match editor.mode {
-            PlantEditorMode::Normal => handle_plant_normal(cmd, w),
-            PlantEditorMode::Insert => handle_plant_insert(cmd, w),
+            PlantEditorMode::Normal => handle_plant_normal(cmd, w)?,
+            PlantEditorMode::Insert => handle_plant_insert(cmd, w)?,
         },
         _ => unreachable!(),
     }
+    Ok(())
 }
 
-pub fn handle_plant_normal(cmd: Command, w: &mut World) {
+pub fn handle_plant_normal(cmd: Command, w: &mut World) -> Result<()> {
     use Command::*;
     if let Screen::Plant(editor) = &mut w.screen {
         match cmd {
@@ -243,15 +245,38 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) {
                         find_edges(plant, w.cell_size);
                     }
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Y),
+                    ..
+                } => {
+                    let plant = &w.plants[editor.ix];
+                    let binary = serde_cbor::to_vec(plant)?;
+                    let text = base64::encode(&binary);
+                    let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+                    ctx.set_contents(text).unwrap();
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::P),
+                    ..
+                } => {
+                    let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+                    let text = ctx.get_contents().unwrap();
+                    let binary = base64::decode(&text)?;
+                    let plant = &mut w.plants[editor.ix];
+                    let position = plant.position.clone();
+                    *plant = serde_cbor::from_slice(&binary)?;
+                    plant.position = position;
+                }
                 _ => {}
             },
         }
     } else {
         unreachable!();
     }
+    Ok(())
 }
 
-pub fn handle_plant_insert(cmd: Command, w: &mut World) {
+pub fn handle_plant_insert(cmd: Command, w: &mut World) -> Result<()> {
     use Command::*;
     if let Screen::Plant(editor) = &mut w.screen {
         match cmd {
@@ -308,7 +333,7 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
                 }
                 Event::TextInput { text, .. } => {
                     if text == " " {
-                        return;
+                        return Ok(());
                     }
                     let plant = &mut w.plants[editor.ix];
                     let node = node_at_cursor(plant, &editor.cursor_position);
@@ -342,6 +367,7 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) {
     } else {
         unreachable!();
     }
+    Ok(())
 }
 
 /// Slot right after node's text end also belong to the node.
