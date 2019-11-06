@@ -2,6 +2,7 @@ use crate::world::*;
 use anyhow::Result;
 use audio_program::parse_tokens;
 use audio_vm::VM;
+use brotli::{CompressorWriter, Decompressor};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use crossbeam_channel::Receiver;
 use rand::prelude::*;
@@ -250,8 +251,12 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) -> Result<()> {
                     ..
                 } => {
                     let plant = &w.plants[editor.ix];
-                    let binary = serde_cbor::to_vec(plant)?;
-                    let text = base64::encode(&binary);
+                    let mut compressed = Vec::new();
+                    {
+                        let mut compressor = CompressorWriter::new(&mut compressed, 4096, 11, 22);
+                        serde_cbor::to_writer(&mut compressor, plant)?;
+                    }
+                    let text = base64::encode(&compressed);
                     let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
                     ctx.set_contents(text).unwrap();
                 }
@@ -261,10 +266,13 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) -> Result<()> {
                 } => {
                     let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
                     let text = ctx.get_contents().unwrap();
-                    let binary = base64::decode(&text)?;
+                    let compressed = base64::decode(&text)?;
+                    let decompressor: Decompressor<&[u8]> =
+                        Decompressor::new(&compressed[..], 4096);
+                    let new_plant = serde_cbor::from_reader(decompressor)?;
                     let plant = &mut w.plants[editor.ix];
                     let position = plant.position.clone();
-                    *plant = serde_cbor::from_slice(&binary)?;
+                    *plant = new_plant;
                     plant.position = position;
                 }
                 _ => {}

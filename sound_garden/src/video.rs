@@ -138,12 +138,10 @@ fn render_world(
                     )
                     .map_err(|s| Error::Draw(s))?;
                 canvas
-                    .draw_point(
-                        Point::from((
-                            n2.position.x * (cell_size.0 as i32) + (cell_size.0 as i32) / 2,
-                            (n2.position.y * (cell_size.1 as i32)) - 1,
-                        )),
-                    )
+                    .draw_point(Point::from((
+                        n2.position.x * (cell_size.0 as i32) + (cell_size.0 as i32) / 2,
+                        (n2.position.y * (cell_size.1 as i32)) - 1,
+                    )))
                     .map_err(|s| Error::Draw(s))?;
             }
             let p = cursor_position;

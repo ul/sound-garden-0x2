@@ -14,6 +14,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "alloc-stdlib"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "alloc-no-stdlib 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "alsa-sys"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -154,6 +167,25 @@ dependencies = [
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "brotli"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "alloc-no-stdlib 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "alloc-stdlib 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "brotli-decompressor 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "brotli-decompressor"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "alloc-no-stdlib 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "alloc-stdlib 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "byteorder"
@@ -958,6 +990,7 @@ dependencies = [
  "audio_program 0.1.0",
  "audio_vm 0.1.0",
  "base64 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "brotli 3.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clipboard 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cpal 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-channel 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1140,6 +1173,8 @@ dependencies = [
 [metadata]
 "checksum adler32 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 "checksum aho-corasick 0.7.6 (registry+https://github.com/rust-lang/crates.io-index)" = "58fb5e95d83b38284460a5fda7d6470aa0b8844d283a0b614b8535e880800d2d"
+"checksum alloc-no-stdlib 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "5192ec435945d87bc2f70992b4d818154b5feede43c09fb7592146374eac90a6"
+"checksum alloc-stdlib 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "697ed7edc0f1711de49ce108c541623a0af97c6c60b2f6e2b65229847ac843c2"
 "checksum alsa-sys 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b0edcbbf9ef68f15ae1b620f722180b82a98b6f0628d30baa6b8d2a5abc87d58"
 "checksum anyhow 1.0.17 (registry+https://github.com/rust-lang/crates.io-index)" = "70a45816cea85cf69e3b34c7c99a13ca1654ee222029636a8674958043a2fac1"
 "checksum arc-swap 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "f1a1eca3195b729bbd64e292ef2f5fff6b1c28504fed762ce2b1013dde4d8e92"
@@ -1155,6 +1190,8 @@ dependencies = [
 "checksum bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 "checksum blake2b_simd 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)" = "5850aeee1552f495dd0250014cf64b82b7c8879a89d83b33bbdace2cc4f63182"
 "checksum block 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
+"checksum brotli 3.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7f29919120f08613aadcd4383764e00526fc9f18b6c0895814faeed0dd78613e"
+"checksum brotli-decompressor 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2a9f2b517b96b19d8f91c1ff5b1cf498e688850b32eae5d58e02d15c4d4fdc0c"
 "checksum byteorder 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "a7c3dd8985a7111efc5c80b44e23ecdd8c007de8ade3b96595387e812b957cf5"
 "checksum c2-chacha 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "214238caa1bf3a496ec3392968969cab8549f96ff30652c9e56885329315f6bb"
 "checksum cc 1.0.46 (registry+https://github.com/rust-lang/crates.io-index)" = "0213d356d3c4ea2c18c40b037c3be23cd639825c18f25ee670ac7813beeef99c"
