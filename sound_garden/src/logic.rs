@@ -165,6 +165,7 @@ pub fn handle_plant(cmd: Command, w: &mut World) -> Result<()> {
         Screen::Plant(ref editor) => match editor.mode {
             PlantEditorMode::Normal => handle_plant_normal(cmd, w)?,
             PlantEditorMode::Insert => handle_plant_insert(cmd, w)?,
+            PlantEditorMode::Move(_) => handle_plant_move(cmd, w)?,
         },
         _ => unreachable!(),
     }
@@ -275,6 +276,29 @@ pub fn handle_plant_normal(cmd: Command, w: &mut World) -> Result<()> {
                     *plant = new_plant;
                     plant.position = position;
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Slash),
+                    ..
+                } => {
+                    let plant = &mut w.plants[editor.ix];
+                    let node = node_at_cursor(plant, &editor.cursor_position);
+                    if let Some((i, _)) = node {
+                        let mut nodes_to_move = Vec::new();
+                        let mut nodes_to_scan = vec![i];
+                        while let Some(ix) = nodes_to_scan.pop() {
+                            nodes_to_move.push(ix);
+                            for ix in plant
+                                .edges
+                                .iter()
+                                .filter(|(_, j)| *j == ix)
+                                .map(|(i, _)| *i)
+                            {
+                                nodes_to_scan.push(ix)
+                            }
+                        }
+                        editor.mode = PlantEditorMode::Move(nodes_to_move);
+                    }
+                }
                 _ => {}
             },
         }
@@ -379,7 +403,7 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) -> Result<()> {
 }
 
 /// Slot right after node's text end also belong to the node.
-fn node_at_cursor<'a>(plant: &'a mut Plant, cursor: &Point) -> Option<(usize, &'a mut Node)> {
+fn node_at_cursor<'a>(plant: &'a mut Plant, cursor: &Point) -> Option<(NodeIx, &'a mut Node)> {
     plant.nodes.iter_mut().enumerate().find(|(_, n)| {
         n.position.y == cursor.y
             && n.position.x <= cursor.x
@@ -415,4 +439,102 @@ fn find_edges(plant: &mut Plant, cell_size: (u32, u32)) {
         }
     }
     edges.sort_by(|(i1, _), (i2, _)| nodes[*i1].position.x.cmp(&nodes[*i2].position.x));
+}
+
+pub fn handle_plant_move(cmd: Command, w: &mut World) -> Result<()> {
+    use Command::*;
+    if let Screen::Plant(editor) = &mut w.screen {
+        if let PlantEditorMode::Move(nodes_to_move) = &editor.mode {
+            match cmd {
+                SDLEvent(event) => match event {
+                    Event::KeyDown {
+                        keycode: Some(Keycode::Escape),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::Space),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::Return),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::Slash),
+                        ..
+                    } => {
+                        editor.mode = PlantEditorMode::Normal;
+                    }
+                    Event::KeyDown {
+                        keycode: Some(Keycode::Left),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::H),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::Backspace),
+                        ..
+                    } => {
+                        editor.cursor_position.x -= 1;
+                        let plant = &mut w.plants[editor.ix];
+                        for &ix in nodes_to_move {
+                            plant.nodes[ix].position.x -= 1;
+                        }
+                    }
+                    Event::KeyDown {
+                        keycode: Some(Keycode::Right),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::L),
+                        ..
+                    } => {
+                        editor.cursor_position.x += 1;
+
+                        let plant = &mut w.plants[editor.ix];
+                        for &ix in nodes_to_move {
+                            plant.nodes[ix].position.x += 1;
+                        }
+                    }
+                    Event::KeyDown {
+                        keycode: Some(Keycode::Up),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::K),
+                        ..
+                    } => {
+                        editor.cursor_position.y -= 1;
+                        let plant = &mut w.plants[editor.ix];
+                        for &ix in nodes_to_move {
+                            plant.nodes[ix].position.y -= 1;
+                        }
+                    }
+                    Event::KeyDown {
+                        keycode: Some(Keycode::Down),
+                        ..
+                    }
+                    | Event::KeyDown {
+                        keycode: Some(Keycode::J),
+                        ..
+                    } => {
+                        editor.cursor_position.y += 1;
+                        let plant = &mut w.plants[editor.ix];
+                        for &ix in nodes_to_move {
+                            plant.nodes[ix].position.y += 1;
+                        }
+                    }
+                    _ => {}
+                },
+            }
+            find_edges(&mut w.plants[editor.ix], w.cell_size);
+        } else {
+            unreachable!();
+        }
+    } else {
+        unreachable!();
+    }
+    Ok(())
 }

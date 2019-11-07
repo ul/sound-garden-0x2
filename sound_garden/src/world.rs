@@ -23,7 +23,7 @@ pub struct Anima {}
 pub struct Plant {
     pub position: Point,
     pub nodes: Vec<Node>, // SortedSet?
-    pub edges: Vec<(usize, usize)>,
+    pub edges: Vec<(NodeIx, NodeIx)>,
     pub symbol: char,
 }
 
@@ -40,7 +40,7 @@ pub struct Garden {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PlantEditor {
-    pub ix: usize,
+    pub ix: PlantIx,
     pub cursor_position: Point,
     pub mode: PlantEditorMode,
 }
@@ -49,6 +49,7 @@ pub struct PlantEditor {
 pub enum PlantEditorMode {
     Normal,
     Insert,
+    Move(Vec<NodeIx>),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,3 +72,6 @@ impl World {
         }
     }
 }
+
+pub type NodeIx = usize;
+pub type PlantIx = usize;

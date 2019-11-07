@@ -148,6 +148,7 @@ fn render_world(
             let c = match mode {
                 PlantEditorMode::Normal => '@',
                 PlantEditorMode::Insert => '_',
+                PlantEditorMode::Move(_) => '/',
             };
             render_char(canvas, &char_cache, c, Point::new(p.x, p.y), cell_size)?;
         }
