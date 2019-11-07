@@ -6,9 +6,6 @@ pub struct Point {
     pub y: i32,
 }
 
-// Design decision I may regret soon: clone and re-create World when changing.
-// To optimize might use PDS (i.e. rpds) or ensure that most of the things (all?)
-// are allocated on the stack (smallvec, stackvec, arrayvec might help).
 #[derive(Serialize, Deserialize, Debug)]
 pub struct World {
     pub anima: Anima,
