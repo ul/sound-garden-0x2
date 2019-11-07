@@ -3,17 +3,17 @@ use crate::logic::Command;
 use crate::world::{PlantEditor, PlantEditorMode, Screen, World};
 use anyhow::Result;
 use crossbeam_channel::Sender;
+use lru::LruCache;
 use sdl2::{
     pixels::Color,
     rect::{Point, Rect},
-    render::{Canvas, Texture, TextureQuery},
-    video::Window,
+    render::{Canvas, Texture, TextureCreator, TextureQuery},
+    ttf::Font,
+    video::{Window, WindowContext},
     EventPump,
 };
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use unic_char_range::CharRange;
 
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGHT: u32 = 800;
@@ -22,6 +22,7 @@ const TARGET_FPS: u32 = 60;
 const TARGET_FRAME_DURATION_NS: u32 = 1_000_000_000u32 / TARGET_FPS;
 const REGULAR_FONT: &str = "dat/fnt/Agave-Regular.ttf";
 const CHAR_SIZE: u16 = 24;
+const CHAR_TEXTURE_CACHE: usize = 256;
 
 pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     let sdl_ctx = sdl2::init().map_err(|s| Error::SDLInit(s))?;
@@ -41,15 +42,7 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
         .map_err(|s| Error::LoadFont(s))?;
 
     let texture_creator = canvas.texture_creator();
-    let mut char_cache = HashMap::new();
-
-    info!("Caching glyphs in range 0x0020..0x3000");
-    for c in CharRange::open_right('\u{0020}', '\u{3000}') {
-        let surface = main_fnt.render_char(c).blended(Color::RGB(0, 0, 0))?;
-        let texture = texture_creator.create_texture_from_surface(surface)?;
-        char_cache.insert(c, texture);
-    }
-    info!("Glyphs are cached!");
+    let mut texture_cache = LruCache::new(CHAR_TEXTURE_CACHE);
 
     world.lock().unwrap().cell_size = main_fnt.size_of_char('M')?;
 
@@ -73,7 +66,13 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
 
         process_events(&mut event_pump, &tx)?;
 
-        render_world(&mut canvas, &char_cache, &world.lock().unwrap())?;
+        render_world(
+            &mut canvas,
+            &world.lock().unwrap(),
+            &texture_creator,
+            &mut texture_cache,
+            &main_fnt,
+        )?;
 
         if let Some(budget) = frame_budget(frame_start) {
             std::thread::sleep(budget);
@@ -81,29 +80,44 @@ pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     }
 }
 
-fn render_world(
+fn render_world<'a>(
     canvas: &mut Canvas<Window>,
-    char_cache: &HashMap<char, Texture>,
     world: &World,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    texture_cache: &mut LruCache<(char, Color), Texture<'a>>,
+    fnt: &Font,
 ) -> Result<()> {
     canvas.set_draw_color(Color::RGB(255, 255, 255));
     canvas.clear();
 
     // Update & draw stuff.
     let cell_size = world.cell_size;
+    let anima_color = Color::RGB(0x44, 0x33, 0x55);
     match &world.screen {
         Screen::Garden => {
             for p in &world.plants {
                 render_char(
                     canvas,
-                    &char_cache,
                     p.symbol,
+                    Color::RGB(0, 0, 0),
                     Point::new(p.position.x, p.position.y),
                     cell_size,
+                    texture_creator,
+                    texture_cache,
+                    fnt,
                 )?;
             }
             let p = &world.garden.anima_position;
-            render_char(canvas, &char_cache, '@', Point::new(p.x, p.y), cell_size)?;
+            render_char(
+                canvas,
+                '@',
+                anima_color,
+                Point::new(p.x, p.y),
+                cell_size,
+                texture_creator,
+                texture_cache,
+                fnt,
+            )?;
         }
         Screen::Plant(PlantEditor {
             ix,
@@ -115,10 +129,13 @@ fn render_world(
                 let p = &node.position;
                 render_str(
                     canvas,
-                    &char_cache,
                     &node.op,
+                    Color::RGB(0, 0, 0),
                     Point::new(p.x, p.y),
                     cell_size,
+                    texture_creator,
+                    texture_cache,
+                    fnt,
                 )?;
             }
             canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -150,7 +167,16 @@ fn render_world(
                 PlantEditorMode::Insert => '_',
                 PlantEditorMode::Move(_) => '/',
             };
-            render_char(canvas, &char_cache, c, Point::new(p.x, p.y), cell_size)?;
+            render_char(
+                canvas,
+                c,
+                anima_color,
+                Point::new(p.x, p.y),
+                cell_size,
+                texture_creator,
+                texture_cache,
+                fnt,
+            )?;
         }
     }
 
@@ -166,14 +192,26 @@ fn process_events(event_pump: &mut EventPump, tx: &Sender<Command>) -> Result<()
     Ok(())
 }
 
-fn render_char(
+fn render_char<'a>(
     canvas: &mut Canvas<Window>,
-    char_cache: &HashMap<char, Texture>,
     ch: char,
+    color: Color,
     topleft: Point,
     cell_size: (u32, u32),
+    texture_creator: &'a TextureCreator<WindowContext>,
+    texture_cache: &mut LruCache<(char, Color), Texture<'a>>,
+    fnt: &Font,
 ) -> Result<()> {
-    let texture = char_cache.get(&ch).unwrap();
+    let texture = {
+        if let Some(texture) = texture_cache.get(&(ch, color)) {
+            texture
+        } else {
+            let surface = fnt.render_char(ch).blended(color)?;
+            let texture = texture_creator.create_texture_from_surface(surface)?;
+            texture_cache.put((ch, color), texture);
+            texture_cache.get(&(ch, color)).unwrap()
+        }
+    };
     let TextureQuery { width, height, .. } = texture.query();
     canvas
         .copy(
@@ -190,16 +228,28 @@ fn render_char(
     Ok(())
 }
 
-fn render_str(
+fn render_str<'a>(
     canvas: &mut Canvas<Window>,
-    char_cache: &HashMap<char, Texture>,
     s: &str,
+    color: Color,
     topleft: Point,
     cell_size: (u32, u32),
+    texture_creator: &'a TextureCreator<WindowContext>,
+    texture_cache: &mut LruCache<(char, Color), Texture<'a>>,
+    fnt: &Font,
 ) -> Result<()> {
     let mut topleft = topleft.clone();
     for c in s.chars() {
-        render_char(canvas, char_cache, c, topleft, cell_size)?;
+        render_char(
+            canvas,
+            c,
+            color,
+            topleft,
+            cell_size,
+            texture_creator,
+            texture_cache,
+            fnt,
+        )?;
         topleft.x += 1;
     }
     Ok(())
