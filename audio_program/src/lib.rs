@@ -1,6 +1,9 @@
 use audio_ops::*;
-use audio_vm::{Op, Program, Sample};
+use audio_vm::{Op, Program, Sample, CHANNELS};
+use fasthash::sea::Hash64;
 use smallvec::SmallVec;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
     let mut ops = SmallVec::new();
@@ -14,6 +17,7 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op+Send>)
         };
     }
+    let mut tables = HashMap::with_hasher(Hash64);
     for token in tokens {
         match token.as_str() {
             "*" => push_args!(Fn2, pure::mul),
@@ -76,6 +80,30 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
                         "fb" | "feedback" => match tokens.get(1) {
                             Some(x) => match x.parse::<f64>() {
                                 Ok(max_delay) => push_args!(Feedback, sample_rate, max_delay),
+                                Err(_) => {}
+                            },
+                            None => {}
+                        },
+                        "rt" | "rtab" | "readtable" => {
+                            match tokens.get(1).and_then(|x| tables.get(*x)) {
+                                Some(table) => {
+                                    push_args!(TableReader, sample_rate, Arc::clone(table));
+                                }
+                                None => {}
+                            }
+                        }
+                        "wt" | "wtab" | "writetable" => match tokens.get(2) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(size) => {
+                                    let table_name = String::from(tokens[1]);
+                                    let table = Arc::new(Mutex::new(vec![
+                                        [0.0; CHANNELS];
+                                        size * (sample_rate
+                                            as usize)
+                                    ]));
+                                    tables.insert(table_name, Arc::clone(&table));
+                                    push_args!(TableWriter, table);
+                                }
                                 Err(_) => {}
                             },
                             None => {}
