@@ -15,8 +15,8 @@ impl SampleAndHold {
 
 impl Op for SampleAndHold {
     fn perform(&mut self, stack: &mut Stack) {
-        let input = stack.pop();
         let trigger = stack.pop();
+        let input = stack.pop();
         for (sample, &t, &x) in izip!(&mut self.output, &trigger, &input) {
             *sample = *sample * (1.0 - t) + x * t
         }
