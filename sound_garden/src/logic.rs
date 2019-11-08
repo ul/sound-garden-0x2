@@ -77,6 +77,9 @@ pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<Command>)
         };
         if ops != new_ops {
             ops = new_ops;
+            if !ops.is_empty() {
+                info!("New program is '{}'", ops.join(" "));
+            }
             let program = parse_tokens(&ops, w.sample_rate);
             vm.lock().unwrap().load_program(program);
         }
