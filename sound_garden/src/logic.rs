@@ -346,7 +346,7 @@ pub fn handle_plant_insert(cmd: Command, w: &mut World) -> Result<()> {
                     let node = node_at_cursor(plant, &editor.cursor_position);
                     editor.cursor_position.x -= 1;
                     if let Some((i, node)) = node {
-                        if editor.cursor_position.x > node.position.x {
+                        if node.op.len() > 1 {
                             let x = (editor.cursor_position.x - node.position.x) as usize;
                             let ixs = node
                                 .op
