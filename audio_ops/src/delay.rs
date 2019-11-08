@@ -3,6 +3,7 @@ use itertools::izip;
 use std::collections::VecDeque;
 
 pub struct Delay {
+    // TODO VecDeque<Frame>
     buffers: Vec<VecDeque<Sample>>,
     mask: usize,
     sample_rate: Sample,
