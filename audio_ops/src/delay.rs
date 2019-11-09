@@ -1,10 +1,9 @@
-use audio_vm::{Op, Sample, Stack, CHANNELS};
+use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 use std::collections::VecDeque;
 
 pub struct Delay {
-    // TODO VecDeque<Frame>
-    buffers: Vec<VecDeque<Sample>>,
+    buffer: VecDeque<Frame>,
     mask: usize,
     sample_rate: Sample,
 }
@@ -16,16 +15,12 @@ impl Delay {
         // next_power_of_two to trade memory for speed by replacing `mod` with `&`
         let max_delay_frames = ((sample_rate * max_delay) as usize + 1).next_power_of_two();
         let mask = max_delay_frames - 1;
-        let mut buffers = Vec::with_capacity(CHANNELS);
-        for _ in 0..CHANNELS {
-            let mut buffer = VecDeque::with_capacity(max_delay_frames);
-            for _ in 0..max_delay_frames {
-                buffer.push_front(0.0);
-            }
-            buffers.push(buffer);
+        let mut buffer = VecDeque::with_capacity(max_delay_frames);
+        for _ in 0..max_delay_frames {
+            buffer.push_front([0.0; CHANNELS]);
         }
         Delay {
-            buffers,
+            buffer,
             mask,
             sample_rate,
         }
@@ -37,21 +32,16 @@ impl Op for Delay {
         let delay = stack.pop();
         let input = stack.pop();
         let mut frame = [0.0; CHANNELS];
-        for (output, x, delay, buffer) in izip!(
-            frame.iter_mut(),
-            input.iter(),
-            delay.iter(),
-            self.buffers.iter_mut()
-        ) {
+        for (channel, (output, delay)) in izip!(frame.iter_mut(), delay.iter(),).enumerate() {
             let z = delay * self.sample_rate;
             let delay = z as usize;
             let k = z.fract();
-            let a = buffer[delay & self.mask];
-            let b = buffer[(delay + 1) & self.mask];
+            let a = self.buffer[delay & self.mask][channel];
+            let b = self.buffer[(delay + 1) & self.mask][channel];
             *output = (1.0 - k) * a + k * b;
-            buffer.pop_back();
-            buffer.push_front(*x);
         }
         stack.push(&frame);
+        self.buffer.pop_back();
+        self.buffer.push_front(input);
     }
 }
