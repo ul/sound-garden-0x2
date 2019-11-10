@@ -108,6 +108,20 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
                             },
                             None => {}
                         },
+                        "conv" => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(window_size) => push_args!(Convolution, window_size),
+                                Err(_) => {}
+                            },
+                            None => {}
+                        },
+                        "convm" => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(window_size) => push_args!(ConvolutionM, window_size),
+                                Err(_) => {}
+                            },
+                            None => {}
+                        },
                         _ => {}
                     }
                 }

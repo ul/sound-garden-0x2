@@ -1,5 +1,6 @@
 mod biquad;
 mod constant;
+mod convolution;
 mod delay;
 mod envelopes;
 mod feedback;
@@ -17,6 +18,7 @@ mod sampler;
 mod stack;
 
 pub use self::{
-    biquad::*, constant::*, delay::*, envelopes::*, feedback::*, filters::*, function::*, metro::*,
-    noise::*, osc::*, pan::*, phasor::*, pulse::*, sample_and_hold::*, sampler::*, stack::*,
+    biquad::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*, filters::*,
+    function::*, metro::*, noise::*, osc::*, pan::*, phasor::*, pulse::*, sample_and_hold::*,
+    sampler::*, stack::*,
 };
