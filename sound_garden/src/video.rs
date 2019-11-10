@@ -22,7 +22,7 @@ const TARGET_FPS: u32 = 60;
 const TARGET_FRAME_DURATION_NS: u32 = 1_000_000_000u32 / TARGET_FPS;
 const REGULAR_FONT: &str = "dat/fnt/Agave-Regular.ttf";
 const CHAR_SIZE: u16 = 24;
-const CHAR_TEXTURE_CACHE: usize = 256;
+const CHAR_TEXTURE_CACHE: usize = 4096;
 
 pub fn main(world: Arc<Mutex<World>>, tx: Sender<Command>) -> Result<()> {
     let sdl_ctx = sdl2::init().map_err(|s| Error::SDLInit(s))?;
