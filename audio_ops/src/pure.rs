@@ -183,3 +183,14 @@ pub fn cheb6(x: Sample) -> Sample {
     let x4 = x2 * x2;
     32.0 * x2 * x4 - 48.0 * x4 + 18.0 * x2 - 1.0
 }
+
+#[inline]
+pub fn clamp(x: Sample, min: Sample, max: Sample) -> Sample {
+    if x < min {
+        min
+    } else if x > max {
+        max
+    } else {
+        x
+    }
+}

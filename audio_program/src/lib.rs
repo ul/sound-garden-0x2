@@ -32,6 +32,7 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             "cheb5" => push_args!(Fn1, pure::cheb5),
             "cheb6" => push_args!(Fn1, pure::cheb6),
             "circle" => push_args!(Fn1, pure::circle),
+            "clamp" => push_args!(Fn3, pure::clamp),
             "cos" => push_args!(Fn1, pure::cos),
             "dm" | "dmetro" => push_args!(DMetro, sample_rate),
             "dmh" | "dmetro_hold" => push_args!(DMetroHold, sample_rate),
