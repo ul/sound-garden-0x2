@@ -15,12 +15,10 @@ impl Delay {
         // next_power_of_two to trade memory for speed by replacing `mod` with `&`
         let max_delay_frames = ((sample_rate * max_delay) as usize + 1).next_power_of_two();
         let mask = max_delay_frames - 1;
-        let mut buffer = VecDeque::with_capacity(max_delay_frames);
-        for _ in 0..max_delay_frames {
-            buffer.push_front([0.0; CHANNELS]);
-        }
         Delay {
-            buffer,
+            buffer: std::iter::repeat([0.0; CHANNELS])
+                .take(max_delay_frames)
+                .collect(),
             mask,
             sample_rate,
         }

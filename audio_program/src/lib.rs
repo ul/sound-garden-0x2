@@ -1,6 +1,7 @@
 use audio_ops::*;
 use audio_vm::{Op, Program, Sample, CHANNELS};
 use fasthash::sea::Hash64;
+use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -61,6 +62,23 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             "saw" => push_args!(Phasor0, sample_rate),
             "sin" => push_args!(Fn1, pure::sin),
             "sine" => push_args!(OscPhase, sample_rate, pure::sine),
+            "spectral_shuffle" => {
+                let mut rng = Box::new(SmallRng::from_entropy());
+                push_args!(
+                    SpectralTransform,
+                    2048, // window_size
+                    64,   // period
+                    Box::new(move |freqs| freqs.shuffle(&mut rng)),
+                )
+            }
+            "spectral_reverse" => {
+                push_args!(
+                    SpectralTransform,
+                    2048, // window_size
+                    64,   // period
+                    Box::new(|freqs| freqs.reverse()),
+                )
+            }
             "swap" => push!(Swap),
             "t" => push_args!(Osc, sample_rate, pure::triangle),
             "tri" => push_args!(OscPhase, sample_rate, pure::triangle),
@@ -71,6 +89,13 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
                 Err(_) => {
                     let tokens = token.split(':').collect::<Vec<_>>();
                     match tokens[0] {
+                        "ch" | "channel" => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(n) => push_args!(Channel, n),
+                                Err(_) => {}
+                            },
+                            None => {}
+                        },
                         "dl" | "delay" => match tokens.get(1) {
                             Some(x) => match x.parse::<f64>() {
                                 Ok(max_delay) => push_args!(Delay, sample_rate, max_delay),

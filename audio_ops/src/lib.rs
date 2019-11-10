@@ -1,4 +1,5 @@
 mod biquad;
+mod channel;
 mod constant;
 mod convolution;
 mod delay;
@@ -15,10 +16,11 @@ mod pulse;
 pub mod pure;
 mod sample_and_hold;
 mod sampler;
+mod spectral_transform;
 mod stack;
 
 pub use self::{
-    biquad::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*, filters::*,
-    function::*, metro::*, noise::*, osc::*, pan::*, phasor::*, pulse::*, sample_and_hold::*,
-    sampler::*, stack::*,
+    biquad::*, channel::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*,
+    filters::*, function::*, metro::*, noise::*, osc::*, pan::*, phasor::*, pulse::*,
+    sample_and_hold::*, sampler::*, spectral_transform::*, stack::*,
 };

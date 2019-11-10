@@ -13,11 +13,11 @@ pub struct Convolution {
 
 impl Convolution {
     pub fn new(window_size: usize) -> Self {
-        let mut window = VecDeque::with_capacity(window_size);
-        for _ in 0..window_size {
-            window.push_back([0.0; CHANNELS]);
+        Convolution {
+            window: std::iter::repeat([0.0; CHANNELS])
+                .take(window_size)
+                .collect(),
         }
-        Convolution { window }
     }
 }
 
@@ -50,12 +50,8 @@ pub struct ConvolutionM {
 impl ConvolutionM {
     pub fn new(window_size: usize) -> Self {
         let zero = [0.0; CHANNELS];
-        let mut window = VecDeque::with_capacity(window_size);
-        for _ in 0..window_size {
-            window.push_front(zero);
-        }
         ConvolutionM {
-            window,
+            window: std::iter::repeat(zero).take(window_size).collect(),
             kernel: vec![zero; window_size],
         }
     }
