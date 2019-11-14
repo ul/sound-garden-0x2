@@ -5,7 +5,6 @@ extern crate slog_scope;
 mod audio;
 mod error;
 mod logic;
-mod thread_worker;
 mod video;
 mod world;
 

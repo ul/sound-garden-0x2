@@ -1,5 +1,5 @@
 [package]
-name = "sound_garden"
+name = "sound_garden_druid"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2018"
@@ -19,7 +19,8 @@ serde_cbor = "0.10.2"
 base64 = "0.11.0"
 clipboard = "0.5.0"
 brotli = "3.3.0"
-lru = "0.4.0"
+druid = "0.3.2"
+piet-cairo = "0.0.7"
 
 [dependencies.serde]
 version = "1.0.102"
@@ -29,11 +30,6 @@ features = ["derive"]
 version = "2.5.2"
 # features = ["release_max_level_debug"]
 
-[dependencies.sdl2]
-version = "0.32"
-default-features = false
-features = ["ttf"]
-
 [dependencies.audio_ops]
 path = "../audio_ops"
 
@@ -42,6 +38,3 @@ path = "../audio_program"
 
 [dependencies.audio_vm]
 path = "../audio_vm"
-
-[dependencies.thread_worker]
-path = "../thread_worker"

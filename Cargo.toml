@@ -11,7 +11,9 @@ members = [
     "audio_program",
     "audio_vm",
     "play_program",
-    "sound_garden"
+    "sound_garden",
+    "sound_garden_druid",
+    "thread_worker"
 ]
 
 [dependencies]

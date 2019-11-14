@@ -2,6 +2,8 @@
 //! Original source: https://github.com/rust-analyzer/rust-analyzer/blob/c7ceea82a5ab8aabab2f98e7c1e1ec94e82087c2/crates/thread_worker/src/lib.rs
 
 use std::thread;
+#[macro_use]
+extern crate slog_scope;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
