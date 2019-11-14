@@ -1,3 +1,4 @@
+use super::constants;
 use super::scene::*;
 use crate::state::{Scene, State};
 use druid::{
@@ -59,6 +60,7 @@ impl Widget<State> for App {
         if let Some(scene) = &mut self.scene {
             scene.update(ctx, data, env);
         }
+        let _ = data.save(constants::STATE_FILE);
     }
 }
 
@@ -72,11 +74,11 @@ impl App {
             use Scene::*;
             self.scene = Some(match data.scene {
                 Garden(_) => {
-                    debug!("Changing scene to Garden");
+                    log::debug!("Changing scene to Garden");
                     WidgetPod::new(Box::new(GardenScene::new()))
                 }
                 Plant => {
-                    debug!("Changing scene to Plant");
+                    log::debug!("Changing scene to Plant");
                     WidgetPod::new(Box::new(PlantScene::new()))
                 }
             });

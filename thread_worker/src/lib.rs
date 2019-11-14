@@ -2,8 +2,6 @@
 //! Original source: https://github.com/rust-analyzer/rust-analyzer/blob/c7ceea82a5ab8aabab2f98e7c1e1ec94e82087c2/crates/thread_worker/src/lib.rs
 
 use std::thread;
-#[macro_use]
-extern crate slog_scope;
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 
@@ -17,9 +15,9 @@ impl Drop for ScopedThread {
     fn drop(&mut self) {
         let inner = self.inner.take().unwrap();
         let name = inner.thread().name().unwrap().to_string();
-        info!("Waiting for {} to finish...", name);
+        log::info!("Waiting for {} to finish...", name);
         let res = inner.join();
-        info!(
+        log::info!(
             "... {} terminated with {}",
             name,
             if res.is_ok() { "ok" } else { "err" }

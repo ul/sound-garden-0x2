@@ -3,8 +3,8 @@ use crate::state::{Scene, State};
 use druid::{
     kurbo::{Rect, Size},
     piet::Color,
-    BaseState, BoxConstraints, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx, Widget,
-    WidgetPod,
+    BaseState, BoxConstraints, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx, PaintCtx,
+    UpdateCtx, Widget, WidgetPod,
 };
 
 pub struct GardenScene {
@@ -36,10 +36,17 @@ impl Widget<State> for GardenScene {
         if let Scene::Garden(scene_data) = &mut data.scene {
             match event {
                 Event::MouseDown(e) => {
+                    ctx.request_focus();
                     scene_data.cursor.0 = e.pos.x as _;
                     scene_data.cursor.1 = e.pos.y as _;
                     ctx.invalidate();
                 }
+                Event::KeyDown(KeyEvent { key_code, .. }) => match key_code {
+                    KeyCode::Return => {
+                        data.scene = Scene::Plant;
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         } else {
