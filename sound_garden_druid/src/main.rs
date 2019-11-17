@@ -1,3 +1,4 @@
+mod lens2;
 mod state;
 mod ui;
 

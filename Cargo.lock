@@ -624,6 +624,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fake"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "rand 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "fasthash"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1765,6 +1773,7 @@ dependencies = [
  "cpal 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam-channel 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "druid 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fake 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "piet-cairo 0.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2165,6 +2174,7 @@ dependencies = [
 "checksum either 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 "checksum failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "f8273f13c977665c5db7eb2b99ae520952fe5ac831ae4cd09d80c4c7042b5ed9"
 "checksum failure_derive 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "0bc225b78e0391e4b8683440bf2e63c2deeeb2ce5189eab46e2b68c6d3725d08"
+"checksum fake 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ff8e7a538f2da19a663b11eb08943dd80dbfdc2c64720042edd1fcf36a02bb76"
 "checksum fasthash 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "032213946b4eaae09117ec63f020322b78ca7a31d8aa2cf64df3032e1579690f"
 "checksum fasthash-sys 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "b6de941abfe2e715cdd34009d90546f850597eb69ca628ddfbf616e53dda28f8"
 "checksum fluent-bundle 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ae5c8a0179a4ab2150b3357b4ee4cb21006d1ad99f5b5563225756b193d14fdc"

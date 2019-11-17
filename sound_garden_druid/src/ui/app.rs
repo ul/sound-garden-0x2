@@ -13,11 +13,33 @@ pub struct App {
 }
 
 impl Widget<State> for App {
-    fn paint(&mut self, ctx: &mut PaintCtx, _base_state: &BaseState, data: &State, env: &Env) {
-        ctx.clear(Color::WHITE);
+    fn event(&mut self, event: &Event, ctx: &mut EventCtx, data: &mut State, env: &Env) {
         if let Some(scene) = &mut self.scene {
-            scene.paint_with_offset(ctx, data, env);
+            scene.event(event, ctx, data, env);
         }
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, env: &Env) {
+        match old_data {
+            Some(old_data) => {
+                use Scene::*;
+                match old_data.scene {
+                    Garden(_) => match data.scene {
+                        Garden(_) => {}
+                        _ => self.change_scene(data),
+                    },
+                    Plant(_) => match data.scene {
+                        Plant(_) => {}
+                        _ => self.change_scene(data),
+                    },
+                }
+            }
+            None => self.change_scene(data),
+        }
+        if let Some(scene) = &mut self.scene {
+            scene.update(ctx, data, env);
+        }
+        let _ = data.save(constants::STATE_FILE);
     }
 
     fn layout(
@@ -34,33 +56,11 @@ impl Widget<State> for App {
         bc.max()
     }
 
-    fn event(&mut self, event: &Event, ctx: &mut EventCtx, data: &mut State, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, _base_state: &BaseState, data: &State, env: &Env) {
+        ctx.clear(Color::WHITE);
         if let Some(scene) = &mut self.scene {
-            scene.event(event, ctx, data, env);
+            scene.paint_with_offset(ctx, data, env);
         }
-    }
-
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, env: &Env) {
-        match old_data {
-            Some(old_data) => {
-                use Scene::*;
-                match old_data.scene {
-                    Garden(_) => match data.scene {
-                        Garden(_) => {}
-                        _ => self.change_scene(data),
-                    },
-                    Plant => match data.scene {
-                        Plant => {}
-                        _ => self.change_scene(data),
-                    },
-                }
-            }
-            None => self.change_scene(data),
-        }
-        if let Some(scene) = &mut self.scene {
-            scene.update(ctx, data, env);
-        }
-        let _ = data.save(constants::STATE_FILE);
     }
 }
 
@@ -77,7 +77,7 @@ impl App {
                     log::debug!("Changing scene to Garden");
                     WidgetPod::new(Box::new(GardenScene::new()))
                 }
-                Plant => {
+                Plant(_) => {
                     log::debug!("Changing scene to Plant");
                     WidgetPod::new(Box::new(PlantScene::new()))
                 }

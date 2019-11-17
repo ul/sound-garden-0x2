@@ -21,6 +21,7 @@ piet-cairo = "0.0.7"
 toml = "0.5.5"
 log = "0.4.8"
 serde_json = "1.0.41"
+fake = "2.2.0"
 
 [dependencies.serde]
 version = "1.0.102"

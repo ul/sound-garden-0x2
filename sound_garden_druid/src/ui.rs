@@ -1,7 +1,7 @@
 mod app;
 mod constants;
-mod label;
 mod scene;
+mod text_line;
 
 use anyhow::Result;
 
