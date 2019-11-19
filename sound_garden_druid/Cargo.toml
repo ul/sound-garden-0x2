@@ -16,12 +16,16 @@ serde_cbor = "0.10.2"
 base64 = "0.11.0"
 clipboard = "0.5.0"
 brotli = "3.3.0"
-druid = "0.3.2"
 piet-cairo = "0.0.7"
 toml = "0.5.5"
 log = "0.4.8"
 serde_json = "1.0.41"
 fake = "2.2.0"
+
+[dependencies.druid]
+git = "https://github.com/xi-editor/druid.git"
+rev = "24999c41efe3f73b6a93cb3eef2dd9671097d07e"
+version = "0.4"
 
 [dependencies.serde]
 version = "1.0.102"

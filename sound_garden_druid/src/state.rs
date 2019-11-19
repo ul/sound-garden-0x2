@@ -29,7 +29,7 @@ pub enum Scene {
 
 #[derive(Clone, Data, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct GardenScene {
-    pub cursor: Position,
+    pub offset: Position,
 }
 
 #[derive(Clone, Data, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -71,7 +71,7 @@ impl State {
     pub fn new() -> Self {
         State {
             scene: Scene::Garden(GardenScene {
-                cursor: (0, 0).into(),
+                offset: (0, 0).into(),
             }),
             plants: Vec::new(),
         }

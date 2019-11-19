@@ -1,4 +1,4 @@
-use super::constants;
+use super::constants::*;
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::{Color, FontBuilder, RenderContext, Text, TextLayout, TextLayoutBuilder, UnitPoint},
@@ -22,13 +22,14 @@ pub struct State {
 }
 
 impl Widget<State> for TextLine {
-    fn event(&mut self, event: &Event, ctx: &mut EventCtx, data: &mut State, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, _env: &Env) {
         match event {
             Event::MouseDown(_) if self.is_editable => {
                 ctx.request_focus();
                 self.uncommitted_text = Some(String::new());
                 self.layout = None;
                 ctx.invalidate();
+                ctx.set_handled();
             }
             Event::KeyDown(e) => {
                 match e.key_code {
@@ -54,6 +55,7 @@ impl Widget<State> for TextLine {
                 }
                 self.layout = None;
                 ctx.invalidate();
+                ctx.set_handled();
             }
             _ => {}
         }
@@ -81,7 +83,7 @@ impl Widget<State> for TextLine {
         let t = ctx.text();
         if self.font.is_none() {
             self.font = Some(
-                t.new_font_by_name(constants::FONT_NAME, data.font_size)
+                t.new_font_by_name(FONT_NAME, data.font_size)
                     .build()
                     .unwrap(),
             );

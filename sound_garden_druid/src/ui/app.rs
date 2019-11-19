@@ -1,6 +1,7 @@
-use super::constants;
+use super::constants::*;
 use super::scene::*;
-use crate::state::{Scene, State};
+use crate::lens2::{Lens2, Lens2Wrap};
+use crate::state::{self, Scene};
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::{Color, RenderContext},
@@ -12,10 +13,29 @@ pub struct App {
     scene: Option<BoxedWidget<State>>,
 }
 
+pub type State = state::State;
+
 impl Widget<State> for App {
-    fn event(&mut self, event: &Event, ctx: &mut EventCtx, data: &mut State, env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
+        match event {
+            Event::Command(c) if c.selector == cmd::BACK_TO_GARDEN => {
+                data.scene = Scene::Garden(state::GardenScene {
+                    offset: *c.get_object().unwrap(),
+                });
+                return;
+            }
+            Event::Command(c) if c.selector == cmd::ZOOM_TO_PLANT => {
+                data.scene = Scene::Plant(state::PlantScene {
+                    ix: *c.get_object().unwrap(),
+                    cursor: (0, 0).into(),
+                    mode: state::PlantSceneMode::Normal,
+                });
+                return;
+            }
+            _ => {}
+        }
         if let Some(scene) = &mut self.scene {
-            scene.event(event, ctx, data, env);
+            scene.event(ctx, event, data, env);
         }
     }
 
@@ -39,7 +59,7 @@ impl Widget<State> for App {
         if let Some(scene) = &mut self.scene {
             scene.update(ctx, data, env);
         }
-        let _ = data.save(constants::STATE_FILE);
+        let _ = data.save(STATE_FILE);
     }
 
     fn layout(
@@ -75,13 +95,66 @@ impl App {
             self.scene = Some(match data.scene {
                 Garden(_) => {
                     log::debug!("Changing scene to Garden");
-                    WidgetPod::new(Box::new(GardenScene::new()))
+                    let lens = GardenSceneLens {};
+                    WidgetPod::new(Box::new(Lens2Wrap::new(garden::GardenScene::new(), lens)))
                 }
                 Plant(_) => {
                     log::debug!("Changing scene to Plant");
-                    WidgetPod::new(Box::new(PlantScene::new()))
+                    let lens = PlantSceneLens {};
+                    WidgetPod::new(Box::new(Lens2Wrap::new(plant::PlantScene::new(), lens)))
                 }
             });
+        }
+    }
+}
+
+struct GardenSceneLens {}
+
+impl Lens2<State, garden::State> for GardenSceneLens {
+    fn get<V, F: FnOnce(&garden::State) -> V>(&self, data: &State, f: F) -> V {
+        if let Scene::Garden(scene) = &data.scene {
+            f(&garden::State::new(scene.clone(), data.plants.clone()))
+        } else {
+            unreachable!();
+        }
+    }
+
+    fn with_mut<V, F: FnOnce(&mut garden::State) -> V>(&self, data: &mut State, f: F) -> V {
+        if let Scene::Garden(scene) = &mut data.scene {
+            let mut lens = garden::State::new(scene.clone(), data.plants.clone());
+            let result = f(&mut lens);
+            *scene = lens.scene;
+            data.plants = lens.plants;
+            result
+        } else {
+            unreachable!();
+        }
+    }
+}
+
+struct PlantSceneLens {}
+
+impl Lens2<State, plant::State> for PlantSceneLens {
+    fn get<V, F: FnOnce(&plant::State) -> V>(&self, data: &State, f: F) -> V {
+        if let Scene::Plant(scene) = &data.scene {
+            f(&plant::State::new(
+                scene.clone(),
+                data.plants[scene.ix].clone(),
+            ))
+        } else {
+            unreachable!();
+        }
+    }
+
+    fn with_mut<V, F: FnOnce(&mut plant::State) -> V>(&self, data: &mut State, f: F) -> V {
+        if let Scene::Plant(scene) = &mut data.scene {
+            let mut lens = plant::State::new(scene.clone(), data.plants[scene.ix].clone());
+            let result = f(&mut lens);
+            *scene = lens.scene;
+            data.plants[scene.ix] = lens.plant;
+            result
+        } else {
+            unreachable!();
         }
     }
 }
