@@ -1,17 +1,19 @@
-use super::super::{constants::*, text_line};
+mod plant;
+
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
+use crate::ui::constants::*;
 use druid::{
-    kurbo::{Affine, Line, Point, Rect, Size},
+    kurbo::{Affine, Line, Point, Rect, Size, Vec2},
     piet::{Color, RenderContext},
-    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx,
-    PaintCtx, UpdateCtx, Widget, WidgetPod,
+    BaseState, BoxConstraints, Command, Cursor, Data, Env, Event, EventCtx, KeyCode, KeyEvent,
+    LayoutCtx, PaintCtx, UpdateCtx, WidgetPod,
 };
 use fake::Fake;
 
-pub struct GardenScene {
+pub struct Widget {
     drag_start: (Point, state::Position),
-    plants: Vec<WidgetPod<State, Lens2Wrap<text_line::State, PlantNameLens, text_line::TextLine>>>,
+    plants: Vec<WidgetPod<State, Lens2Wrap<plant::State, PlantNameLens, plant::Widget>>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,23 +22,39 @@ pub struct State {
     pub plants: Vec<state::Plant>,
 }
 
-impl Widget<State> for GardenScene {
+impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
-        for w in &mut self.plants {
-            w.event(ctx, event, data, env);
+        let size = ctx.size();
+        let viewport = Rect::from_origin_size(Point::ORIGIN, size);
+        let offset = Vec2::new(
+            -size.width / 2. - data.scene.offset.x as f64,
+            -size.height / 2. - data.scene.offset.y as f64,
+        );
+        if let Some(event) = event.transform_scroll(offset, viewport) {
+            for w in &mut self.plants {
+                w.event(ctx, &event, data, env);
+            }
         }
         if ctx.is_handled() {
             return;
         }
         match event {
+            Event::Command(Command {
+                selector: cmd::REQUEST_FOCUS,
+                ..
+            }) => {
+                ctx.request_focus();
+            }
             Event::MouseDown(e) => {
                 self.drag_start = (e.pos, data.scene.offset);
                 ctx.set_active(true);
+                ctx.set_cursor(&Cursor::OpenHand);
                 ctx.request_focus();
                 ctx.invalidate();
             }
             Event::MouseMoved(e) => {
                 if ctx.is_active() {
+                    ctx.set_cursor(&Cursor::OpenHand);
                     data.scene.offset = (
                         self.drag_start.1.x + ((e.pos.x - self.drag_start.0.x) as i32),
                         self.drag_start.1.y + ((e.pos.y - self.drag_start.0.y) as i32),
@@ -47,6 +65,7 @@ impl Widget<State> for GardenScene {
             }
             Event::MouseUp(_) => {
                 ctx.set_active(false);
+                ctx.set_cursor(&Cursor::Arrow);
                 ctx.invalidate();
             }
             Event::KeyDown(KeyEvent { key_code, .. }) => match key_code {
@@ -76,7 +95,7 @@ impl Widget<State> for GardenScene {
                             data.plants.len() - 1
                         }
                     };
-                    ctx.submit_command(Command::new(cmd::ZOOM_TO_PLANT, ix), None);
+                    ctx.submit_command(cmd::zoom_to_plant(ix), None);
                     ctx.invalidate();
                 }
                 _ => {}
@@ -122,17 +141,11 @@ impl Widget<State> for GardenScene {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, base_state: &BaseState, data: &State, env: &Env) {
-        let sz = base_state.size();
-        ctx.transform(Affine::translate((sz.width / 2., sz.height / 2.)));
         ctx.save().unwrap();
-        ctx.transform(Affine::translate((
-            data.scene.offset.x as _,
-            data.scene.offset.y as _,
-        )));
-        for w in &mut self.plants {
-            w.paint_with_offset(ctx, data, env);
-        }
-        ctx.restore().unwrap();
+        let size = base_state.size();
+        let viewport = Rect::from_origin_size(Point::ORIGIN, size);
+        ctx.clip(viewport);
+        ctx.transform(Affine::translate((size.width / 2., size.height / 2.)));
         ctx.stroke(
             Line::new(Point::new(0., -10.), Point::new(0., 10.)),
             &Color::rgb(0.5, 0., 0.),
@@ -143,12 +156,26 @@ impl Widget<State> for GardenScene {
             &Color::rgb(0.5, 0., 0.),
             1.,
         );
+        ctx.transform(Affine::translate((
+            data.scene.offset.x as _,
+            data.scene.offset.y as _,
+        )));
+        let visible = viewport.with_origin(Point::new(
+            -size.width / 2. - data.scene.offset.x as f64,
+            -size.height / 2. - data.scene.offset.y as f64,
+        ));
+        ctx.with_child_ctx(visible, |ctx| {
+            for w in &mut self.plants {
+                w.paint_with_offset(ctx, data, env);
+            }
+        });
+        ctx.restore().unwrap();
     }
 }
 
-impl GardenScene {
+impl Widget {
     pub fn new() -> Self {
-        GardenScene {
+        Widget {
             drag_start: (Point::ORIGIN, (0, 0).into()),
             plants: Vec::new(),
         }
@@ -160,10 +187,7 @@ impl GardenScene {
             .iter()
             .enumerate()
             .map(|(ix, _)| {
-                WidgetPod::new(Lens2Wrap::new(
-                    text_line::TextLine::editable(),
-                    PlantNameLens { ix },
-                ))
+                WidgetPod::new(Lens2Wrap::new(plant::Widget::new(), PlantNameLens { ix }))
             })
             .collect();
     }
@@ -173,17 +197,17 @@ struct PlantNameLens {
     ix: state::PlantIx,
 }
 
-impl Lens2<State, text_line::State> for PlantNameLens {
-    fn get<V, F: FnOnce(&text_line::State) -> V>(&self, data: &State, f: F) -> V {
+impl Lens2<State, plant::State> for PlantNameLens {
+    fn get<V, F: FnOnce(&plant::State) -> V>(&self, data: &State, f: F) -> V {
         let name = data.plants[self.ix].name.clone();
-        f(&text_line::State::new(name, PLANT_FONT_SIZE, Color::BLACK))
+        f(&plant::State::new(self.ix, name))
     }
 
-    fn with_mut<V, F: FnOnce(&mut text_line::State) -> V>(&self, data: &mut State, f: F) -> V {
+    fn with_mut<V, F: FnOnce(&mut plant::State) -> V>(&self, data: &mut State, f: F) -> V {
         let name = data.plants[self.ix].name.clone();
-        let mut lens = text_line::State::new(name, PLANT_FONT_SIZE, Color::BLACK);
+        let mut lens = plant::State::new(self.ix, name);
         let result = f(&mut lens);
-        data.plants[self.ix].name = lens.text;
+        data.plants[self.ix].name = lens.name;
         result
     }
 }

@@ -1,16 +1,17 @@
-use super::constants::*;
+use crate::ui::constants::*;
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::{Color, FontBuilder, RenderContext, Text, TextLayout, TextLayoutBuilder, UnitPoint},
-    BaseState, BoxConstraints, Data, Env, Event, EventCtx, KeyCode, LayoutCtx, PaintCtx, UpdateCtx,
-    Widget,
+    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, KeyCode, LayoutCtx, PaintCtx,
+    Selector, UpdateCtx,
 };
 use piet_cairo::{CairoFont, CairoTextLayout};
 
-pub struct TextLine {
+pub const EDIT: Selector = Selector::new("SOUND_GARDEN.TEXT_LINE.EDIT");
+
+pub struct Widget {
     font: Option<CairoFont>,
     layout: Option<CairoTextLayout>,
-    is_editable: bool,
     uncommitted_text: Option<String>,
 }
 
@@ -21,15 +22,20 @@ pub struct State {
     pub text: String,
 }
 
-impl Widget<State> for TextLine {
+impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, _env: &Env) {
         match event {
-            Event::MouseDown(_) if self.is_editable => {
-                ctx.request_focus();
+            Event::Command(Command { selector: EDIT, .. }) => {
                 self.uncommitted_text = Some(String::new());
                 self.layout = None;
-                ctx.invalidate();
+                ctx.request_focus();
                 ctx.set_handled();
+                ctx.invalidate();
+            }
+            Event::FocusChanged(false) => {
+                self.uncommitted_text = None;
+                self.layout = None;
+                ctx.invalidate();
             }
             Event::KeyDown(e) => {
                 match e.key_code {
@@ -54,8 +60,8 @@ impl Widget<State> for TextLine {
                     _ => {}
                 }
                 self.layout = None;
-                ctx.invalidate();
                 ctx.set_handled();
+                ctx.invalidate();
             }
             _ => {}
         }
@@ -137,21 +143,11 @@ impl Widget<State> for TextLine {
     }
 }
 
-impl TextLine {
+impl Widget {
     pub fn new() -> Self {
-        TextLine {
+        Widget {
             font: None,
             layout: None,
-            is_editable: false,
-            uncommitted_text: None,
-        }
-    }
-
-    pub fn editable() -> Self {
-        TextLine {
-            font: None,
-            layout: None,
-            is_editable: true,
             uncommitted_text: None,
         }
     }

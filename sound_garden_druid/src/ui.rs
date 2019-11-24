@@ -2,6 +2,7 @@ mod app;
 mod constants;
 mod scene;
 mod text_line;
+mod util;
 
 use anyhow::Result;
 
@@ -9,7 +10,7 @@ use crate::state::State;
 use druid::{AppLauncher, LocalizedString, WindowDesc};
 
 pub fn run() -> Result<()> {
-    let window = WindowDesc::new(app::App::new).title(LocalizedString::new("window-title"));
+    let window = WindowDesc::new(app::Widget::new).title(LocalizedString::new("window-title"));
 
     let state = State::load(constants::STATE_FILE).unwrap_or_default();
 

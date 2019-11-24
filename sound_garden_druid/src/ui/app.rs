@@ -1,28 +1,31 @@
-use super::constants::*;
-use super::scene::*;
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state::{self, Scene};
+use crate::ui::constants::*;
+use crate::ui::scene::*;
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::{Color, RenderContext},
-    BaseState, BoxConstraints, BoxedWidget, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx,
-    Widget, WidgetPod,
+    BaseState, BoxConstraints, BoxedWidget, Command, Env, Event, EventCtx, LayoutCtx, PaintCtx,
+    UpdateCtx, WidgetPod,
 };
 
-pub struct App {
+pub struct Widget {
     scene: Option<BoxedWidget<State>>,
 }
 
 pub type State = state::State;
 
-impl Widget<State> for App {
+impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
+        if let Some(scene) = &mut self.scene {
+            scene.event(ctx, event, data, env);
+        }
         match event {
             Event::Command(c) if c.selector == cmd::BACK_TO_GARDEN => {
                 data.scene = Scene::Garden(state::GardenScene {
                     offset: *c.get_object().unwrap(),
                 });
-                return;
+                ctx.submit_command(Command::from(cmd::REQUEST_FOCUS), None);
             }
             Event::Command(c) if c.selector == cmd::ZOOM_TO_PLANT => {
                 data.scene = Scene::Plant(state::PlantScene {
@@ -30,12 +33,9 @@ impl Widget<State> for App {
                     cursor: (0, 0).into(),
                     mode: state::PlantSceneMode::Normal,
                 });
-                return;
+                ctx.submit_command(Command::from(cmd::REQUEST_FOCUS), None);
             }
             _ => {}
-        }
-        if let Some(scene) = &mut self.scene {
-            scene.event(ctx, event, data, env);
         }
     }
 
@@ -84,9 +84,9 @@ impl Widget<State> for App {
     }
 }
 
-impl App {
+impl Widget {
     pub fn new() -> Self {
-        App { scene: None }
+        Widget { scene: None }
     }
 
     fn change_scene(&mut self, data: &State) {
@@ -96,12 +96,12 @@ impl App {
                 Garden(_) => {
                     log::debug!("Changing scene to Garden");
                     let lens = GardenSceneLens {};
-                    WidgetPod::new(Box::new(Lens2Wrap::new(garden::GardenScene::new(), lens)))
+                    WidgetPod::new(Box::new(Lens2Wrap::new(garden::Widget::new(), lens)))
                 }
                 Plant(_) => {
                     log::debug!("Changing scene to Plant");
                     let lens = PlantSceneLens {};
-                    WidgetPod::new(Box::new(Lens2Wrap::new(plant::PlantScene::new(), lens)))
+                    WidgetPod::new(Box::new(Lens2Wrap::new(plant::Widget::new(), lens)))
                 }
             });
         }

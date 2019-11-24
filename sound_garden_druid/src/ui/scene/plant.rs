@@ -1,16 +1,16 @@
-use super::super::{constants::*, text_line};
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
+use crate::ui::{constants::*, text_line};
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::Color,
     BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx,
-    PaintCtx, UpdateCtx, Widget, WidgetPod,
+    PaintCtx, UpdateCtx, WidgetPod,
 };
 
-pub struct PlantScene {
+pub struct Widget {
     mouse_pos: Point,
-    nodes: Vec<WidgetPod<State, Lens2Wrap<text_line::State, NodeOpLens, text_line::TextLine>>>,
+    nodes: Vec<WidgetPod<State, Lens2Wrap<text_line::State, NodeOpLens, text_line::Widget>>>,
 }
 
 #[derive(Clone, Data, Debug, Eq, PartialEq)]
@@ -19,7 +19,7 @@ pub struct State {
     pub plant: state::Plant,
 }
 
-impl Widget<State> for PlantScene {
+impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
         for w in &mut self.nodes {
             w.event(ctx, event, data, env);
@@ -28,6 +28,12 @@ impl Widget<State> for PlantScene {
             return;
         }
         match event {
+            Event::Command(Command {
+                selector: cmd::REQUEST_FOCUS,
+                ..
+            }) => {
+                ctx.request_focus();
+            }
             Event::MouseMoved(e) => {
                 self.mouse_pos = e.pos;
                 ctx.request_focus();
@@ -44,13 +50,8 @@ impl Widget<State> for PlantScene {
                     }
                     KeyCode::Escape => {
                         ctx.submit_command(
-                            // TODO Custom command creators to typecheck payload.
-                            Command::new(
-                                cmd::BACK_TO_GARDEN,
-                                state::Position::from((
-                                    -data.plant.position.x,
-                                    -data.plant.position.y,
-                                )),
+                            cmd::back_to_garden(
+                                (-data.plant.position.x, -data.plant.position.y).into(),
                             ),
                             None,
                         );
@@ -103,9 +104,9 @@ impl Widget<State> for PlantScene {
     }
 }
 
-impl PlantScene {
+impl Widget {
     pub fn new() -> Self {
-        PlantScene {
+        Widget {
             mouse_pos: Point::ORIGIN,
             nodes: Vec::new(),
         }
@@ -118,10 +119,7 @@ impl PlantScene {
             .iter()
             .enumerate()
             .map(|(ix, _)| {
-                WidgetPod::new(Lens2Wrap::new(
-                    text_line::TextLine::editable(),
-                    NodeOpLens { ix },
-                ))
+                WidgetPod::new(Lens2Wrap::new(text_line::Widget::new(), NodeOpLens { ix }))
             })
             .collect();
     }
