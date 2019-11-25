@@ -14,7 +14,10 @@ use fake::Fake;
 pub struct Widget {
     drag_start: (Point, state::Position),
     plants: Vec<
-        WidgetPod<State, Lens2Wrap<plant::State, PlantNameLens, eventer::Widget<plant::State>>>,
+        WidgetPod<
+            State,
+            Lens2Wrap<plant::State, PlantNameLens, eventer::Widget<plant::State, plant::Widget>>,
+        >,
     >,
 }
 
@@ -190,7 +193,7 @@ impl Widget {
             .enumerate()
             .map(|(ix, _)| {
                 WidgetPod::new(Lens2Wrap::new(
-                    eventer::Widget::new(Box::new(plant::Widget::new())),
+                    eventer::Widget::new(plant::Widget::new()),
                     PlantNameLens { ix },
                 ))
             })

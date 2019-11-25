@@ -3,15 +3,17 @@ use druid::{
     kurbo::Size, BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, MouseEvent,
     PaintCtx, TimerToken, UpdateCtx,
 };
+use std::marker::PhantomData;
 
-pub struct Widget<T: Data> {
-    inner: Box<dyn druid::Widget<T>>,
+pub struct Widget<T: Data, W: druid::Widget<T>> {
+    inner: W,
     click_cnt: u8,
     click_event: Option<MouseEvent>,
     dbl_click_timer: TimerToken,
+    phantom: PhantomData<T>,
 }
 
-impl<State: Data> druid::Widget<State> for Widget<State> {
+impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State, W> {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
         match event {
             Event::MouseDown(e) => {
@@ -80,13 +82,14 @@ impl<State: Data> druid::Widget<State> for Widget<State> {
     }
 }
 
-impl<State: Data> Widget<State> {
-    pub fn new(inner: Box<dyn druid::Widget<State>>) -> Self {
+impl<T: Data, W: druid::Widget<T>> Widget<T, W> {
+    pub fn new(inner: W) -> Self {
         Widget {
             inner,
             click_cnt: 0,
             click_event: None,
             dbl_click_timer: TimerToken::INVALID,
+            phantom: Default::default(),
         }
     }
 }

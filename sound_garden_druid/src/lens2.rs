@@ -63,6 +63,7 @@ pub struct Pair<L1, L2> {
     lens2: L2,
 }
 
+#[allow(dead_code)]
 impl<L1, L2> Pair<L1, L2> {
     pub fn new(lens1: L1, lens2: L2) -> Pair<L1, L2> {
         Pair { lens1, lens2 }
