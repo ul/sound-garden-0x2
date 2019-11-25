@@ -1,6 +1,6 @@
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
-use crate::ui::{constants::*, text_line};
+use crate::ui::{constants::*, eventer, text_line};
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::Color,
@@ -8,9 +8,7 @@ use druid::{
     WidgetPod,
 };
 
-pub struct Widget {
-    name: WidgetPod<State, Lens2Wrap<text_line::State, NameLens, text_line::Widget>>,
-}
+pub struct Widget(eventer::Widget<State, InnerWidget>);
 
 #[derive(Clone, Data, Debug)]
 pub struct State {
@@ -18,7 +16,11 @@ pub struct State {
     pub name: String,
 }
 
-impl druid::Widget<State> for Widget {
+struct InnerWidget {
+    name: WidgetPod<State, Lens2Wrap<text_line::State, NameLens, text_line::Widget>>,
+}
+
+impl druid::Widget<State> for InnerWidget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
         self.name.event(ctx, event, data, env);
         match event {
@@ -76,9 +78,9 @@ impl druid::Widget<State> for Widget {
 
 impl Widget {
     pub fn new() -> Self {
-        Widget {
+        Widget(eventer::Widget::new(InnerWidget {
             name: WidgetPod::new(Lens2Wrap::new(text_line::Widget::new(), NameLens {})),
-        }
+        }))
     }
 }
 
@@ -104,5 +106,29 @@ impl Lens2<State, text_line::State> for NameLens {
         let result = f(&mut lens);
         data.name = lens.text;
         result
+    }
+}
+
+impl druid::Widget<State> for Widget {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
+        self.0.event(ctx, event, data, env);
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, env: &Env) {
+        self.0.update(ctx, old_data, data, env);
+    }
+
+    fn layout(
+        &mut self,
+        ctx: &mut LayoutCtx,
+        bc: &BoxConstraints,
+        data: &State,
+        env: &Env,
+    ) -> Size {
+        self.0.layout(ctx, bc, data, env)
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx, base_state: &BaseState, data: &State, env: &Env) {
+        self.0.paint(ctx, base_state, data, env)
     }
 }
