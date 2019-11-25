@@ -1,5 +1,6 @@
 mod app;
 mod constants;
+mod delegate;
 mod eventer;
 mod scene;
 mod text_line;
@@ -16,6 +17,7 @@ pub fn run() -> Result<()> {
     let state = State::load(constants::STATE_FILE).unwrap_or_default();
 
     AppLauncher::with_window(window)
+        .delegate(delegate::Delegate::default())
         .use_simple_logger()
         .launch(state)
         .map_err(|_| anyhow::anyhow!("Launch failed."))?;

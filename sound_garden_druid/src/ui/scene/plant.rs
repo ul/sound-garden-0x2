@@ -2,14 +2,13 @@ use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
 use crate::ui::{constants::*, text_line};
 use druid::{
-    kurbo::{Point, Rect, Size},
+    kurbo::{Rect, Size},
     piet::Color,
-    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, KeyCode, KeyEvent, LayoutCtx,
-    PaintCtx, UpdateCtx, WidgetPod,
+    BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx,
+    WidgetPod,
 };
 
 pub struct Widget {
-    mouse_pos: Point,
     nodes: Vec<WidgetPod<State, Lens2Wrap<text_line::State, NodeOpLens, text_line::Widget>>>,
 }
 
@@ -28,38 +27,6 @@ impl druid::Widget<State> for Widget {
             return;
         }
         match event {
-            Event::Command(Command {
-                selector: cmd::REQUEST_FOCUS,
-                ..
-            }) => {
-                ctx.request_focus();
-            }
-            Event::MouseMoved(e) => {
-                self.mouse_pos = e.pos;
-                ctx.request_focus();
-                ctx.invalidate();
-            }
-            Event::KeyDown(KeyEvent { key_code, .. }) => {
-                match key_code {
-                    KeyCode::Return => {
-                        let node = state::Node {
-                            op: String::from("0"),
-                            position: (self.mouse_pos.x as _, self.mouse_pos.y as _).into(),
-                        };
-                        data.plant.nodes.push(node);
-                    }
-                    KeyCode::Escape => {
-                        ctx.submit_command(
-                            cmd::back_to_garden(
-                                (-data.plant.position.x, -data.plant.position.y).into(),
-                            ),
-                            None,
-                        );
-                    }
-                    _ => {}
-                }
-                ctx.invalidate();
-            }
             _ => {}
         }
     }
@@ -106,10 +73,7 @@ impl druid::Widget<State> for Widget {
 
 impl Widget {
     pub fn new() -> Self {
-        Widget {
-            mouse_pos: Point::ORIGIN,
-            nodes: Vec::new(),
-        }
+        Widget { nodes: Vec::new() }
     }
 
     fn regenerate_nodes(&mut self, data: &State) {
