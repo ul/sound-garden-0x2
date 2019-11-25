@@ -2,7 +2,7 @@ mod plant;
 
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
-use crate::ui::constants::*;
+use crate::ui::{constants::*, eventer};
 use druid::{
     kurbo::{Affine, Line, Point, Rect, Size, Vec2},
     piet::{Color, RenderContext},
@@ -13,7 +13,9 @@ use fake::Fake;
 
 pub struct Widget {
     drag_start: (Point, state::Position),
-    plants: Vec<WidgetPod<State, Lens2Wrap<plant::State, PlantNameLens, plant::Widget>>>,
+    plants: Vec<
+        WidgetPod<State, Lens2Wrap<plant::State, PlantNameLens, eventer::Widget<plant::State>>>,
+    >,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -187,7 +189,10 @@ impl Widget {
             .iter()
             .enumerate()
             .map(|(ix, _)| {
-                WidgetPod::new(Lens2Wrap::new(plant::Widget::new(), PlantNameLens { ix }))
+                WidgetPod::new(Lens2Wrap::new(
+                    eventer::Widget::new(Box::new(plant::Widget::new())),
+                    PlantNameLens { ix },
+                ))
             })
             .collect();
     }

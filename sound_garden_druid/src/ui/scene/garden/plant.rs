@@ -1,17 +1,15 @@
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
-use crate::ui::{constants::*, text_line, util::EventExt};
+use crate::ui::{constants::*, text_line};
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::Color,
-    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx,
-    TimerToken, UpdateCtx, WidgetPod,
+    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx,
+    WidgetPod,
 };
 
 pub struct Widget {
     name: WidgetPod<State, Lens2Wrap<text_line::State, NameLens, text_line::Widget>>,
-    click_cnt: u8,
-    dbl_click_timer: TimerToken,
 }
 
 #[derive(Clone, Data, Debug)]
@@ -22,36 +20,29 @@ pub struct State {
 
 impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
+        self.name.event(ctx, event, data, env);
         match event {
-            Event::MouseDown(e) => {
-                if e.inside_widget(&ctx) {
-                    self.click_cnt += 1;
-                    if self.click_cnt > 1 {
-                        self.name.event(
-                            ctx,
-                            &Event::Command(Command::from(text_line::EDIT)),
-                            data,
-                            env,
-                        );
-                        self.click_cnt = 0;
-                    }
-                    self.dbl_click_timer =
-                        ctx.request_timer(std::time::Instant::now() + DOUBLE_CLICK_TIMEOUT);
-                } else {
-                    self.click_cnt = 0;
-                }
+            Event::Command(Command {
+                selector: cmd::DOUBLE_CLICK,
+                ..
+            }) => {
+                self.name.event(
+                    ctx,
+                    &Event::Command(Command::from(text_line::EDIT)),
+                    data,
+                    env,
+                );
+                ctx.set_handled();
             }
-            Event::Timer(t) => {
-                if *t == self.dbl_click_timer {
-                    if self.click_cnt == 1 {
-                        ctx.submit_command(cmd::zoom_to_plant(data.ix), None);
-                    }
-                    self.click_cnt = 0;
-                }
+            Event::Command(Command {
+                selector: cmd::CLICK,
+                ..
+            }) => {
+                ctx.submit_command(cmd::zoom_to_plant(data.ix), None);
+                ctx.set_handled();
             }
             _ => {}
         }
-        self.name.event(ctx, event, data, env);
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, _env: &Env) {
@@ -87,8 +78,6 @@ impl Widget {
     pub fn new() -> Self {
         Widget {
             name: WidgetPod::new(Lens2Wrap::new(text_line::Widget::new(), NameLens {})),
-            click_cnt: 0,
-            dbl_click_timer: TimerToken::INVALID,
         }
     }
 }
