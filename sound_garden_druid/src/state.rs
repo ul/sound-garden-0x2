@@ -5,12 +5,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct State {
     pub scene: Scene,
+    // TODO Arc<Vec<...>> ?
     pub plants: Vec<Plant>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Plant {
     pub position: Position,
+    // TODO Arc<Vec<...>> ?
     pub nodes: Vec<Node>,
     pub name: String,
 }
@@ -43,6 +45,7 @@ pub struct PlantScene {
 pub enum PlantSceneMode {
     Normal,
     Insert,
+    // TODO Arc<Vec<...>> ?
     Move(Vec<NodeIx>),
 }
 

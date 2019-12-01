@@ -1,15 +1,18 @@
+mod node;
+
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
-use crate::ui::{constants::*, text_line};
+use crate::ui::{constants::*, eventer};
 use druid::{
     kurbo::{Rect, Size},
-    piet::Color,
-    BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx,
-    WidgetPod,
+    BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, MouseEvent, PaintCtx,
+    UpdateCtx, WidgetPod,
 };
 
-pub struct Widget {
-    nodes: Vec<WidgetPod<State, Lens2Wrap<text_line::State, NodeOpLens, text_line::Widget>>>,
+pub struct Widget(eventer::Widget<State, InnerWidget>);
+
+struct InnerWidget {
+    nodes: Vec<WidgetPod<State, Lens2Wrap<node::State, NodeOpLens, node::Widget>>>,
 }
 
 #[derive(Clone, Data, Debug, Eq, PartialEq)]
@@ -18,16 +21,53 @@ pub struct State {
     pub plant: state::Plant,
 }
 
-impl druid::Widget<State> for Widget {
+impl druid::Widget<State> for InnerWidget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
+        match event {
+            Event::Command(c) if c.selector == cmd::DOUBLE_CLICK => {
+                let pos = c.get_object::<MouseEvent>().unwrap().pos;
+                if let Some(node) = self
+                    .nodes
+                    .iter_mut()
+                    .find(|node| node.get_layout_rect().contains(pos))
+                {
+                    node.event(ctx, event, data, env);
+                    return;
+                }
+                log::debug!("Adding a new node.");
+                let (x, y) = pos.into();
+                let node = state::Node {
+                    op: String::from(format!("{}", data.plant.nodes.len())),
+                    position: (x as _, y as _).into(),
+                };
+                data.plant.nodes.push(node);
+                return;
+                // TODO Send EDIT command to the newly created node.
+                // We can't do just regenerate_nodes here and then talk to self.nodes.last()
+                // as nodes will be re-created in update. Need smarter node generation.
+            }
+            Event::Command(c) if c.selector == cmd::CLICK => {
+                let pos = c.get_object::<MouseEvent>().unwrap().pos;
+                if let Some(node) = self
+                    .nodes
+                    .iter_mut()
+                    .find(|node| node.get_layout_rect().contains(pos))
+                {
+                    node.event(ctx, event, data, env);
+                    return;
+                }
+                return;
+            }
+            Event::Command(c) if c.selector == cmd::REMOVE_NODE => {
+                let ix = c.get_object::<state::NodeIx>().unwrap();
+                log::debug!("Removing node {}.", ix);
+                data.plant.nodes.swap_remove(*ix);
+                return;
+            }
+            _ => {}
+        }
         for w in &mut self.nodes {
             w.event(ctx, event, data, env);
-        }
-        if ctx.is_handled() {
-            return;
-        }
-        match event {
-            _ => {}
         }
     }
 
@@ -71,21 +111,21 @@ impl druid::Widget<State> for Widget {
     }
 }
 
-impl Widget {
-    pub fn new() -> Self {
-        Widget { nodes: Vec::new() }
-    }
-
+impl InnerWidget {
     fn regenerate_nodes(&mut self, data: &State) {
         self.nodes = data
             .plant
             .nodes
             .iter()
             .enumerate()
-            .map(|(ix, _)| {
-                WidgetPod::new(Lens2Wrap::new(text_line::Widget::new(), NodeOpLens { ix }))
-            })
+            .map(|(ix, _)| WidgetPod::new(Lens2Wrap::new(node::Widget::new(), NodeOpLens { ix })))
             .collect();
+    }
+}
+
+impl Widget {
+    pub fn new() -> Self {
+        Widget(eventer::Widget::new(InnerWidget { nodes: Vec::new() }))
     }
 }
 
@@ -93,17 +133,17 @@ struct NodeOpLens {
     ix: state::NodeIx,
 }
 
-impl Lens2<State, text_line::State> for NodeOpLens {
-    fn get<V, F: FnOnce(&text_line::State) -> V>(&self, data: &State, f: F) -> V {
+impl Lens2<State, node::State> for NodeOpLens {
+    fn get<V, F: FnOnce(&node::State) -> V>(&self, data: &State, f: F) -> V {
         let op = data.plant.nodes[self.ix].op.clone();
-        f(&text_line::State::new(op, PLANT_FONT_SIZE, Color::BLACK))
+        f(&node::State::new(self.ix, op))
     }
 
-    fn with_mut<V, F: FnOnce(&mut text_line::State) -> V>(&self, data: &mut State, f: F) -> V {
+    fn with_mut<V, F: FnOnce(&mut node::State) -> V>(&self, data: &mut State, f: F) -> V {
         let op = data.plant.nodes[self.ix].op.clone();
-        let mut lens = text_line::State::new(op, PLANT_FONT_SIZE, Color::BLACK);
+        let mut lens = node::State::new(self.ix, op);
         let result = f(&mut lens);
-        data.plant.nodes[self.ix].op = lens.text;
+        data.plant.nodes[self.ix].op = lens.op;
         result
     }
 }
@@ -111,5 +151,29 @@ impl Lens2<State, text_line::State> for NodeOpLens {
 impl State {
     pub fn new(scene: state::PlantScene, plant: state::Plant) -> Self {
         State { scene, plant }
+    }
+}
+
+impl druid::Widget<State> for Widget {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
+        self.0.event(ctx, event, data, env);
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, env: &Env) {
+        self.0.update(ctx, old_data, data, env);
+    }
+
+    fn layout(
+        &mut self,
+        ctx: &mut LayoutCtx,
+        bc: &BoxConstraints,
+        data: &State,
+        env: &Env,
+    ) -> Size {
+        self.0.layout(ctx, bc, data, env)
+    }
+
+    fn paint(&mut self, ctx: &mut PaintCtx, base_state: &BaseState, data: &State, env: &Env) {
+        self.0.paint(ctx, base_state, data, env)
     }
 }

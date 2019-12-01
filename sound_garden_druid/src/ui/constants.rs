@@ -13,6 +13,7 @@ pub mod cmd {
     pub const REQUEST_FOCUS: Selector = Selector::new("SOUND_GARDEN.REQUEST_FOCUS");
     pub const BACK_TO_GARDEN: Selector = Selector::new("SOUND_GARDEN.BACK_TO_GARDEN");
     pub const ZOOM_TO_PLANT: Selector = Selector::new("SOUND_GARDEN.ZOOM_TO_PLANT");
+    pub const REMOVE_NODE: Selector = Selector::new("SOUND_GARDEN.REMOVE_NODE");
 
     // Eventer extension
     pub const CLICK: Selector = Selector::new("SOUND_GARDEN.CLICK");
@@ -24,6 +25,10 @@ pub mod cmd {
 
     pub fn zoom_to_plant(ix: state::PlantIx) -> Command {
         Command::new(ZOOM_TO_PLANT, ix)
+    }
+
+    pub fn remove_node(ix: state::NodeIx) -> Command {
+        Command::new(REMOVE_NODE, ix)
     }
 
     pub fn double_click(e: MouseEvent) -> Command {

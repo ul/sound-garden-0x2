@@ -30,7 +30,7 @@ impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State
                         self.dbl_click_timer =
                             ctx.request_timer(std::time::Instant::now() + DOUBLE_CLICK_TIMEOUT);
                     } else {
-                        log::debug!("double click!");
+                        log::debug!("Double click!");
                         self.inner.event(
                             ctx,
                             &Event::Command(cmd::double_click(e.clone())),
@@ -50,7 +50,7 @@ impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State
             Event::Timer(t) if *t == self.dbl_click_timer => {
                 if self.click_cnt == 1 && !ctx.is_active() {
                     if let Some(e) = self.click_event.take() {
-                        log::debug!("click!");
+                        log::debug!("Click!");
                         self.inner
                             .event(ctx, &Event::Command(cmd::click(e)), data, env);
                     }
