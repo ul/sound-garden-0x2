@@ -106,11 +106,7 @@ impl druid::Widget<State> for InnerWidget {
         bc.max()
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, base_state: &BaseState, data: &State, env: &Env) {
-        for w in &mut self.nodes {
-            w.paint_with_offset(ctx, data, env);
-        }
-        let _size = base_state.size();
+    fn paint(&mut self, ctx: &mut PaintCtx, _base_state: &BaseState, data: &State, env: &Env) {
         let mut cx: f64 = 0.0;
         let mut cy: f64 = 0.0;
         for node in &data.plant.nodes {
@@ -120,16 +116,19 @@ impl druid::Widget<State> for InnerWidget {
         cx /= data.plant.nodes.len() as f64;
         cy /= data.plant.nodes.len() as f64;
         for (i, j) in &self.edges {
-            let p1: Point = data.plant.nodes[*i].position.into();
-            let p2: Point = data.plant.nodes[*j].position.into();
+            let p1: Point = self.nodes[*i].get_layout_rect().center();
+            let p2: Point = self.nodes[*j].get_layout_rect().center();
+            // let p1: Point = data.plant.nodes[*i].position.into();
+            // let p2: Point = data.plant.nodes[*j].position.into();
             let mut curve = BezPath::new();
             curve.move_to(p1);
-            // curve.quad_to((0.5 * (p1.x + p2.x), 0.5 * (p1.y + p2.y)).into(), p2);
-            // curve.quad_to((0.5 * size.width, 0.5 * size.height).into(), p2);
             let mx = 0.5 * (p1.x + p2.x);
             let my = 0.5 * (p1.y + p2.y);
             curve.quad_to((mx + 0.1 * (cx - mx), my + 0.1 * (cy - my)).into(), p2);
-            ctx.stroke(curve, &Color::BLACK, 1.0);
+            ctx.stroke(curve, &Color::grey(0.85), 1.0);
+        }
+        for w in &mut self.nodes {
+            w.paint_with_offset(ctx, data, env);
         }
     }
 }
