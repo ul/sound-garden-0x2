@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 cpal = "0.10.0"
-anyhow = "1.0.19"
-thiserror = "1.0.5"
+anyhow = "1.0.25"
+thiserror = "1.0.6"
 crossbeam-channel = "0.4.0"
 rand = "0.7.2"
 serde_cbor = "0.10.2"
@@ -19,7 +19,7 @@ brotli = "3.3.0"
 piet-cairo = "0.0.7"
 toml = "0.5.5"
 log = "0.4.8"
-serde_json = "1.0.41"
+serde_json = "1.0.42"
 fake = "2.2.0"
 
 [dependencies.druid]
@@ -28,7 +28,7 @@ rev = "24999c41efe3f73b6a93cb3eef2dd9671097d07e"
 version = "0.4"
 
 [dependencies.serde]
-version = "1.0.102"
+version = "1.0.103"
 features = ["derive"]
 
 [dependencies.simple_logger]
@@ -43,3 +43,6 @@ path = "../audio_program"
 
 [dependencies.audio_vm]
 path = "../audio_vm"
+
+[dependencies.thread_worker]
+path = "../thread_worker"

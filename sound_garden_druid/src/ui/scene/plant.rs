@@ -2,9 +2,10 @@ mod node;
 
 use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
-use crate::ui::{constants::*, eventer};
+use crate::ui::{constants::*, eventer, util::find_edges};
 use druid::{
-    kurbo::{Rect, Size},
+    kurbo::{BezPath, Point, Rect, Size},
+    piet::{Color, RenderContext},
     BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, MouseEvent, PaintCtx,
     UpdateCtx, WidgetPod,
 };
@@ -13,6 +14,7 @@ pub struct Widget(eventer::Widget<State, InnerWidget>);
 
 struct InnerWidget {
     nodes: Vec<WidgetPod<State, Lens2Wrap<node::State, NodeOpLens, node::Widget>>>,
+    edges: Vec<(state::NodeIx, state::NodeIx)>,
 }
 
 #[derive(Clone, Data, Debug, Eq, PartialEq)]
@@ -37,7 +39,7 @@ impl druid::Widget<State> for InnerWidget {
                 log::debug!("Adding a new node.");
                 let (x, y) = pos.into();
                 let node = state::Node {
-                    op: String::from(format!("{}", data.plant.nodes.len())),
+                    op: String::from("0"),
                     position: (x as _, y as _).into(),
                 };
                 data.plant.nodes.push(node);
@@ -104,15 +106,37 @@ impl druid::Widget<State> for InnerWidget {
         bc.max()
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, _base_state: &BaseState, data: &State, env: &Env) {
+    fn paint(&mut self, ctx: &mut PaintCtx, base_state: &BaseState, data: &State, env: &Env) {
         for w in &mut self.nodes {
             w.paint_with_offset(ctx, data, env);
+        }
+        let _size = base_state.size();
+        let mut cx: f64 = 0.0;
+        let mut cy: f64 = 0.0;
+        for node in &data.plant.nodes {
+            cx += node.position.x as f64;
+            cy += node.position.y as f64;
+        }
+        cx /= data.plant.nodes.len() as f64;
+        cy /= data.plant.nodes.len() as f64;
+        for (i, j) in &self.edges {
+            let p1: Point = data.plant.nodes[*i].position.into();
+            let p2: Point = data.plant.nodes[*j].position.into();
+            let mut curve = BezPath::new();
+            curve.move_to(p1);
+            // curve.quad_to((0.5 * (p1.x + p2.x), 0.5 * (p1.y + p2.y)).into(), p2);
+            // curve.quad_to((0.5 * size.width, 0.5 * size.height).into(), p2);
+            let mx = 0.5 * (p1.x + p2.x);
+            let my = 0.5 * (p1.y + p2.y);
+            curve.quad_to((mx + 0.1 * (cx - mx), my + 0.1 * (cy - my)).into(), p2);
+            ctx.stroke(curve, &Color::BLACK, 1.0);
         }
     }
 }
 
 impl InnerWidget {
     fn regenerate_nodes(&mut self, data: &State) {
+        self.edges = find_edges(&data.plant);
         self.nodes = data
             .plant
             .nodes
@@ -125,7 +149,10 @@ impl InnerWidget {
 
 impl Widget {
     pub fn new() -> Self {
-        Widget(eventer::Widget::new(InnerWidget { nodes: Vec::new() }))
+        Widget(eventer::Widget::new(InnerWidget {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        }))
     }
 }
 

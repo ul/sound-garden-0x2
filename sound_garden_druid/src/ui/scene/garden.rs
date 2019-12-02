@@ -18,7 +18,7 @@ pub struct Widget {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct State {
-    pub scene: state::GardenScene,
+    pub garden_offset: state::Position,
     pub plants: Vec<state::Plant>,
 }
 
@@ -27,8 +27,8 @@ impl druid::Widget<State> for Widget {
         let size = ctx.size();
         let viewport = Rect::from_origin_size(Point::ORIGIN, size);
         let offset = Vec2::new(
-            -size.width / 2. - data.scene.offset.x as f64,
-            -size.height / 2. - data.scene.offset.y as f64,
+            -size.width / 2. - data.garden_offset.x as f64,
+            -size.height / 2. - data.garden_offset.y as f64,
         );
         if let Some(event) = event.transform_scroll(offset, viewport) {
             for w in &mut self.plants {
@@ -46,7 +46,7 @@ impl druid::Widget<State> for Widget {
                 ctx.request_focus();
             }
             Event::MouseDown(e) => {
-                self.drag_start = (e.pos, data.scene.offset);
+                self.drag_start = (e.pos, data.garden_offset);
                 ctx.set_active(true);
                 ctx.set_cursor(&Cursor::OpenHand);
                 ctx.request_focus();
@@ -55,7 +55,7 @@ impl druid::Widget<State> for Widget {
             Event::MouseMoved(e) => {
                 if ctx.is_active() {
                     ctx.set_cursor(&Cursor::OpenHand);
-                    data.scene.offset = (
+                    data.garden_offset = (
                         self.drag_start.1.x + ((e.pos.x - self.drag_start.0.x) as i32),
                         self.drag_start.1.y + ((e.pos.y - self.drag_start.0.y) as i32),
                     )
@@ -70,7 +70,7 @@ impl druid::Widget<State> for Widget {
             }
             Event::KeyDown(KeyEvent { key_code, .. }) => match key_code {
                 KeyCode::Return => {
-                    let (x, y) = data.scene.offset.into();
+                    let (x, y) = data.garden_offset.into();
                     let ix = self.plants.iter().enumerate().find_map(|(i, p)| {
                         let layout = p.get_layout_rect();
                         if layout.contains(Point::new(-x as _, -y as _)) {
@@ -107,7 +107,7 @@ impl druid::Widget<State> for Widget {
     fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, env: &Env) {
         match old_data {
             Some(old_data) => {
-                if old_data.scene.offset != data.scene.offset {
+                if old_data.garden_offset != data.garden_offset {
                     ctx.invalidate();
                 }
                 if old_data.plants != data.plants {
@@ -157,12 +157,12 @@ impl druid::Widget<State> for Widget {
             1.,
         );
         ctx.transform(Affine::translate((
-            data.scene.offset.x as _,
-            data.scene.offset.y as _,
+            data.garden_offset.x as _,
+            data.garden_offset.y as _,
         )));
         let visible = viewport.with_origin(Point::new(
-            -size.width / 2. - data.scene.offset.x as f64,
-            -size.height / 2. - data.scene.offset.y as f64,
+            -size.width / 2. - data.garden_offset.x as f64,
+            -size.height / 2. - data.garden_offset.y as f64,
         ));
         ctx.with_child_ctx(visible, |ctx| {
             for w in &mut self.plants {
@@ -213,8 +213,11 @@ impl Lens2<State, plant::State> for PlantNameLens {
 }
 
 impl State {
-    pub fn new(scene: state::GardenScene, plants: Vec<state::Plant>) -> Self {
-        State { scene, plants }
+    pub fn new(garden_offset: state::Position, plants: Vec<state::Plant>) -> Self {
+        State {
+            garden_offset,
+            plants,
+        }
     }
 }
 

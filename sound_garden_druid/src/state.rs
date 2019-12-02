@@ -1,5 +1,5 @@
 use anyhow::Result;
-use druid::Data;
+use druid::{kurbo::Point, Data};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -7,6 +7,8 @@ pub struct State {
     pub scene: Scene,
     // TODO Arc<Vec<...>> ?
     pub plants: Vec<Plant>,
+    pub garden_offset: Position,
+    pub sample_rate: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -30,9 +32,7 @@ pub enum Scene {
 }
 
 #[derive(Clone, Data, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct GardenScene {
-    pub offset: Position,
-}
+pub struct GardenScene {}
 
 #[derive(Clone, Data, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PlantScene {
@@ -64,19 +64,34 @@ impl Into<(i32, i32)> for Position {
     }
 }
 
+impl Into<Point> for Position {
+    fn into(self) -> Point {
+        Point::new(self.x as _, self.y as _)
+    }
+}
+
 impl From<(i32, i32)> for Position {
     fn from(p: (i32, i32)) -> Self {
         Position { x: p.0, y: p.1 }
     }
 }
 
+impl From<Point> for Position {
+    fn from(p: Point) -> Self {
+        Position {
+            x: p.x as _,
+            y: p.y as _,
+        }
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         State {
-            scene: Scene::Garden(GardenScene {
-                offset: (0, 0).into(),
-            }),
+            scene: Scene::Garden(GardenScene {}),
             plants: Vec::new(),
+            garden_offset: (0, 0).into(),
+            sample_rate: 48_000,
         }
     }
 

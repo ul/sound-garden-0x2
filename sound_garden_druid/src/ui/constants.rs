@@ -19,8 +19,8 @@ pub mod cmd {
     pub const CLICK: Selector = Selector::new("SOUND_GARDEN.CLICK");
     pub const DOUBLE_CLICK: Selector = Selector::new("SOUND_GARDEN.DOUBLE_CLICK");
 
-    pub fn back_to_garden(offset: state::Position) -> Command {
-        Command::new(BACK_TO_GARDEN, offset)
+    pub fn back_to_garden() -> Command {
+        Command::from(BACK_TO_GARDEN)
     }
 
     pub fn zoom_to_plant(ix: state::PlantIx) -> Command {

@@ -8,29 +8,27 @@ edition = "2018"
 
 [dependencies]
 cpal = "0.10.0"
-anyhow = "1.0.16"
-thiserror = "1.0.3"
-crossbeam-channel = "0.3.9"
-slog-scope = "4.2.0"
+anyhow = "1.0.25"
+thiserror = "1.0.6"
+crossbeam-channel = "0.4.0"
+slog-scope = "4.3.0"
 sloggers = "0.3.4"
 rand = "0.7.2"
-serde_json = "1.0.41"
+serde_json = "1.0.42"
 serde_cbor = "0.10.2"
 base64 = "0.11.0"
 clipboard = "0.5.0"
 brotli = "3.3.0"
-lru = "0.4.0"
+lru = "0.4.1"
+slog = "2.5.2"
 
 [dependencies.serde]
-version = "1.0.102"
+version = "1.0.103"
 features = ["derive"]
-
-[dependencies.slog]
-version = "2.5.2"
 # features = ["release_max_level_debug"]
 
 [dependencies.sdl2]
-version = "0.32"
+version = "0.32.2"
 default-features = false
 features = ["ttf"]
 

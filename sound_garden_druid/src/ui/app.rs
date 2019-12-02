@@ -22,9 +22,7 @@ impl druid::Widget<State> for Widget {
         }
         match event {
             Event::Command(c) if c.selector == cmd::BACK_TO_GARDEN => {
-                data.scene = Scene::Garden(state::GardenScene {
-                    offset: *c.get_object().unwrap(),
-                });
+                data.scene = Scene::Garden(state::GardenScene {});
                 ctx.submit_command(Command::from(cmd::REQUEST_FOCUS), None);
             }
             Event::Command(c) if c.selector == cmd::ZOOM_TO_PLANT => {
@@ -112,18 +110,18 @@ struct GardenSceneLens {}
 
 impl Lens2<State, garden::State> for GardenSceneLens {
     fn get<V, F: FnOnce(&garden::State) -> V>(&self, data: &State, f: F) -> V {
-        if let Scene::Garden(scene) = &data.scene {
-            f(&garden::State::new(scene.clone(), data.plants.clone()))
+        if let Scene::Garden(_) = &data.scene {
+            f(&garden::State::new(data.garden_offset, data.plants.clone()))
         } else {
             unreachable!();
         }
     }
 
     fn with_mut<V, F: FnOnce(&mut garden::State) -> V>(&self, data: &mut State, f: F) -> V {
-        if let Scene::Garden(scene) = &mut data.scene {
-            let mut lens = garden::State::new(scene.clone(), data.plants.clone());
+        if let Scene::Garden(_) = &mut data.scene {
+            let mut lens = garden::State::new(data.garden_offset, data.plants.clone());
             let result = f(&mut lens);
-            *scene = lens.scene;
+            data.garden_offset = lens.garden_offset;
             data.plants = lens.plants;
             result
         } else {
