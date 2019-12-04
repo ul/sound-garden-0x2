@@ -24,7 +24,7 @@ fake = "2.2.0"
 
 [dependencies.druid]
 git = "https://github.com/xi-editor/druid.git"
-rev = "6d9f7254376e9d27e7fa007624d4168db758a3a8"
+rev = "61770e5976a9ca2e48866fd4c0a586eeafd4e4d7"
 version = "0.4"
 
 [dependencies.serde]
