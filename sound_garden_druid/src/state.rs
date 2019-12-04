@@ -95,6 +95,7 @@ impl State {
         }
     }
 
+    // TODO Atomic write.
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
         let f = std::fs::File::create(path)?;
         serde_json::to_writer_pretty(f, self)?;

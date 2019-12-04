@@ -1,15 +1,14 @@
-use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
 use crate::ui::{constants::*, text_line};
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::Color,
-    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, LayoutCtx, MouseEvent,
-    PaintCtx, UpdateCtx, WidgetPod,
+    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, LayoutCtx, Lens, LensWrap,
+    MouseEvent, PaintCtx, UpdateCtx, WidgetPod,
 };
 
 pub struct Widget {
-    name: WidgetPod<State, Lens2Wrap<text_line::State, OpLens, text_line::Widget>>,
+    name: WidgetPod<State, LensWrap<text_line::State, OpLens, text_line::Widget>>,
 }
 
 #[derive(Clone, Data, Debug)]
@@ -40,6 +39,14 @@ impl druid::Widget<State> for Widget {
                     ctx.submit_command(cmd::remove_node(data.ix), None);
                 }
                 ctx.set_handled();
+            }
+            Event::MouseDown(e) => {
+                if e.mods.meta {
+                    // TODO move subtree
+                } else {
+                    // TODO add other cases
+                    ctx.submit_command(cmd::drag_nodes(vec![data.ix]), None);
+                }
             }
             _ => {}
         }
@@ -77,7 +84,7 @@ impl druid::Widget<State> for Widget {
 impl Widget {
     pub fn new() -> Self {
         Widget {
-            name: WidgetPod::new(Lens2Wrap::new(text_line::Widget::new(), OpLens {})),
+            name: WidgetPod::new(LensWrap::new(text_line::Widget::new(), OpLens {})),
         }
     }
 }
@@ -90,8 +97,8 @@ impl State {
 
 struct OpLens {}
 
-impl Lens2<State, text_line::State> for OpLens {
-    fn get<V, F: FnOnce(&text_line::State) -> V>(&self, data: &State, f: F) -> V {
+impl Lens<State, text_line::State> for OpLens {
+    fn with<V, F: FnOnce(&text_line::State) -> V>(&self, data: &State, f: F) -> V {
         f(&text_line::State::new(
             data.op.clone(),
             PLANT_FONT_SIZE,

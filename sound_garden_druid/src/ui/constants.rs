@@ -5,6 +5,7 @@ pub const DOUBLE_CLICK_TIMEOUT: std::time::Duration = std::time::Duration::from_
 
 pub mod cmd {
     use crate::state;
+    use crate::state::NodeIx;
     use druid::{Command, MouseEvent, Selector};
 
     // NOTE: If selector has a payload then use a command creator fn to leverage typechecking.
@@ -14,6 +15,7 @@ pub mod cmd {
     pub const BACK_TO_GARDEN: Selector = Selector::new("SOUND_GARDEN.BACK_TO_GARDEN");
     pub const ZOOM_TO_PLANT: Selector = Selector::new("SOUND_GARDEN.ZOOM_TO_PLANT");
     pub const REMOVE_NODE: Selector = Selector::new("SOUND_GARDEN.REMOVE_NODE");
+    pub const DRAG_NODES: Selector = Selector::new("SOUND_GARDEN.DRAG_NODES");
 
     // Eventer extension
     pub const CLICK: Selector = Selector::new("SOUND_GARDEN.CLICK");
@@ -37,5 +39,9 @@ pub mod cmd {
 
     pub fn click(e: MouseEvent) -> Command {
         Command::new(CLICK, e)
+    }
+
+    pub fn drag_nodes(nodes: Vec<NodeIx>) -> Command {
+        Command::new(DRAG_NODES, nodes)
     }
 }

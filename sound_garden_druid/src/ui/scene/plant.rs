@@ -1,20 +1,21 @@
 mod node;
 
-use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
 use crate::ui::{constants::*, eventer, util::find_edges};
 use druid::{
     kurbo::{BezPath, Point, Rect, Size},
     piet::{Color, RenderContext},
-    BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, MouseEvent, PaintCtx,
-    UpdateCtx, WidgetPod,
+    BaseState, BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, Lens, LensWrap, MouseEvent,
+    PaintCtx, UpdateCtx, WidgetPod,
 };
 
 pub struct Widget(eventer::Widget<State, InnerWidget>);
 
 struct InnerWidget {
-    nodes: Vec<WidgetPod<State, Lens2Wrap<node::State, NodeOpLens, node::Widget>>>,
+    nodes: Vec<WidgetPod<State, LensWrap<node::State, NodeOpLens, node::Widget>>>,
     edges: Vec<(state::NodeIx, state::NodeIx)>,
+    drag_nodes: Vec<state::NodeIx>,
+    drag_start: (Point, Vec<state::Position>),
 }
 
 #[derive(Clone, Data, Debug, Eq, PartialEq)]
@@ -65,6 +66,34 @@ impl druid::Widget<State> for InnerWidget {
                 log::debug!("Removing node {}.", ix);
                 data.plant.nodes.swap_remove(*ix);
                 return;
+            }
+            Event::Command(c) if c.selector == cmd::DRAG_NODES => {
+                let nodes = c.get_object::<Vec<state::NodeIx>>().unwrap();
+                log::debug!("Dragging nodes {:?}", nodes);
+                self.drag_nodes = nodes.clone();
+                self.drag_start.1 = self
+                    .drag_nodes
+                    .iter()
+                    .map(|ix| data.plant.nodes[*ix].position)
+                    .collect();
+            }
+            Event::MouseDown(e) => {
+                self.drag_start.0 = e.pos;
+                ctx.set_active(true);
+            }
+            Event::MouseMoved(e) => {
+                if ctx.is_active() {
+                    let dx = (e.pos.x - self.drag_start.0.x) as i32;
+                    let dy = (e.pos.y - self.drag_start.0.y) as i32;
+                    for (i, &ix) in self.drag_nodes.iter().enumerate() {
+                        data.plant.nodes[ix].position.x = self.drag_start.1[i].x + dx;
+                        data.plant.nodes[ix].position.y = self.drag_start.1[i].y + dy;
+                    }
+                }
+            }
+            Event::MouseUp(_) => {
+                ctx.set_active(false);
+                self.drag_nodes.clear();
             }
             _ => {}
         }
@@ -141,7 +170,7 @@ impl InnerWidget {
             .nodes
             .iter()
             .enumerate()
-            .map(|(ix, _)| WidgetPod::new(Lens2Wrap::new(node::Widget::new(), NodeOpLens { ix })))
+            .map(|(ix, _)| WidgetPod::new(LensWrap::new(node::Widget::new(), NodeOpLens { ix })))
             .collect();
     }
 }
@@ -151,6 +180,8 @@ impl Widget {
         Widget(eventer::Widget::new(InnerWidget {
             nodes: Vec::new(),
             edges: Vec::new(),
+            drag_nodes: Vec::new(),
+            drag_start: (Point::ORIGIN, Vec::new()),
         }))
     }
 }
@@ -159,17 +190,17 @@ struct NodeOpLens {
     ix: state::NodeIx,
 }
 
-impl Lens2<State, node::State> for NodeOpLens {
-    fn get<V, F: FnOnce(&node::State) -> V>(&self, data: &State, f: F) -> V {
-        let op = data.plant.nodes[self.ix].op.clone();
-        f(&node::State::new(self.ix, op))
+impl Lens<State, node::State> for NodeOpLens {
+    fn with<V, F: FnOnce(&node::State) -> V>(&self, data: &State, f: F) -> V {
+        let node = &data.plant.nodes[self.ix];
+        f(&node::State::new(self.ix, node.op.clone()))
     }
 
     fn with_mut<V, F: FnOnce(&mut node::State) -> V>(&self, data: &mut State, f: F) -> V {
-        let op = data.plant.nodes[self.ix].op.clone();
-        let mut lens = node::State::new(self.ix, op);
+        let node = &mut data.plant.nodes[self.ix];
+        let mut lens = node::State::new(self.ix, node.op.clone());
         let result = f(&mut lens);
-        data.plant.nodes[self.ix].op = lens.op;
+        node.op = lens.op;
         result
     }
 }

@@ -1,19 +1,18 @@
 mod plant;
 
-use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state;
 use crate::ui::constants::*;
 use druid::{
     kurbo::{Affine, Line, Point, Rect, Size, Vec2},
     piet::{Color, RenderContext},
     BaseState, BoxConstraints, Command, Cursor, Data, Env, Event, EventCtx, KeyCode, KeyEvent,
-    LayoutCtx, PaintCtx, UpdateCtx, WidgetPod,
+    LayoutCtx, Lens, LensWrap, PaintCtx, UpdateCtx, WidgetPod,
 };
 use fake::Fake;
 
 pub struct Widget {
     drag_start: (Point, state::Position),
-    plants: Vec<WidgetPod<State, Lens2Wrap<plant::State, PlantNameLens, plant::Widget>>>,
+    plants: Vec<WidgetPod<State, LensWrap<plant::State, PlantNameLens, plant::Widget>>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,20 +23,6 @@ pub struct State {
 
 impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
-        let size = ctx.size();
-        let viewport = Rect::from_origin_size(Point::ORIGIN, size);
-        let offset = Vec2::new(
-            -size.width / 2. - data.garden_offset.x as f64,
-            -size.height / 2. - data.garden_offset.y as f64,
-        );
-        if let Some(event) = event.transform_scroll(offset, viewport) {
-            for w in &mut self.plants {
-                w.event(ctx, &event, data, env);
-            }
-        }
-        if ctx.is_handled() {
-            return;
-        }
         match event {
             Event::Command(Command {
                 selector: cmd::REQUEST_FOCUS,
@@ -46,6 +31,12 @@ impl druid::Widget<State> for Widget {
                 ctx.request_focus();
             }
             Event::MouseDown(e) => {
+                for plant in &mut self.plants {
+                    if plant.get_layout_rect().contains(e.pos) {
+                        plant.event(ctx, &event, data, env);
+                        return;
+                    }
+                }
                 self.drag_start = (e.pos, data.garden_offset);
                 ctx.set_active(true);
                 ctx.set_cursor(&Cursor::OpenHand);
@@ -101,6 +92,17 @@ impl druid::Widget<State> for Widget {
                 _ => {}
             },
             _ => {}
+        }
+        let size = ctx.size();
+        let viewport = Rect::from_origin_size(Point::ORIGIN, size);
+        let offset = Vec2::new(
+            -size.width / 2. - data.garden_offset.x as f64,
+            -size.height / 2. - data.garden_offset.y as f64,
+        );
+        if let Some(event) = event.transform_scroll(offset, viewport) {
+            for w in &mut self.plants {
+                w.event(ctx, &event, data, env);
+            }
         }
     }
 
@@ -187,7 +189,7 @@ impl Widget {
             .iter()
             .enumerate()
             .map(|(ix, _)| {
-                WidgetPod::new(Lens2Wrap::new(plant::Widget::new(), PlantNameLens { ix }))
+                WidgetPod::new(LensWrap::new(plant::Widget::new(), PlantNameLens { ix }))
             })
             .collect();
     }
@@ -197,8 +199,8 @@ struct PlantNameLens {
     ix: state::PlantIx,
 }
 
-impl Lens2<State, plant::State> for PlantNameLens {
-    fn get<V, F: FnOnce(&plant::State) -> V>(&self, data: &State, f: F) -> V {
+impl Lens<State, plant::State> for PlantNameLens {
+    fn with<V, F: FnOnce(&plant::State) -> V>(&self, data: &State, f: F) -> V {
         let name = data.plants[self.ix].name.clone();
         f(&plant::State::new(self.ix, name))
     }

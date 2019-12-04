@@ -18,9 +18,9 @@ impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State
         match event {
             Event::MouseDown(e) => {
                 ctx.set_active(e.inside_widget(&ctx));
-                if ctx.is_active() {
-                    ctx.set_handled();
-                }
+                // if ctx.is_active() {
+                //     ctx.set_handled();
+                // }
             }
             Event::MouseUp(e) => {
                 if ctx.is_active() && e.inside_widget(&ctx) {
@@ -40,7 +40,7 @@ impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State
                         self.click_cnt = 0;
                         self.click_event = None;
                     }
-                    ctx.set_handled();
+                // ctx.set_handled();
                 } else {
                     self.click_cnt = 0;
                     self.click_event = None;

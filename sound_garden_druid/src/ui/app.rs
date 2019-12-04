@@ -1,12 +1,11 @@
-use crate::lens2::{Lens2, Lens2Wrap};
 use crate::state::{self, Scene};
 use crate::ui::constants::*;
 use crate::ui::scene::*;
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::{Color, RenderContext},
-    BaseState, BoxConstraints, BoxedWidget, Command, Env, Event, EventCtx, LayoutCtx, PaintCtx,
-    UpdateCtx, WidgetPod,
+    BaseState, BoxConstraints, BoxedWidget, Command, Env, Event, EventCtx, LayoutCtx, Lens,
+    LensWrap, PaintCtx, UpdateCtx, WidgetPod,
 };
 
 pub struct Widget {
@@ -94,12 +93,12 @@ impl Widget {
                 Garden(_) => {
                     log::debug!("Changing scene to Garden");
                     let lens = GardenSceneLens {};
-                    WidgetPod::new(Box::new(Lens2Wrap::new(garden::Widget::new(), lens)))
+                    WidgetPod::new(Box::new(LensWrap::new(garden::Widget::new(), lens)))
                 }
                 Plant(_) => {
                     log::debug!("Changing scene to Plant");
                     let lens = PlantSceneLens {};
-                    WidgetPod::new(Box::new(Lens2Wrap::new(plant::Widget::new(), lens)))
+                    WidgetPod::new(Box::new(LensWrap::new(plant::Widget::new(), lens)))
                 }
             });
         }
@@ -108,8 +107,8 @@ impl Widget {
 
 struct GardenSceneLens {}
 
-impl Lens2<State, garden::State> for GardenSceneLens {
-    fn get<V, F: FnOnce(&garden::State) -> V>(&self, data: &State, f: F) -> V {
+impl Lens<State, garden::State> for GardenSceneLens {
+    fn with<V, F: FnOnce(&garden::State) -> V>(&self, data: &State, f: F) -> V {
         if let Scene::Garden(_) = &data.scene {
             f(&garden::State::new(data.garden_offset, data.plants.clone()))
         } else {
@@ -132,8 +131,8 @@ impl Lens2<State, garden::State> for GardenSceneLens {
 
 struct PlantSceneLens {}
 
-impl Lens2<State, plant::State> for PlantSceneLens {
-    fn get<V, F: FnOnce(&plant::State) -> V>(&self, data: &State, f: F) -> V {
+impl Lens<State, plant::State> for PlantSceneLens {
+    fn with<V, F: FnOnce(&plant::State) -> V>(&self, data: &State, f: F) -> V {
         if let Scene::Plant(scene) = &data.scene {
             f(&plant::State::new(
                 scene.clone(),
