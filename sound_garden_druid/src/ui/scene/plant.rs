@@ -67,10 +67,29 @@ impl druid::Widget<State> for InnerWidget {
                 data.plant.nodes.swap_remove(*ix);
                 return;
             }
-            Event::Command(c) if c.selector == cmd::DRAG_NODES => {
-                let nodes = c.get_object::<Vec<state::NodeIx>>().unwrap();
-                log::debug!("Dragging nodes {:?}", nodes);
-                self.drag_nodes = nodes.clone();
+            Event::Command(c) if c.selector == cmd::DRAG_NODE => {
+                let ix = c.get_object::<state::NodeIx>().unwrap();
+                log::debug!("Dragging node {:?}", ix);
+                self.drag_nodes = vec![*ix];
+                self.drag_start.1 = self
+                    .drag_nodes
+                    .iter()
+                    .map(|ix| data.plant.nodes[*ix].position)
+                    .collect();
+            }
+            Event::Command(c) if c.selector == cmd::DRAG_SUB_TREE => {
+                let i = *c.get_object::<state::NodeIx>().unwrap();
+                log::debug!("Dragging sub-tree of {:?}", i);
+                let edges = find_edges(&data.plant);
+                let mut nodes_to_move = Vec::new();
+                let mut nodes_to_scan = vec![i];
+                while let Some(ix) = nodes_to_scan.pop() {
+                    nodes_to_move.push(ix);
+                    for ix in edges.iter().filter(|(_, j)| *j == ix).map(|(i, _)| *i) {
+                        nodes_to_scan.push(ix)
+                    }
+                }
+                self.drag_nodes = nodes_to_move;
                 self.drag_start.1 = self
                     .drag_nodes
                     .iter()

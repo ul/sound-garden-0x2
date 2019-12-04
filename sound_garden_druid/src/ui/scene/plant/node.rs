@@ -42,10 +42,10 @@ impl druid::Widget<State> for Widget {
             }
             Event::MouseDown(e) => {
                 if e.mods.meta {
-                    // TODO move subtree
+                    ctx.submit_command(cmd::drag_sub_tree(data.ix), None);
                 } else {
                     // TODO add other cases
-                    ctx.submit_command(cmd::drag_nodes(vec![data.ix]), None);
+                    ctx.submit_command(cmd::drag_node(data.ix), None);
                 }
             }
             _ => {}
