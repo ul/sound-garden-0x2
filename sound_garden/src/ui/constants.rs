@@ -1,7 +1,7 @@
 pub const FONT_NAME: &str = "Agave";
 pub const PLANT_FONT_SIZE: f64 = 20.0;
 pub const STATE_FILE: &str = "garden.json";
-pub const DOUBLE_CLICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
+pub const DOUBLE_CLICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub mod cmd {
     use crate::state::*;

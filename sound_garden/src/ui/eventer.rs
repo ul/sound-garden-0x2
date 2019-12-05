@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 
 pub struct Widget<T: Data, W: druid::Widget<T>> {
     inner: W,
-    click_cnt: u8,
+    click_cnt: u32,
     click_event: Option<MouseEvent>,
     dbl_click_timer: TimerToken,
     phantom: PhantomData<T>,
@@ -18,13 +18,10 @@ impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State
         match event {
             Event::MouseDown(e) => {
                 ctx.set_active(e.inside_widget(&ctx));
-                // if ctx.is_active() {
-                //     ctx.set_handled();
-                // }
+                self.click_cnt = e.count;
             }
             Event::MouseUp(e) => {
                 if ctx.is_active() && e.inside_widget(&ctx) {
-                    self.click_cnt += 1;
                     if self.click_cnt == 1 {
                         self.click_event = Some(e.clone());
                         self.dbl_click_timer =
@@ -40,7 +37,6 @@ impl<State: Data, W: druid::Widget<State>> druid::Widget<State> for Widget<State
                         self.click_cnt = 0;
                         self.click_event = None;
                     }
-                // ctx.set_handled();
                 } else {
                     self.click_cnt = 0;
                     self.click_event = None;
