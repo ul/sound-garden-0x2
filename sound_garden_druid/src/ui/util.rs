@@ -1,4 +1,4 @@
-use crate::state;
+use crate::{state, ui::constants::*};
 use druid::{
     kurbo::{Point, Rect},
     EventCtx, MouseEvent,
@@ -23,7 +23,7 @@ pub fn find_edges(plant: &state::Plant) -> Vec<(state::NodeIx, state::NodeIx)> {
         for (j, n) in nodes
             .iter()
             .enumerate()
-            .filter(|(j, n)| i != *j && n.position.y > node.position.y)
+            .filter(|(j, n)| i != *j && n.position.y > node.position.y + (PLANT_FONT_SIZE as i32))
         {
             let dist =
                 (n.position.x - node.position.x).pow(2) + (n.position.y - node.position.y).pow(2);
