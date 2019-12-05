@@ -1,13 +1,15 @@
 use crate::state;
-use crate::ui::{constants::*, eventer, text_line};
+use crate::ui::{constants::*, text_line};
 use druid::{
     kurbo::{Point, Rect, Size},
     piet::Color,
-    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx,
-    WidgetPod,Lens, LensWrap
+    BaseState, BoxConstraints, Command, Data, Env, Event, EventCtx, LayoutCtx, Lens, LensWrap,
+    PaintCtx, UpdateCtx, WidgetPod,
 };
 
-pub struct Widget(eventer::Widget<State, InnerWidget>);
+pub struct Widget {
+    name: WidgetPod<State, LensWrap<text_line::State, NameLens, text_line::Widget>>,
+}
 
 #[derive(Clone, Data, Debug)]
 pub struct State {
@@ -15,11 +17,7 @@ pub struct State {
     pub name: String,
 }
 
-struct InnerWidget {
-    name: WidgetPod<State, LensWrap<text_line::State, NameLens, text_line::Widget>>,
-}
-
-impl druid::Widget<State> for InnerWidget {
+impl druid::Widget<State> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
         self.name.event(ctx, event, data, env);
         match event {
@@ -33,14 +31,12 @@ impl druid::Widget<State> for InnerWidget {
                     data,
                     env,
                 );
-                ctx.set_handled();
             }
             Event::Command(Command {
                 selector: cmd::CLICK,
                 ..
             }) => {
                 ctx.submit_command(cmd::zoom_to_plant(data.ix), None);
-                ctx.set_handled();
             }
             _ => {}
         }
@@ -77,9 +73,9 @@ impl druid::Widget<State> for InnerWidget {
 
 impl Widget {
     pub fn new() -> Self {
-        Widget(eventer::Widget::new(InnerWidget {
+        Widget {
             name: WidgetPod::new(LensWrap::new(text_line::Widget::new(), NameLens {})),
-        }))
+        }
     }
 }
 
@@ -105,29 +101,5 @@ impl Lens<State, text_line::State> for NameLens {
         let result = f(&mut lens);
         data.name = lens.text;
         result
-    }
-}
-
-impl druid::Widget<State> for Widget {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut State, env: &Env) {
-        self.0.event(ctx, event, data, env);
-    }
-
-    fn update(&mut self, ctx: &mut UpdateCtx, old_data: Option<&State>, data: &State, env: &Env) {
-        self.0.update(ctx, old_data, data, env);
-    }
-
-    fn layout(
-        &mut self,
-        ctx: &mut LayoutCtx,
-        bc: &BoxConstraints,
-        data: &State,
-        env: &Env,
-    ) -> Size {
-        self.0.layout(ctx, bc, data, env)
-    }
-
-    fn paint(&mut self, ctx: &mut PaintCtx, base_state: &BaseState, data: &State, env: &Env) {
-        self.0.paint(ctx, base_state, data, env)
     }
 }
