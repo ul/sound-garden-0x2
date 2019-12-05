@@ -2,7 +2,8 @@ use crate::state::*;
 use crate::ui::{constants::*, util};
 use audio_program::parse_tokens;
 use audio_vm::VM;
-use druid::{AppDelegate, DelegateCtx, Env, Event, KeyCode};
+use brotli::{CompressorWriter, Decompressor};
+use druid::{AppDelegate, Application, DelegateCtx, Env, Event, KeyCode};
 use std::sync::{Arc, Mutex};
 
 pub struct Delegate {
@@ -18,18 +19,64 @@ impl AppDelegate<State> for Delegate {
         _env: &Env,
         ctx: &mut DelegateCtx,
     ) -> Option<Event> {
-        match event {
-            Event::KeyDown(e) => match e.key_code {
-                KeyCode::Escape => {
-                    if let Scene::Plant(scene) = &data.scene {
-                        if let PlantSceneMode::Normal = scene.mode {
+        if let Scene::Plant(scene) = &mut data.scene {
+            match scene.mode {
+                PlantSceneMode::Normal => match event {
+                    Event::KeyDown(e) => match e.key_code {
+                        KeyCode::Escape => {
                             ctx.submit_command(cmd::back_to_garden(), None);
                         }
+                        KeyCode::KeyY => {
+                            let plant = &data.plants[scene.ix];
+                            let mut compressed = Vec::new();
+                            {
+                                let mut compressor =
+                                    CompressorWriter::new(&mut compressed, 4096, 11, 22);
+                                serde_cbor::to_writer(&mut compressor, plant).unwrap();
+                            }
+                            let text = base64::encode(&compressed);
+                            Application::clipboard().put_string(text);
+                            log::debug!("Copied seedling to clipboard.");
+                        }
+                        KeyCode::KeyP => {
+                            log::debug!("Planting seedling from clipboard.");
+                            let text = Application::clipboard().get_string().unwrap_or_default();
+                            let compressed = base64::decode(&text);
+                            if compressed.is_err() {
+                                log::error!("Failed to decode seedling.");
+                                return None;
+                            }
+                            let compressed = compressed.unwrap();
+                            let decompressor: Decompressor<&[u8]> =
+                                Decompressor::new(&compressed[..], 4096);
+                            let new_plant = serde_cbor::from_reader(decompressor);
+                            if new_plant.is_err() {
+                                log::error!("Failed to decompress seedling.");
+                                return None;
+                            }
+                            let new_plant = new_plant.unwrap();
+                            let plant = &mut data.plants[scene.ix];
+                            let position = plant.position.clone();
+                            *plant = new_plant;
+                            plant.position = position;
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                PlantSceneMode::Insert => match event {
+                    Event::Command(ref c) if c.selector == crate::ui::text_line::EDIT_END => {
+                        scene.mode = PlantSceneMode::Normal;
                     }
+                    _ => {}
+                },
+            }
+            match event {
+                Event::Command(ref c) if c.selector == cmd::PLANT_SCENE_MODE => {
+                    scene.mode = c.get_object::<PlantSceneMode>().unwrap().clone();
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
         let new_ops = match data.scene {
             Scene::Garden(_) => Vec::new(),

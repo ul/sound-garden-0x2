@@ -45,8 +45,6 @@ pub struct PlantScene {
 pub enum PlantSceneMode {
     Normal,
     Insert,
-    // TODO Arc<Vec<...>> ?
-    Move(Vec<NodeIx>),
 }
 
 pub type PlantIx = usize;

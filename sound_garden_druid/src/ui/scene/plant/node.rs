@@ -31,14 +31,13 @@ impl druid::Widget<State> for Widget {
                     data,
                     env,
                 );
-                ctx.set_handled();
+                ctx.submit_command(cmd::plant_scene_mode(state::PlantSceneMode::Insert), None);
             }
             Event::Command(c) if c.selector == cmd::CLICK => {
                 let e = c.get_object::<MouseEvent>().unwrap();
                 if e.mods.ctrl {
                     ctx.submit_command(cmd::remove_node(data.ix), None);
                 }
-                ctx.set_handled();
             }
             Event::MouseDown(e) => {
                 if e.mods.meta {

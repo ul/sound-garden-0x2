@@ -4,8 +4,7 @@ pub const STATE_FILE: &str = "garden.json";
 pub const DOUBLE_CLICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
 
 pub mod cmd {
-    use crate::state;
-    use crate::state::NodeIx;
+    use crate::state::*;
     use druid::{Command, MouseEvent, Selector};
 
     // NOTE: If selector has a payload then use a command creator fn to leverage typechecking.
@@ -17,6 +16,7 @@ pub mod cmd {
     pub const REMOVE_NODE: Selector = Selector::new("SOUND_GARDEN.REMOVE_NODE");
     pub const DRAG_NODE: Selector = Selector::new("SOUND_GARDEN.DRAG_NODE");
     pub const DRAG_SUB_TREE: Selector = Selector::new("SOUND_GARDEN.DRAG_SUB_TREE");
+    pub const PLANT_SCENE_MODE: Selector = Selector::new("SOUND_GARDEN.PLANT_SCENE_MODE");
 
     // Eventer extension
     pub const CLICK: Selector = Selector::new("SOUND_GARDEN.CLICK");
@@ -26,11 +26,11 @@ pub mod cmd {
         Command::from(BACK_TO_GARDEN)
     }
 
-    pub fn zoom_to_plant(ix: state::PlantIx) -> Command {
+    pub fn zoom_to_plant(ix: PlantIx) -> Command {
         Command::new(ZOOM_TO_PLANT, ix)
     }
 
-    pub fn remove_node(ix: state::NodeIx) -> Command {
+    pub fn remove_node(ix: NodeIx) -> Command {
         Command::new(REMOVE_NODE, ix)
     }
 
@@ -48,5 +48,9 @@ pub mod cmd {
 
     pub fn drag_sub_tree(ix: NodeIx) -> Command {
         Command::new(DRAG_SUB_TREE, ix)
+    }
+
+    pub fn plant_scene_mode(mode: PlantSceneMode) -> Command {
+        Command::new(PLANT_SCENE_MODE, mode)
     }
 }

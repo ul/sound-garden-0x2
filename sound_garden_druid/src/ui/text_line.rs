@@ -8,6 +8,7 @@ use druid::{
 use piet_cairo::{CairoFont, CairoTextLayout};
 
 pub const EDIT: Selector = Selector::new("SOUND_GARDEN.TEXT_LINE.EDIT");
+pub const EDIT_END: Selector = Selector::new("SOUND_GARDEN.TEXT_LINE.EDIT_END");
 
 pub struct Widget {
     font: Option<CairoFont>,
@@ -35,15 +36,18 @@ impl druid::Widget<State> for Widget {
             Event::FocusChanged(false) => {
                 self.uncommitted_text = None;
                 self.layout = None;
+                ctx.submit_command(Command::from(EDIT_END), None);
                 ctx.invalidate();
             }
             Event::KeyDown(e) => {
                 match e.key_code {
                     KeyCode::Return => {
                         data.text = self.uncommitted_text.take().unwrap_or_default();
+                        ctx.submit_command(Command::from(EDIT_END), None);
                     }
                     KeyCode::Escape => {
                         self.uncommitted_text = None;
+                        ctx.submit_command(Command::from(EDIT_END), None);
                     }
                     KeyCode::Backspace => {
                         if let Some(text) = &mut self.uncommitted_text {
