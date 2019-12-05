@@ -44,10 +44,9 @@ impl druid::Widget<State> for InnerWidget {
                     position: (x as _, y as _).into(),
                 };
                 data.plant.nodes.push(node);
+                self.regenerate_nodes(data);
+                self.nodes.last_mut().unwrap().event(ctx, event, data, env);
                 return;
-                // TODO Send EDIT command to the newly created node.
-                // We can't do just regenerate_nodes here and then talk to self.nodes.last()
-                // as nodes will be re-created in update. Need smarter node generation.
             }
             Event::Command(c) if c.selector == cmd::CLICK => {
                 let pos = c.get_object::<MouseEvent>().unwrap().pos;
@@ -184,13 +183,12 @@ impl druid::Widget<State> for InnerWidget {
 impl InnerWidget {
     fn regenerate_nodes(&mut self, data: &State) {
         self.edges = find_edges(&data.plant);
-        self.nodes = data
-            .plant
-            .nodes
-            .iter()
-            .enumerate()
-            .map(|(ix, _)| WidgetPod::new(LensWrap::new(node::Widget::new(), NodeOpLens { ix })))
-            .collect();
+        let mut ix = self.nodes.len();
+        self.nodes.resize_with(data.plant.nodes.len(), || {
+            let w = WidgetPod::new(LensWrap::new(node::Widget::new(), NodeOpLens { ix }));
+            ix += 1;
+            w
+        })
     }
 }
 
