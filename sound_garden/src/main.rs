@@ -1,57 +1,29 @@
-extern crate slog;
-#[macro_use]
-extern crate slog_scope;
-
 mod audio;
-mod error;
-mod logic;
-mod video;
-mod world;
+mod state;
+mod ui;
 
 use anyhow::Result;
 use audio_vm::VM;
-use crossbeam_channel::Sender;
-use sloggers::terminal::{Destination, TerminalLoggerBuilder};
-use sloggers::types::Severity;
-use sloggers::Build;
 use std::sync::{Arc, Mutex};
 use thread_worker::Worker;
-use world::World;
 
-const CHANNEL_CAPACITY: usize = 60;
+const CHANNEL_CAPACITY: usize = 64;
 
 pub fn main() -> Result<()> {
-    let _guard = set_logger()?;
+    simple_logger::init()?;
 
     let vm = Arc::new(Mutex::new(VM::new()));
-    let world = Arc::new(Mutex::new(World::new()));
 
-    let _audio_wrk = {
+    let audio_wrk = {
         let vm = Arc::clone(&vm);
-        let world = Arc::clone(&world);
-        Worker::spawn("Audio", CHANNEL_CAPACITY, move |i, _: Sender<()>| {
-            audio::main(vm, world, i).unwrap();
+        Worker::spawn("Audio", CHANNEL_CAPACITY, move |i, o| {
+            audio::main(vm, i, o).unwrap();
         })
     };
 
-    let logic_wrk = {
-        let vm = Arc::clone(&vm);
-        let world = Arc::clone(&world);
-        Worker::spawn("Logic", CHANNEL_CAPACITY, move |i, _: Sender<()>| {
-            logic::main(vm, world, i).unwrap();
-        })
-    };
+    let sample_rate = audio_wrk.receiver().recv()?;
 
-    // Video must be on the main thread, at least for macOS.
-    video::main(Arc::clone(&world), logic_wrk.sender().clone()).unwrap();
+    ui::run(vm, sample_rate)?;
 
     Ok(())
-}
-
-pub fn set_logger() -> Result<slog_scope::GlobalLoggerGuard> {
-    let mut builder = TerminalLoggerBuilder::new();
-    builder.level(Severity::Trace);
-    builder.destination(Destination::Stderr);
-    let logger = builder.build()?;
-    Ok(slog_scope::set_global_logger(logger))
 }

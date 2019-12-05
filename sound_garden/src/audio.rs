@@ -1,11 +1,10 @@
-use crate::world::World;
 use anyhow::Result;
 use audio_vm::{Sample, CHANNELS, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
-use crossbeam_channel::{Receiver, TryRecvError};
+use crossbeam_channel::{Receiver, TryRecvError, Sender};
 use std::sync::{Arc, Mutex};
 
-pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<()>) -> Result<()> {
+pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -23,8 +22,7 @@ pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<()>) -> R
         ));
     }
     let sample_rate = format.sample_rate.0;
-    world.lock().unwrap().sample_rate = sample_rate;
-    drop(world);
+    tx.send(sample_rate)?;
 
     let event_loop = host.event_loop();
     let stream_id = event_loop
@@ -39,7 +37,7 @@ pub fn main(vm: Arc<Mutex<VM>>, world: Arc<Mutex<World>>, rx: Receiver<()>) -> R
             Ok(_) => {}
             Err(TryRecvError::Disconnected) => {
                 // cpal doesn't provide a civilized way to stop event loop.
-                info!("Audio: Don't wait for me, gonna nuke entire process.");
+                log::info!("Audio: Don't wait for me, gonna nuke entire process.");
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 std::process::exit(0);
             }
