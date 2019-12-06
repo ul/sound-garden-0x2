@@ -169,7 +169,7 @@ impl druid::Widget<State> for InnerWidget {
             let mx = 0.5 * (p1.x + p2.x);
             let my = 0.5 * (p1.y + p2.y);
             curve.quad_to((mx + 0.1 * (cx - mx), my + 0.1 * (cy - my)).into(), p2);
-            ctx.stroke(curve, &Color::grey(0.85), 1.0);
+            ctx.stroke(curve, &Color::grey(0.75), 1.0);
         }
         for w in &mut self.nodes {
             w.paint_with_offset(ctx, data, env);

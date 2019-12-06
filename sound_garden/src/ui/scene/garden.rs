@@ -8,7 +8,6 @@ use druid::{
     BaseState, BoxConstraints, Cursor, Data, Env, Event, EventCtx, LayoutCtx, Lens, LensWrap,
     MouseEvent, PaintCtx, UpdateCtx, WidgetPod,
 };
-use fake::Fake;
 
 pub struct Widget(eventer::Widget<State, InnerWidget>);
 
@@ -20,6 +19,7 @@ pub struct State {
 
 struct InnerWidget {
     drag_start: Option<(Point, state::Position)>,
+    drag_plant: Option<state::PlantIx>,
     plants: Vec<WidgetPod<State, LensWrap<plant::State, PlantNameLens, plant::Widget>>>,
 }
 
@@ -44,7 +44,7 @@ impl druid::Widget<State> for InnerWidget {
                 let (x, y) = e.pos.into();
                 let plant = state::Plant {
                     position: (x as _, y as _).into(),
-                    name: fake::faker::name::en::Name().fake(),
+                    name: crate::names::generate(),
                     nodes: Vec::new(),
                 };
                 log::debug!("Creating a new plant named {}", plant.name);
@@ -54,6 +54,10 @@ impl druid::Widget<State> for InnerWidget {
                 return;
             }
             Event::Command(c) if c.selector == cmd::CLICK => {
+                if self.drag_plant.is_some() {
+                    self.drag_plant = None;
+                    return;
+                }
                 let mut e = c.get_object::<MouseEvent>().unwrap().clone();
                 e.pos += offset;
                 for plant in &mut self.plants {
@@ -65,18 +69,25 @@ impl druid::Widget<State> for InnerWidget {
                 return;
             }
             Event::MouseDown(e) => {
-                {
-                    let mut e = e.clone();
-                    e.pos += offset;
-                    for plant in &mut self.plants {
-                        log::debug!("plant: {:?}", plant.get_layout_rect());
-                        if plant.get_layout_rect().contains(e.pos) {
-                            self.drag_start = None;
-                            return;
+                let original_pos = e.pos;
+                let mut e = e.clone();
+                e.pos += offset;
+                for (i, plant) in self.plants.iter_mut().enumerate() {
+                    if plant.get_layout_rect().contains(e.pos) {
+                        self.drag_start = None;
+                        if e.mods.ctrl && e.count == 2 {
+                            data.plants.swap_remove(i);
+                        } else if e.mods.meta {
+                            self.drag_start = Some((original_pos, data.plants[i].position));
+                            self.drag_plant = Some(i);
+                            ctx.set_active(true);
+                            ctx.set_cursor(&Cursor::OpenHand);
                         }
+                        return;
                     }
                 }
-                self.drag_start = Some((e.pos, data.garden_offset));
+                self.drag_start = Some((original_pos, data.garden_offset));
+                self.drag_plant = None;
                 ctx.set_active(true);
                 ctx.set_cursor(&Cursor::OpenHand);
                 ctx.invalidate();
@@ -85,11 +96,17 @@ impl druid::Widget<State> for InnerWidget {
                 if ctx.is_active() {
                     if let Some(drag_start) = self.drag_start {
                         ctx.set_cursor(&Cursor::OpenHand);
-                        data.garden_offset = (
-                            drag_start.1.x + ((e.pos.x - drag_start.0.x) as i32),
-                            drag_start.1.y + ((e.pos.y - drag_start.0.y) as i32),
-                        )
-                            .into();
+                        if let Some(ix) = self.drag_plant {
+                            let p = &mut data.plants[ix].position;
+                            p.x = drag_start.1.x + (e.pos.x - drag_start.0.x) as i32;
+                            p.y = drag_start.1.y + (e.pos.y - drag_start.0.y) as i32;
+                        } else {
+                            data.garden_offset = (
+                                drag_start.1.x + ((e.pos.x - drag_start.0.x) as i32),
+                                drag_start.1.y + ((e.pos.y - drag_start.0.y) as i32),
+                            )
+                                .into();
+                        }
                         ctx.invalidate();
                     }
                 }
@@ -182,6 +199,7 @@ impl Widget {
     pub fn new() -> Self {
         Widget(eventer::Widget::new(InnerWidget {
             drag_start: None,
+            drag_plant: None,
             plants: Vec::new(),
         }))
     }
