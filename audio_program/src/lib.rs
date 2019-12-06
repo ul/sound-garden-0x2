@@ -1,12 +1,24 @@
 use audio_ops::*;
-use audio_vm::{Op, Program, Sample, CHANNELS};
+use audio_vm::{Frame, Op, Program, Sample, CHANNELS};
 use fasthash::sea::Hash64;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
+pub struct Context {
+    pub tables: HashMap<String, Arc<Mutex<Vec<Frame>>>, Hash64>,
+}
+
+impl Context {
+    pub fn new() -> Self {
+        Context {
+            tables: HashMap::with_hasher(Hash64),
+        }
+    }
+}
+
+pub fn parse_tokens(tokens: &[String], sample_rate: u32, ctx: &mut Context) -> Program {
     let mut ops = SmallVec::new();
     macro_rules! push {
         ( $class:ident ) => {
@@ -18,7 +30,6 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
             ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op+Send>)
         };
     }
-    let mut tables = HashMap::with_hasher(Hash64);
     for token in tokens {
         match token.as_str() {
             "*" => push_args!(Fn2, pure::mul),
@@ -92,30 +103,30 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
                         "ch" | "channel" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(Channel, n),
-                                Err(_) => {}
+                                Err(_) => push!(Noop),
                             },
-                            None => {}
+                            None => push!(Noop),
                         },
                         "dl" | "delay" => match tokens.get(1) {
                             Some(x) => match x.parse::<f64>() {
                                 Ok(max_delay) => push_args!(Delay, sample_rate, max_delay),
-                                Err(_) => {}
+                                Err(_) => push!(Noop),
                             },
-                            None => {}
+                            None => push!(Noop),
                         },
                         "fb" | "feedback" => match tokens.get(1) {
                             Some(x) => match x.parse::<f64>() {
                                 Ok(max_delay) => push_args!(Feedback, sample_rate, max_delay),
-                                Err(_) => {}
+                                Err(_) => push!(Noop),
                             },
-                            None => {}
+                            None => push!(Noop),
                         },
                         "rt" | "rtab" | "readtable" => {
-                            match tokens.get(1).and_then(|x| tables.get(*x)) {
+                            match tokens.get(1).and_then(|x| ctx.tables.get(*x)) {
                                 Some(table) => {
                                     push_args!(TableReader, sample_rate, Arc::clone(table));
                                 }
-                                None => {}
+                                None => push!(Noop),
                             }
                         }
                         "wt" | "wtab" | "writetable" => match tokens.get(2) {
@@ -127,28 +138,28 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32) -> Program {
                                         size * (sample_rate
                                             as usize)
                                     ]));
-                                    tables.insert(table_name, Arc::clone(&table));
+                                    ctx.tables.insert(table_name, Arc::clone(&table));
                                     push_args!(TableWriter, table);
                                 }
-                                Err(_) => {}
+                                Err(_) => push!(Noop),
                             },
-                            None => {}
+                            None => push!(Noop),
                         },
                         "conv" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(window_size) => push_args!(Convolution, window_size),
-                                Err(_) => {}
+                                Err(_) => push!(Noop),
                             },
-                            None => {}
+                            None => push!(Noop),
                         },
                         "convm" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(window_size) => push_args!(ConvolutionM, window_size),
-                                Err(_) => {}
+                                Err(_) => push!(Noop),
                             },
-                            None => {}
+                            None => push!(Noop),
                         },
-                        _ => {}
+                        _ => push!(Noop),
                     }
                 }
             },
@@ -164,5 +175,5 @@ pub fn parse_program(s: &str, sample_rate: u32) -> Program {
         .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
         .map(|x| String::from(x))
         .collect::<Vec<_>>();
-    parse_tokens(&tokens, sample_rate)
+    parse_tokens(&tokens, sample_rate, &mut Context::new())
 }

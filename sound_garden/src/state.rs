@@ -1,5 +1,6 @@
 use anyhow::Result;
 use druid::{kurbo::Point, Data};
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -21,6 +22,8 @@ pub struct Plant {
 
 #[derive(Clone, Data, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Node {
+    #[serde(skip_serializing, default = "random")]
+    pub id: u64,
     pub op: String,
     pub position: Position,
 }
@@ -127,5 +130,15 @@ impl Data for Plant {
 impl Data for PlantSceneMode {
     fn same(&self, other: &Self) -> bool {
         self == other
+    }
+}
+
+impl Node {
+    pub fn new(op: String, position: Position) -> Self {
+        Node {
+            id: random(),
+            op,
+            position,
+        }
     }
 }

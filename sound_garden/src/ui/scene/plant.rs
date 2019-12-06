@@ -39,10 +39,7 @@ impl druid::Widget<State> for InnerWidget {
                 }
                 log::debug!("Adding a new node.");
                 let (x, y) = pos.into();
-                let node = state::Node {
-                    op: String::from("0"),
-                    position: (x as _, y as _).into(),
-                };
+                let node = state::Node::new(String::from("0"), (x as _, y as _).into());
                 data.plant.nodes.push(node);
                 self.regenerate_nodes(data);
                 self.nodes.last_mut().unwrap().event(ctx, event, data, env);

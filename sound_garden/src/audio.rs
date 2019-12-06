@@ -1,7 +1,7 @@
 use anyhow::Result;
 use audio_vm::{Sample, CHANNELS, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
-use crossbeam_channel::{Receiver, TryRecvError, Sender};
+use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 
 pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()> {
