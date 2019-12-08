@@ -2,6 +2,7 @@ mod node;
 
 use crate::state;
 use crate::ui::{constants::*, eventer, util::find_edges};
+use audio_ops::pure::quantize;
 use druid::{
     kurbo::{BezPath, Point, Rect, Size},
     piet::{Color, RenderContext},
@@ -39,7 +40,14 @@ impl druid::Widget<State> for InnerWidget {
                 }
                 log::debug!("Adding a new node.");
                 let (x, y) = pos.into();
-                let node = state::Node::new(String::from("0"), (x as _, y as _).into());
+                let node = state::Node::new(
+                    String::from("0"),
+                    (
+                        quantize(x, PLANT_FONT_SIZE) as _,
+                        quantize(y, PLANT_FONT_SIZE) as _,
+                    )
+                        .into(),
+                );
                 data.plant.nodes.push(node);
                 self.regenerate_nodes(data);
                 self.nodes.last_mut().unwrap().event(ctx, event, data, env);
@@ -101,8 +109,10 @@ impl druid::Widget<State> for InnerWidget {
                     let dx = (e.pos.x - self.drag_start.0.x) as i32;
                     let dy = (e.pos.y - self.drag_start.0.y) as i32;
                     for (i, &ix) in self.drag_nodes.iter().enumerate() {
-                        data.plant.nodes[ix].position.x = self.drag_start.1[i].x + dx;
-                        data.plant.nodes[ix].position.y = self.drag_start.1[i].y + dy;
+                        data.plant.nodes[ix].position.x =
+                            quantize((self.drag_start.1[i].x + dx) as _, PLANT_FONT_SIZE) as _;
+                        data.plant.nodes[ix].position.y =
+                            quantize((self.drag_start.1[i].y + dy) as _, PLANT_FONT_SIZE) as _;
                     }
                 }
             }
