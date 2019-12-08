@@ -108,17 +108,15 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32, ctx: &mut Context) -> P
                             None => push!(Noop),
                         },
                         "dl" | "delay" => match tokens.get(1) {
-                            Some(x) => match x.parse::<f64>() {
-                                Ok(max_delay) => push_args!(Delay, sample_rate, max_delay),
-                                Err(_) => push!(Noop),
-                            },
+                            Some(x) => {
+                                push_args!(Delay, sample_rate, x.parse::<f64>().unwrap_or(60.0))
+                            }
                             None => push!(Noop),
                         },
                         "fb" | "feedback" => match tokens.get(1) {
-                            Some(x) => match x.parse::<f64>() {
-                                Ok(max_delay) => push_args!(Feedback, sample_rate, max_delay),
-                                Err(_) => push!(Noop),
-                            },
+                            Some(x) => {
+                                push_args!(Feedback, sample_rate, x.parse::<f64>().unwrap_or(60.0))
+                            }
                             None => push!(Noop),
                         },
                         "rt" | "rtab" | "readtable" => {
