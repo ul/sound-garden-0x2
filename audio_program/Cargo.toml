@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 smallvec = "1.0.0"
 fasthash = "0.4.0"
+log = "0.4.8"
 
 [dependencies.audio_ops]
 path = "../audio_ops"

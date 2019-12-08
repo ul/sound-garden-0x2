@@ -103,61 +103,91 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32, ctx: &mut Context) -> P
                         "ch" | "channel" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(Channel, n),
-                                Err(_) => push!(Noop),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as channel number", x);
+                                    push!(Noop)
+                                }
                             },
-                            None => push!(Noop),
+                            None => {
+                                log::warn!("Missing channel number parameter.");
+                                push!(Noop)
+                            }
                         },
                         "dl" | "delay" => match tokens.get(1) {
                             Some(x) => {
                                 push_args!(Delay, sample_rate, x.parse::<f64>().unwrap_or(60.0))
                             }
-                            None => push!(Noop),
+                            None => push_args!(Delay, sample_rate, 60.0),
                         },
                         "fb" | "feedback" => match tokens.get(1) {
                             Some(x) => {
                                 push_args!(Feedback, sample_rate, x.parse::<f64>().unwrap_or(60.0))
                             }
-                            None => push!(Noop),
+                            None => push_args!(Feedback, sample_rate, 60.0),
                         },
                         "rt" | "rtab" | "readtable" => {
                             match tokens.get(1).and_then(|x| ctx.tables.get(*x)) {
                                 Some(table) => {
                                     push_args!(TableReader, sample_rate, Arc::clone(table));
                                 }
-                                None => push!(Noop),
+                                None => {
+                                    log::warn!("Missing table name parameter.");
+                                    push!(Noop)
+                                }
                             }
                         }
                         "wt" | "wtab" | "writetable" => match tokens.get(2) {
-                            Some(x) => match x.parse::<usize>() {
+                            Some(x) => match x.parse::<Sample>() {
                                 Ok(size) => {
                                     let table_name = String::from(tokens[1]);
                                     let table = Arc::new(Mutex::new(vec![
                                         [0.0; CHANNELS];
-                                        size * (sample_rate
-                                            as usize)
+                                        (size * (sample_rate as Sample))
+                                            as _
                                     ]));
                                     ctx.tables.insert(table_name, Arc::clone(&table));
                                     push_args!(TableWriter, table);
                                 }
-                                Err(_) => push!(Noop),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as table length.", x);
+                                    push!(Noop)
+                                }
                             },
-                            None => push!(Noop),
+                            None => {
+                                log::warn!("Missing table name or length parameter.");
+                                push!(Noop)
+                            }
                         },
                         "conv" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(window_size) => push_args!(Convolution, window_size),
-                                Err(_) => push!(Noop),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as kernel length.", x);
+                                    push!(Noop)
+                                }
                             },
-                            None => push!(Noop),
+                            None => {
+                                log::warn!("Missing kernel length parameter.");
+                                push!(Noop)
+                            }
                         },
                         "convm" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(window_size) => push_args!(ConvolutionM, window_size),
-                                Err(_) => push!(Noop),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as kernel length.", x);
+                                    push!(Noop)
+                                }
                             },
-                            None => push!(Noop),
+                            None => {
+                                log::warn!("Missing kernel length parameter.");
+                                push!(Noop)
+                            }
                         },
-                        _ => push!(Noop),
+                        _ => {
+                            log::warn!("Unknown token: {}", token);
+                            push!(Noop)
+                        }
                     }
                 }
             },
