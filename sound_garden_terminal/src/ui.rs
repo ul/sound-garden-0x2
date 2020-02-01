@@ -291,11 +291,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Char('\n') => {
                         app.input_mode = InputMode::Normal;
                         events.enable_exit_key();
-                        if let Some(ix) = app.node_at_cursor() {
-                            if app.nodes[ix].op.is_empty() {
-                                app.nodes.swap_remove(ix);
-                            }
-                        }
+                        app.nodes.retain(|node| !node.op.is_empty());
                     }
                     Key::Char(c) => {
                         let node = app.node_at_cursor();
@@ -359,6 +355,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Esc => {
                         app.input_mode = InputMode::Normal;
                         events.enable_exit_key();
+                        app.nodes.retain(|node| !node.op.is_empty());
                     }
                     _ => {}
                 },
