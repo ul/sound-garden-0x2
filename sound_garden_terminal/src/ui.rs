@@ -150,6 +150,30 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Char('l') | Key::Right | Key::Char(' ') => {
                         app.cursor.x += 1;
                     }
+                    Key::Alt('h') => {
+                        if let Some(ix) = app.node_at_cursor() {
+                            app.nodes[ix].position.x -= 1;
+                        }
+                        app.cursor.x -= 1;
+                    }
+                    Key::Alt('j') => {
+                        if let Some(ix) = app.node_at_cursor() {
+                            app.nodes[ix].position.y += 1;
+                        }
+                        app.cursor.y += 1;
+                    }
+                    Key::Alt('k') => {
+                        if let Some(ix) = app.node_at_cursor() {
+                            app.nodes[ix].position.y -= 1;
+                        }
+                        app.cursor.y -= 1;
+                    }
+                    Key::Alt('l') => {
+                        if let Some(ix) = app.node_at_cursor() {
+                            app.nodes[ix].position.x += 1;
+                        }
+                        app.cursor.x += 1;
+                    }
                     Key::Char('H') => {
                         let p = app.cursor;
                         for node in app
