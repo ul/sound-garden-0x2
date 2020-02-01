@@ -300,9 +300,11 @@ pub fn run<P: AsRef<std::path::Path>>(
                         let node = app.node_at_cursor();
                         if let Some(ix) = node {
                             let p = app.cursor;
-                            for node in app.nodes.iter_mut().filter(|node| {
-                                node.position.y == p.y && p.x < node.position.x + node.op.len()
-                            }) {
+                            for node in app
+                                .nodes
+                                .iter_mut()
+                                .filter(|node| node.position.y == p.y && p.x < node.position.x)
+                            {
                                 node.position.x += 1;
                             }
                             let node = &mut app.nodes[ix];
