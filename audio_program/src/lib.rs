@@ -18,16 +18,22 @@ impl Context {
     }
 }
 
+impl Default for Context {
+    fn default() -> Self {
+        Context::new()
+    }
+}
+
 pub fn parse_tokens(tokens: &[String], sample_rate: u32, ctx: &mut Context) -> Program {
     let mut ops = SmallVec::new();
     macro_rules! push {
         ( $class:ident ) => {
-            ops.push(Box::new($class::new()) as Box<dyn Op + Send>)
+            ops.push(Box::new($class::new()) as Box<dyn Op>)
         };
     }
     macro_rules! push_args {
         ( $class:ident, $($rest:tt)* ) => {
-            ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op+Send>)
+            ops.push(Box::new($class::new($($rest)*)) as Box<dyn Op>)
         };
     }
     for token in tokens {

@@ -1,6 +1,7 @@
 use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct Impulse {
     frame: usize,
     last_trigger: Frame,
@@ -41,5 +42,9 @@ impl Op for Impulse {
         }
         self.frame += 1;
         stack.push(&frame);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

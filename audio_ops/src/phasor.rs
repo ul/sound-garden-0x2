@@ -19,6 +19,7 @@
 use audio_vm::{Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct Phasor {
     phases: [Sample; CHANNELS],
     sample_period: Sample,
@@ -41,8 +42,13 @@ impl Op for Phasor {
         }
         stack.push(&self.phases);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct Phasor0 {
     phases: [Sample; CHANNELS],
     sample_period: Sample,
@@ -66,5 +72,9 @@ impl Op for Phasor0 {
             *phase = ((*phase + phase0 + dx + 1.0) % 2.0) - 1.0;
         }
         stack.push(&self.phases);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

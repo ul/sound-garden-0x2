@@ -1,6 +1,7 @@
 use audio_vm::{Frame, Op, Stack, CHANNELS};
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct SampleAndHold {
     output: Frame,
 }
@@ -21,5 +22,9 @@ impl Op for SampleAndHold {
             *sample = *sample * (1.0 - t) + x * t
         }
         stack.push(&self.output);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

@@ -1,6 +1,7 @@
 use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct Metro {
     last_trigger: [u64; CHANNELS],
     frame_number: u64,
@@ -34,8 +35,13 @@ impl Op for Metro {
         self.frame_number += 1;
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct DMetro {
     last_trigger: [u64; CHANNELS],
     frame_number: u64,
@@ -67,8 +73,13 @@ impl Op for DMetro {
         self.frame_number += 1;
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct MetroHold {
     frequencies: Frame,
     last_trigger: [u64; CHANNELS],
@@ -111,8 +122,13 @@ impl Op for MetroHold {
         self.frame_number += 1;
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct DMetroHold {
     dts: Frame,
     last_trigger: [u64; CHANNELS],
@@ -154,5 +170,9 @@ impl Op for DMetroHold {
         }
         self.frame_number += 1;
         stack.push(&frame);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

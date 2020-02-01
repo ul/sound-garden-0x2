@@ -2,6 +2,7 @@ use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 use std::collections::VecDeque;
 
+#[derive(Clone)]
 pub struct Delay {
     buffer: VecDeque<Frame>,
     mask: usize,
@@ -41,5 +42,9 @@ impl Op for Delay {
         stack.push(&frame);
         self.buffer.pop_back();
         self.buffer.push_front(input);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

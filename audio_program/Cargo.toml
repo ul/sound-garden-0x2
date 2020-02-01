@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-smallvec = "1.0.0"
+smallvec = "1.2.0"
 fasthash = "0.4.0"
 log = "0.4.8"
 
@@ -18,5 +18,5 @@ path = "../audio_ops"
 path = "../audio_vm"
 
 [dependencies.rand]
-version = "0.7.2"
+version = "0.7.3"
 features = ["small_rng"]

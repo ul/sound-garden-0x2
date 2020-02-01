@@ -1,6 +1,7 @@
 use audio_vm::{Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct Fn1 {
     f: fn(Sample) -> Sample,
 }
@@ -19,8 +20,13 @@ impl Op for Fn1 {
         }
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct Fn2 {
     f: fn(Sample, Sample) -> Sample,
 }
@@ -41,8 +47,13 @@ impl Op for Fn2 {
         }
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct Fn3 {
     f: fn(Sample, Sample, Sample) -> Sample,
 }
@@ -63,5 +74,9 @@ impl Op for Fn3 {
             *y = (self.f)(a, b, c);
         }
         stack.push(&frame);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

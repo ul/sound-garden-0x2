@@ -8,12 +8,12 @@ edition = "2018"
 
 [dependencies]
 itertools = "0.8.2"
-rustfft = "3.0.0"
+rustfft = "3.0.1"
 apodize = "1.0.0"
 
 [dependencies.audio_vm]
 path = "../audio_vm"
 
 [dependencies.rand]
-version = "0.7.2"
+version = "0.7.3"
 features = ["small_rng"]

@@ -7,6 +7,7 @@ use audio_vm::{Frame, Op, Stack, CHANNELS};
 use itertools::izip;
 use std::collections::VecDeque;
 
+#[derive(Clone)]
 pub struct Convolution {
     window: VecDeque<Frame>,
 }
@@ -40,8 +41,13 @@ impl Op for Convolution {
         }
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct ConvolutionM {
     window: VecDeque<Frame>,
     kernel: Vec<Frame>,
@@ -72,5 +78,9 @@ impl Op for ConvolutionM {
             }
         }
         stack.push(&frame);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

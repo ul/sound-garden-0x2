@@ -3,6 +3,7 @@ use crate::sample::{Frame, Sample, CHANNELS};
 pub const STACK_SIZE: usize = 16;
 const STACK_CAPACITY: usize = CHANNELS * STACK_SIZE;
 
+/// Simple fixed capacity stack tolerant to {over,under}flows.
 pub struct Stack {
     data: [Sample; STACK_CAPACITY],
     top: usize,
@@ -52,5 +53,11 @@ impl Stack {
         frame.copy_from_slice(&self.data[new_top..self.top]);
         self.top = new_top;
         frame
+    }
+}
+
+impl Default for Stack {
+    fn default() -> Self {
+        Stack::new()
     }
 }

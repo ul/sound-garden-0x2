@@ -1,8 +1,7 @@
 use crate::state::*;
 use crate::ui::{constants::*, util};
-use audio_ops::Noop;
 use audio_program::{parse_tokens, Context};
-use audio_vm::{vm::FADE_FRAMES, VM};
+use audio_vm::VM;
 use brotli::{CompressorWriter, Decompressor};
 use druid::{AppDelegate, Application, DelegateCtx, Env, Event, KeyCode};
 use std::sync::{Arc, Mutex};
@@ -127,37 +126,19 @@ impl AppDelegate<State> for Delegate {
             }
         };
         if self.ops != new_ops {
-            {
-                self.vm.lock().unwrap().fade_out()
-            }
-            log::debug!(
-                "Sleeping for {} µs to fade out",
-                (1e6 * FADE_FRAMES / (data.sample_rate as f64)) as u64,
-            );
-            std::thread::sleep(std::time::Duration::from_micros(
-                (1e6 * FADE_FRAMES / (data.sample_rate as f64)) as _,
-            ));
             let prg = new_ops.iter().map(|x| x.op.to_owned()).collect::<Vec<_>>();
             log::info!("New program is '{}'", prg.join(" "));
-            let mut new_program = parse_tokens(&prg, data.sample_rate, &mut self.ctx);
-            let mut old_program = { self.vm.lock().unwrap().unload_program() };
-            let program = new_ops
+            let new_program = parse_tokens(&prg, data.sample_rate, &mut self.ctx);
+            let reuse = new_ops
                 .iter()
                 .enumerate()
-                .map(|(i, op)| {
-                    let src = self
-                        .ops
-                        .iter()
-                        .position(|x| x == op)
-                        .map(|i| &mut old_program[i])
-                        .unwrap_or(&mut new_program[i]);
-                    std::mem::replace(src, Box::new(Noop::new()))
-                })
-                .collect();
+                .filter_map(|(n, op)| self.ops.iter().position(|x| x == op).map(|p| (p, n)))
+                .collect::<Vec<_>>();
             {
-                let mut vm = self.vm.lock().unwrap();
-                vm.load_program(program);
-                vm.fade_in();
+                self.vm
+                    .lock()
+                    .unwrap()
+                    .load_program_reuse(new_program, &reuse);
             }
             self.ops = new_ops;
         }
@@ -168,8 +149,8 @@ impl AppDelegate<State> for Delegate {
 impl Delegate {
     pub fn new(vm: Arc<Mutex<VM>>) -> Self {
         Delegate {
-            ctx: Context::new(),
-            ops: Vec::new(),
+            ctx: Default::default(),
+            ops: Default::default(),
             vm,
         }
     }

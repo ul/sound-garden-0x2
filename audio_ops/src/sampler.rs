@@ -2,6 +2,7 @@ use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub struct TableReader {
     sample_rate: Sample,
     table: Arc<Mutex<Vec<Frame>>>,
@@ -32,8 +33,13 @@ impl Op for TableReader {
         }
         stack.push(&frame);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct TableWriter {
     frame: usize,
     last_trigger: Frame,
@@ -76,5 +82,9 @@ impl Op for TableWriter {
             *last_trigger = trigger;
         }
         self.frame += 1;
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

@@ -6,6 +6,7 @@ use crate::phasor::Phasor;
 use crate::pure::rectangle;
 use audio_vm::{Op, Stack};
 
+#[derive(Clone)]
 pub struct Pulse {
     phasor: Phasor,
     osc: Fn2,
@@ -25,5 +26,9 @@ impl Op for Pulse {
         self.phasor.perform(stack);
         stack.push(&duty_cycle);
         self.osc.perform(stack);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }

@@ -3,66 +3,85 @@ use crate::sample::{Frame, Sample};
 use crate::stack::Stack;
 use smallvec::SmallVec;
 
+// Totally unscientific attempt to improve performance of small programs by using SmallVec.
+/// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur exetra indirection.
 pub const FAST_PROGRAM_SIZE: usize = 64;
-pub const FADE_FRAMES: Sample = 2048.0;
-const FADE_FRAMES_RECIP: Sample = 1.0 / FADE_FRAMES;
 
-pub type Program = SmallVec<[Box<dyn Op + Send>; FAST_PROGRAM_SIZE]>;
+pub type Program = SmallVec<[Box<dyn Op>; FAST_PROGRAM_SIZE]>;
 
 pub struct VM {
-    stack: Stack,
-    ops: Program,
-    fade_counter: Sample,
-    fade_in: bool,
+    /// Output zero frames disregard of program.
+    pub pause: bool,
+    /// We store active and previous program for the sake of crossfade.
+    programs: [Program; 2],
+    /// How many frames left before crossfade end.
+    xfade_countdown: Sample,
+    /// Total duration of crossfade in frames.
+    xfade_duration: Sample,
 }
 
 impl VM {
     pub fn new() -> Self {
         VM {
-            stack: Stack::new(),
-            ops: SmallVec::new(),
-            fade_counter: 0.0,
-            fade_in: true,
+            programs: Default::default(),
+            xfade_countdown: 0.0,
+            xfade_duration: 2048.0,
+            pause: false,
         }
     }
 
-    pub fn load_program(&mut self, ops: Program) {
-        self.ops = ops;
+    pub fn set_xfade_duration(&mut self, frames: Sample) {
+        self.xfade_duration = frames;
     }
 
-    pub fn unload_program(&mut self) -> Program {
-        std::mem::replace(&mut self.ops, SmallVec::new())
+    pub fn load_program(&mut self, program: Program) {
+        self.programs[PREVIOUS_PROGRAM] =
+            std::mem::replace(&mut self.programs[ACTIVE_PROGRAM], program);
+        self.xfade_countdown = self.xfade_duration;
+    }
+
+    // TODO This is really bad as fork may allocate.
+    // But it's a tough task, we want reuse ops, have crossfade
+    // and don't want to call ops twice at the same time.
+    pub fn load_program_reuse(&mut self, program: Program, reuse: &[(usize, usize)]) {
+        self.programs[PREVIOUS_PROGRAM] =
+            std::mem::replace(&mut self.programs[ACTIVE_PROGRAM], program);
+        for &ix in reuse {
+            self.programs[ACTIVE_PROGRAM][ix.1] = self.programs[PREVIOUS_PROGRAM][ix.0].fork()
+        }
+        self.xfade_countdown = self.xfade_duration;
     }
 
     pub fn next_frame(&mut self) -> Frame {
-        let stack = &mut self.stack;
-        stack.reset();
-        for op in self.ops.iter_mut() {
-            op.perform(stack);
+        if self.pause {
+            return Default::default();
         }
-        let mut frame = stack.peek();
-        if self.fade_counter > 0.0 {
-            let progress = FADE_FRAMES_RECIP * self.fade_counter;
-            self.fade_counter -= 1.0;
-            let amp = if self.fade_in {
-                1.0 - progress
-            } else {
-                progress
-            };
-            for x in &mut frame {
-                *x *= amp;
+        let frame = self.perform(ACTIVE_PROGRAM);
+        self.xfade(frame)
+    }
+
+    #[inline]
+    fn xfade(&mut self, mut frame: Frame) -> Frame {
+        if self.xfade_countdown > 0.0 {
+            let progress = self.xfade_countdown / self.xfade_duration;
+            self.xfade_countdown -= 1.0;
+            for (x, &p) in frame.iter_mut().zip(self.perform(PREVIOUS_PROGRAM).iter()) {
+                *x *= 1.0 - progress;
+                *x += p * progress;
             }
         }
         frame
     }
 
-    pub fn fade_in(&mut self) {
-        self.fade_counter = FADE_FRAMES;
-        self.fade_in = true;
-    }
-
-    pub fn fade_out(&mut self) {
-        self.fade_counter = FADE_FRAMES;
-        self.fade_in = false;
+    #[inline]
+    fn perform(&mut self, ix: usize) -> Frame {
+        let mut stack = Stack::new();
+        for op in &mut self.programs[ix] {
+            op.perform(&mut stack);
+        }
+        stack.peek()
     }
 }
+
+const ACTIVE_PROGRAM: usize = 0;
+const PREVIOUS_PROGRAM: usize = 1;

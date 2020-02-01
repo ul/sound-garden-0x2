@@ -6,6 +6,7 @@
 use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct LPF {
     output: Frame,
     sample_angular_period: Sample,
@@ -32,8 +33,13 @@ impl Op for LPF {
         }
         stack.push(&self.output);
     }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
+    }
 }
 
+#[derive(Clone)]
 pub struct HPF {
     output: Frame,
     sample_angular_period: Sample,
@@ -64,5 +70,9 @@ impl Op for HPF {
             *x_prime = x;
         }
         stack.push(&self.output);
+    }
+
+    fn fork(&self) -> Box<dyn Op> {
+        Box::new(self.clone())
     }
 }
