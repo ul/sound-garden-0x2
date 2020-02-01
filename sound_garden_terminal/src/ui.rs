@@ -336,12 +336,6 @@ pub fn run<P: AsRef<std::path::Path>>(
                         let node = app.node_at_cursor();
                         app.cursor.x -= 1;
                         if let Some(ix) = node {
-                            let p = app.cursor;
-                            for node in app.nodes.iter_mut().filter(|node| {
-                                node.position.y == p.y && node.position.x + node.op.len() < p.x
-                            }) {
-                                node.position.x -= 1;
-                            }
                             let node = &mut app.nodes[ix];
                             if node.op.len() > 1 {
                                 let x = (app.cursor.x - node.position.x) as usize;
