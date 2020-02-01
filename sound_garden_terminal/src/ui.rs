@@ -126,6 +126,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                             Some(ix) => {
                                 let node = &mut app.nodes[ix];
                                 node.op.truncate(app.cursor.x - node.position.x);
+                                node.draft = true;
                             }
                             None => {
                                 let node = Node {
