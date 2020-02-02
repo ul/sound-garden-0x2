@@ -1,6 +1,5 @@
 use audio_vm::{Op, Stack};
 
-#[derive(Clone)]
 pub struct Dup;
 
 impl Dup {
@@ -13,13 +12,8 @@ impl Op for Dup {
     fn perform(&mut self, stack: &mut Stack) {
         stack.push(&stack.peek());
     }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Clone)]
 pub struct Swap;
 
 impl Swap {
@@ -35,13 +29,8 @@ impl Op for Swap {
         stack.push(&a);
         stack.push(&b);
     }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Clone)]
 pub struct Rot;
 
 impl Rot {
@@ -59,13 +48,8 @@ impl Op for Rot {
         stack.push(&a);
         stack.push(&c);
     }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
-    }
 }
 
-#[derive(Clone)]
 pub struct Pop;
 
 impl Pop {
@@ -77,9 +61,5 @@ impl Pop {
 impl Op for Pop {
     fn perform(&mut self, stack: &mut Stack) {
         stack.pop();
-    }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
     }
 }

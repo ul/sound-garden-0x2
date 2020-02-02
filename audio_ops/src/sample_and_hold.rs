@@ -1,7 +1,6 @@
 use audio_vm::{Frame, Op, Stack, CHANNELS};
 use itertools::izip;
 
-#[derive(Clone)]
 pub struct SampleAndHold {
     output: Frame,
 }
@@ -24,7 +23,9 @@ impl Op for SampleAndHold {
         stack.push(&self.output);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.output = other.output;
+        }
     }
 }

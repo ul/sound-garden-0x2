@@ -89,8 +89,4 @@ impl Op for SpectralTransform {
         self.frame_number += 1;
         stack.push(&frame);
     }
-
-    fn fork(&self) -> Box<dyn Op> {
-        todo!()
-    }
 }

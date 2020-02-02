@@ -1,7 +1,6 @@
 use audio_vm::{Op, Stack, CHANNELS};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 
-#[derive(Clone)]
 pub struct WhiteNoise {
     rng: SmallRng,
 }
@@ -21,9 +20,5 @@ impl Op for WhiteNoise {
             *sample = self.rng.gen_range(-1.0, 1.0);
         }
         stack.push(&frame);
-    }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
     }
 }

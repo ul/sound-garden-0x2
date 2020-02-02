@@ -6,7 +6,6 @@ use crate::phasor::Phasor;
 use crate::pure::rectangle;
 use audio_vm::{Op, Stack};
 
-#[derive(Clone)]
 pub struct Pulse {
     phasor: Phasor,
     osc: Fn2,
@@ -28,7 +27,9 @@ impl Op for Pulse {
         self.osc.perform(stack);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.phasor.migrate_same(&other.phasor);
+        }
     }
 }

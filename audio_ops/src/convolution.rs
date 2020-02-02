@@ -3,21 +3,18 @@
 //! Convolve two signals by making dot-product of a N-sample sliding window on both.
 //!
 //! Sources to connect: input and kernel, but roles are vague in this case.
+use crate::buffer::Buffer;
 use audio_vm::{Frame, Op, Stack, CHANNELS};
 use itertools::izip;
-use std::collections::VecDeque;
 
-#[derive(Clone)]
 pub struct Convolution {
-    window: VecDeque<Frame>,
+    window: Buffer<Frame>,
 }
 
 impl Convolution {
     pub fn new(window_size: usize) -> Self {
         Convolution {
-            window: std::iter::repeat([0.0; CHANNELS])
-                .take(window_size)
-                .collect(),
+            window: Buffer::new([0.0; CHANNELS], window_size),
         }
     }
 }
@@ -30,7 +27,6 @@ impl Op for Convolution {
         for (sample, &x, &y) in izip!(&mut frame, &input, &kernel) {
             *sample = x * y;
         }
-        self.window.pop_front();
         self.window.push_back(frame);
 
         let mut frame = [0.0; CHANNELS];
@@ -42,14 +38,15 @@ impl Op for Convolution {
         stack.push(&frame);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.window.copy_backward(&other.window);
+        }
     }
 }
 
-#[derive(Clone)]
 pub struct ConvolutionM {
-    window: VecDeque<Frame>,
+    window: Buffer<Frame>,
     kernel: Vec<Frame>,
 }
 
@@ -57,7 +54,7 @@ impl ConvolutionM {
     pub fn new(window_size: usize) -> Self {
         let zero = [0.0; CHANNELS];
         ConvolutionM {
-            window: std::iter::repeat(zero).take(window_size).collect(),
+            window: Buffer::new(zero, window_size),
             kernel: vec![zero; window_size],
         }
     }
@@ -68,11 +65,10 @@ impl Op for ConvolutionM {
         for kernel in self.kernel.iter_mut().rev() {
             *kernel = stack.pop();
         }
-        self.window.pop_front();
         self.window.push_back(stack.pop());
 
         let mut frame = [0.0; CHANNELS];
-        for (input, kernel) in izip!(&self.window, &self.kernel) {
+        for (input, kernel) in izip!(self.window.iter(), &self.kernel) {
             for (sample, &x, &y) in izip!(&mut frame, input, kernel) {
                 *sample += x * y
             }
@@ -80,7 +76,10 @@ impl Op for ConvolutionM {
         stack.push(&frame);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.window.copy_backward(&other.window);
+        }
+        // No need to copy kernel.
     }
 }

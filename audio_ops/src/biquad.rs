@@ -28,7 +28,6 @@ pub fn make_hpf_coefficients(
     (b0, b1, b0, 1.0 + alpha, -2.0 * cos_o, 1.0 - alpha)
 }
 
-#[derive(Clone)]
 pub struct BiQuad {
     make_coefficients: MakeCoefficients,
     sample_angular_period: Sample,
@@ -80,9 +79,5 @@ impl Op for BiQuad {
             *y2 = y1;
         }
         stack.push(&self.y1);
-    }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
     }
 }

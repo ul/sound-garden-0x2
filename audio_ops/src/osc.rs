@@ -5,7 +5,6 @@ use crate::function::Fn1;
 use crate::phasor::{Phasor, Phasor0};
 use audio_vm::{Op, Sample, Stack};
 
-#[derive(Clone)]
 pub struct Osc {
     phasor: Phasor,
     osc: Fn1,
@@ -25,12 +24,13 @@ impl Op for Osc {
         self.osc.perform(stack);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.phasor.migrate_same(&other.phasor);
+        }
     }
 }
 
-#[derive(Clone)]
 pub struct OscPhase {
     phasor: Phasor0,
     osc: Fn1,
@@ -50,7 +50,9 @@ impl Op for OscPhase {
         self.osc.perform(stack);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.phasor.migrate_same(&other.phasor);
+        }
     }
 }

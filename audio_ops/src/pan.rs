@@ -5,8 +5,7 @@ use crate::pure;
 use audio_vm::{Op, Stack, CHANNELS};
 use itertools::izip;
 
-#[derive(Clone)]
-pub struct Pan1 {}
+pub struct Pan1;
 
 /// Pan left and right channels of input signal.
 /// Left channel of position signal is used as position value for both.
@@ -23,16 +22,11 @@ impl Op for Pan1 {
         let (l, r) = pure::pan(input[0], input[1], position[0]);
         stack.push(&[l, r]);
     }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pan left channel of one signal with left channel of another.
 /// Left channel of position signal is used as position value for both.
-#[derive(Clone)]
-pub struct Pan2 {}
+pub struct Pan2;
 
 impl Pan2 {
     pub fn new() -> Self {
@@ -48,17 +42,12 @@ impl Op for Pan2 {
         let (l, r) = pure::pan(l, r, c);
         stack.push(&[l, r]);
     }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
-    }
 }
 
 /// Pan left and right channels of inputs as two pairs of left and right
 /// and then output left channel of lefts' pan as left, and right channel
 /// of rights' pan as right.
-#[derive(Clone)]
-pub struct Pan3 {}
+pub struct Pan3;
 
 impl Pan3 {
     pub fn new() -> Self {
@@ -84,9 +73,5 @@ impl Op for Pan3 {
             }
         }
         stack.push(&frame);
-    }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
     }
 }

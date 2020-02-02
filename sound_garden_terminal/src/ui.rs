@@ -46,14 +46,14 @@ pub fn run<P: AsRef<std::path::Path>>(
         if app.ops != next_ops {
             let prg = next_ops.iter().map(|x| x.op.to_owned()).collect::<Vec<_>>();
             let new_program = parse_tokens(&prg, sample_rate, &mut app.ctx);
-            let reuse = next_ops
+            let migrate = next_ops
                 .iter()
                 .enumerate()
-                .filter_map(|(n, op)| app.ops.iter().position(|x| x == op).map(|p| (p, n)))
+                .filter_map(|(n, op)| app.ops.iter().position(|x| x.id == op.id).map(|p| (p, n)))
                 .collect::<Vec<_>>();
             // Ensure the smallest possible scope to limit locking time.
             {
-                vm.lock().unwrap().load_program_reuse(new_program, &reuse);
+                vm.lock().unwrap().migrate_program(new_program, &migrate);
             }
             app.ops = next_ops;
             app.save(&filename).ok();
@@ -118,6 +118,40 @@ pub fn run<P: AsRef<std::path::Path>>(
                             };
                             app.nodes.push(node);
                         }
+                    }
+                    Key::Char('I') => {
+                        app.input_mode = InputMode::Editing;
+                        events.disable_exit_key();
+                        let mut push_left = 1;
+                        let push_right = 1;
+                        if let Some(ix) = app.node_at_cursor() {
+                            let Node {
+                                op, position: p, ..
+                            } = &app.nodes[ix];
+                            push_left += p.x + op.len() - app.cursor.x;
+                        }
+                        let p = app.cursor;
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                        {
+                            node.position.x -= push_left;
+                        }
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && node.position.x > p.x)
+                        {
+                            node.position.x += push_right;
+                        }
+                        let node = Node {
+                            id: random(),
+                            draft: true,
+                            op: String::new(),
+                            position: app.cursor,
+                        };
+                        app.nodes.push(node);
                     }
                     Key::Char('c') => {
                         app.input_mode = InputMode::Editing;
@@ -253,6 +287,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                         }
                     }
                     Key::Char('q') => {
+                        vm.lock().unwrap().pause = true;
                         break;
                     }
                     _ => {}
@@ -348,7 +383,8 @@ pub fn run<P: AsRef<std::path::Path>>(
                                 );
                                 node.draft = true;
                             } else {
-                                app.nodes.swap_remove(ix);
+                                node.op.pop();
+                                // app.nodes.swap_remove(ix);
                             };
                         }
                     }

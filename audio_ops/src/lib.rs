@@ -1,4 +1,5 @@
 mod biquad;
+mod buffer;
 mod channel;
 mod constant;
 mod convolution;

@@ -1,7 +1,6 @@
 use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
-#[derive(Clone)]
 pub struct Metro {
     last_trigger: [u64; CHANNELS],
     frame_number: u64,
@@ -36,12 +35,14 @@ impl Op for Metro {
         stack.push(&frame);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.last_trigger = other.last_trigger;
+            self.frame_number = other.frame_number;
+        }
     }
 }
 
-#[derive(Clone)]
 pub struct DMetro {
     last_trigger: [u64; CHANNELS],
     frame_number: u64,
@@ -74,12 +75,14 @@ impl Op for DMetro {
         stack.push(&frame);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.last_trigger = other.last_trigger;
+            self.frame_number = other.frame_number;
+        }
     }
 }
 
-#[derive(Clone)]
 pub struct MetroHold {
     frequencies: Frame,
     last_trigger: [u64; CHANNELS],
@@ -123,12 +126,15 @@ impl Op for MetroHold {
         stack.push(&frame);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.frequencies = other.frequencies;
+            self.last_trigger = other.last_trigger;
+            self.frame_number = other.frame_number;
+        }
     }
 }
 
-#[derive(Clone)]
 pub struct DMetroHold {
     dts: Frame,
     last_trigger: [u64; CHANNELS],
@@ -172,7 +178,11 @@ impl Op for DMetroHold {
         stack.push(&frame);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.dts = other.dts;
+            self.last_trigger = other.last_trigger;
+            self.frame_number = other.frame_number;
+        }
     }
 }

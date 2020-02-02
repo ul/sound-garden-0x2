@@ -129,7 +129,7 @@ impl AppDelegate<State> for Delegate {
             let prg = new_ops.iter().map(|x| x.op.to_owned()).collect::<Vec<_>>();
             log::info!("New program is '{}'", prg.join(" "));
             let new_program = parse_tokens(&prg, data.sample_rate, &mut self.ctx);
-            let reuse = new_ops
+            let migrate = new_ops
                 .iter()
                 .enumerate()
                 .filter_map(|(n, op)| self.ops.iter().position(|x| x == op).map(|p| (p, n)))
@@ -138,7 +138,7 @@ impl AppDelegate<State> for Delegate {
                 self.vm
                     .lock()
                     .unwrap()
-                    .load_program_reuse(new_program, &reuse);
+                    .migrate_program(new_program, &migrate);
             }
             self.ops = new_ops;
         }

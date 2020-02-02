@@ -1,6 +1,5 @@
 use audio_vm::{Op, Stack, CHANNELS};
 
-#[derive(Clone)]
 pub struct Channel {
     channel: usize,
 }
@@ -16,9 +15,5 @@ impl Op for Channel {
         let mut frame = [0.0; CHANNELS];
         frame[self.channel] = stack.pop()[self.channel];
         stack.push(&frame);
-    }
-
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
     }
 }

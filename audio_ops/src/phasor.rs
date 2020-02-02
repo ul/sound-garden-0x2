@@ -19,7 +19,6 @@
 use audio_vm::{Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
-#[derive(Clone)]
 pub struct Phasor {
     phases: [Sample; CHANNELS],
     sample_period: Sample,
@@ -32,6 +31,10 @@ impl Phasor {
             sample_period: Sample::from(sample_rate).recip(),
         }
     }
+
+    pub fn migrate_same(&mut self, other: &Self) {
+        self.phases = other.phases;
+    }
 }
 
 impl Op for Phasor {
@@ -43,12 +46,13 @@ impl Op for Phasor {
         stack.push(&self.phases);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.migrate_same(other);
+        }
     }
 }
 
-#[derive(Clone)]
 pub struct Phasor0 {
     phases: [Sample; CHANNELS],
     sample_period: Sample,
@@ -60,6 +64,10 @@ impl Phasor0 {
             phases: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
         }
+    }
+
+    pub fn migrate_same(&mut self, other: &Self) {
+        self.phases = other.phases;
     }
 }
 
@@ -74,7 +82,9 @@ impl Op for Phasor0 {
         stack.push(&self.phases);
     }
 
-    fn fork(&self) -> Box<dyn Op> {
-        Box::new(self.clone())
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.migrate_same(other);
+        }
     }
 }
