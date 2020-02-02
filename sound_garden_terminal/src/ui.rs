@@ -212,17 +212,6 @@ pub fn run<P: AsRef<std::path::Path>>(
                         }
                         app.cursor.x += 1;
                     }
-                    Key::Char('H') => {
-                        let p = app.cursor;
-                        for node in app
-                            .nodes
-                            .iter_mut()
-                            .filter(|node| node.position.y == p.y && node.position.x <= p.x)
-                        {
-                            node.position.x -= 1;
-                        }
-                        app.cursor.x -= 1;
-                    }
                     Key::Char('J') => {
                         let p = app.cursor;
                         for node in app.nodes.iter_mut().filter(|node| {
@@ -243,11 +232,56 @@ pub fn run<P: AsRef<std::path::Path>>(
                         }
                         app.cursor.y -= 1;
                     }
+                    Key::Char('H') => {
+                        let p = app.cursor;
+                        for node in app.nodes.iter_mut().filter(|node| node.position.y == p.y) {
+                            node.position.y -= 1;
+                        }
+                        app.cursor.y -= 1;
+                    }
                     Key::Char('L') => {
+                        let p = app.cursor;
+                        for node in app.nodes.iter_mut().filter(|node| node.position.y == p.y) {
+                            node.position.y += 1;
+                        }
+                        app.cursor.y += 1;
+                    }
+                    Key::Char(',') => {
+                        let p = app.cursor;
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                        {
+                            node.position.x -= 1;
+                        }
+                        app.cursor.x -= 1;
+                    }
+                    Key::Char('<') => {
                         let p = app.cursor;
                         for node in app.nodes.iter_mut().filter(|node| {
                             node.position.y == p.y && p.x < node.position.x + node.op.len()
                         }) {
+                            node.position.x -= 1;
+                        }
+                        app.cursor.x -= 1;
+                    }
+                    Key::Char('.') => {
+                        let p = app.cursor;
+                        for node in app.nodes.iter_mut().filter(|node| {
+                            node.position.y == p.y && p.x < node.position.x + node.op.len()
+                        }) {
+                            node.position.x += 1;
+                        }
+                        app.cursor.x += 1;
+                    }
+                    Key::Char('>') => {
+                        let p = app.cursor;
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                        {
                             node.position.x += 1;
                         }
                         app.cursor.x += 1;
