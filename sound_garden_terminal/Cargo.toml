@@ -14,6 +14,7 @@ tui = "0.8.0"
 anyhow = "1.0.26"
 rand = "0.7.3"
 serde_json = "1.0.45"
+itertools = "0.8.2"
 
 [dependencies.serde]
 version = "1.0.104"

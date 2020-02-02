@@ -2,6 +2,7 @@ use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
 use audio_program::{parse_tokens, Context};
 use audio_vm::VM;
+use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -112,8 +113,10 @@ fn render_help(
         let text = [
             Text::raw(format!("Path: {}\n", filename)),
             Text::raw(format!("Sample rate: {}\n", sample_rate)),
-            Text::raw(format!("Nodes: {}\n", app.nodes.len())),
-            Text::raw(format!("Ops: {}\n", app.ops.len())),
+            Text::raw(format!(
+                "Program: {}\n",
+                app.ops.iter().map(|op| op.op.to_owned()).join(" ")
+            )),
             Text::raw(format!("\n")),
             Text::raw(include_str!("help.txt")),
         ];
@@ -123,6 +126,7 @@ fn render_help(
         size.height -= 3;
         Paragraph::new(text.iter())
             .scroll(app.help_scroll)
+            .wrap(true)
             .render(&mut f, size);
     })?;
     write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
