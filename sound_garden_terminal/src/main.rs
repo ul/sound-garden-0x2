@@ -27,7 +27,7 @@ pub fn main() -> Result<()> {
         return Err(anyhow!("Filename is required."));
     }
 
-    ui::run(vm, sample_rate, filename.unwrap())?;
+    ui::run(vm, sample_rate, &filename.unwrap())?;
 
     Ok(())
 }
