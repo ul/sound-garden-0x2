@@ -103,8 +103,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                 InputMode::Normal => match input {
                     Key::Char('\n') => commit(&mut app),
                     Key::Char('\\') => {
-                        let mut vm = vm.lock().unwrap();
-                        vm.pause = !vm.pause;
+                        vm.lock().unwrap().toggle_play();
                     }
                     Key::Char('i') => {
                         app.input_mode = InputMode::Editing;
@@ -287,7 +286,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                         }
                     }
                     Key::Char('q') => {
-                        vm.lock().unwrap().pause = true;
+                        vm.lock().unwrap().play(false);
                         break;
                     }
                     _ => {}

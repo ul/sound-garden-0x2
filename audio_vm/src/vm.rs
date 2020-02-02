@@ -10,8 +10,6 @@ pub const FAST_PROGRAM_SIZE: usize = 64;
 pub type Program = SmallVec<[Box<dyn Op>; FAST_PROGRAM_SIZE]>;
 
 pub struct VM {
-    /// Output zero frames disregard of program when true.
-    pub pause: bool,
     /// Program to generate audio.
     active_program: Program,
     /// Previous program stored to provide crossfade.
@@ -20,6 +18,10 @@ pub struct VM {
     xfade_countdown: Sample,
     /// Total duration of crossfade in frames.
     xfade_duration: Sample,
+    /// Crossfade duration left on pause toggle.
+    pause_countdown: Sample,
+    /// |> / ||
+    status: Status,
 }
 
 impl VM {
@@ -29,8 +31,22 @@ impl VM {
             previous_program: Default::default(),
             xfade_countdown: 0.0,
             xfade_duration: 2048.0,
-            pause: false,
+            pause_countdown: 0.0,
+            status: Status::Play,
         }
+    }
+
+    pub fn toggle_play(&mut self) {
+        self.pause_countdown = self.xfade_duration;
+        self.status = match self.status {
+            Status::Play => Status::Pause,
+            Status::Pause => Status::Play,
+        };
+    }
+
+    pub fn play(&mut self, play: bool) {
+        self.pause_countdown = self.xfade_duration;
+        self.status = if play { Status::Play } else { Status::Pause };
     }
 
     pub fn set_xfade_duration(&mut self, frames: Sample) {
@@ -50,11 +66,22 @@ impl VM {
     }
 
     pub fn next_frame(&mut self) -> Frame {
-        if self.pause {
-            return Default::default();
+        match self.status {
+            Status::Play => {
+                let frame = perform(&mut self.active_program);
+                self.xfade(frame);
+                self.play_xfade(frame)
+            }
+            Status::Pause => {
+                if self.pause_countdown > 0.0 {
+                    let frame = perform(&mut self.active_program);
+                    self.xfade(frame);
+                    self.pause_xfade(frame)
+                } else {
+                    Default::default()
+                }
+            }
         }
-        let frame = perform(&mut self.active_program);
-        self.xfade(frame)
     }
 
     #[inline]
@@ -72,6 +99,28 @@ impl VM {
         }
         frame
     }
+
+    #[inline]
+    fn play_xfade(&mut self, mut frame: Frame) -> Frame {
+        if self.pause_countdown > 0.0 {
+            let progress = 1.0 - (self.pause_countdown / self.xfade_duration);
+            self.pause_countdown -= 1.0;
+            for x in frame.iter_mut() {
+                *x *= progress;
+            }
+        }
+        frame
+    }
+
+    #[inline]
+    fn pause_xfade(&mut self, mut frame: Frame) -> Frame {
+        let progress = self.pause_countdown / self.xfade_duration;
+        self.pause_countdown -= 1.0;
+        for x in frame.iter_mut() {
+            *x *= progress;
+        }
+        frame
+    }
 }
 
 #[inline]
@@ -81,4 +130,9 @@ fn perform(program: &mut Program) -> Frame {
         op.perform(&mut stack);
     }
     stack.peek()
+}
+
+enum Status {
+    Play,
+    Pause,
 }
