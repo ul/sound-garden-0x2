@@ -54,16 +54,16 @@ fn render_editor(
 ) -> Result<()> {
     terminal.draw(|mut f| {
         let size = f.size();
+        let color = if app.draft || app.nodes.iter().any(|node| node.draft) {
+            Color::Red
+        } else {
+            Color::White
+        };
         Block::default()
             .title("Sound Garden")
+            .title_style(Style::default().fg(color))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(
-                if app.draft || app.nodes.iter().any(|node| node.draft) {
-                    Color::Red
-                } else {
-                    Color::White
-                },
-            ))
+            .border_style(Style::default().fg(color))
             .render(&mut f, size);
         for Node {
             op,
@@ -107,6 +107,7 @@ fn render_help(
         let mut size = f.size();
         Block::default()
             .title("Sound Garden -- Help")
+            .title_style(Style::default().fg(Color::Green))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Green))
             .render(&mut f, size);
