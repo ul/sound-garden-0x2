@@ -34,6 +34,7 @@ pub fn run<P: AsRef<std::path::Path>>(
     let commit = |app: &mut App| {
         app.nodes.sort_by_key(|node| node.position);
         app.nodes.iter_mut().for_each(|node| node.draft = false);
+        app.draft = false;
         let next_ops = app
             .nodes
             .iter()
@@ -65,10 +66,13 @@ pub fn run<P: AsRef<std::path::Path>>(
             Block::default()
                 .title("Sound Garden")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(match app.input_mode {
-                    InputMode::Normal => Color::White,
-                    InputMode::Editing => Color::Green,
-                }))
+                .border_style(Style::default().fg(
+                    if app.draft || app.nodes.iter().any(|node| node.draft) {
+                        Color::Red
+                    } else {
+                        Color::White
+                    },
+                ))
                 .render(&mut f, size);
             for Node {
                 op,
@@ -251,6 +255,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Char('d') => {
                         if let Some(ix) = app.node_at_cursor() {
                             app.nodes.swap_remove(ix);
+                            app.draft = true;
                         }
                     }
                     Key::Char('=') => {
@@ -325,6 +330,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Char('\n') => {
                         app.input_mode = InputMode::Normal;
                         events.enable_exit_key();
+                        app.draft = app.nodes.iter().any(|node| node.op.is_empty());
                         app.nodes.retain(|node| !node.op.is_empty());
                     }
                     Key::Char(c) => {
@@ -365,6 +371,14 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Backspace => {
                         let node = app.node_at_cursor();
                         app.cursor.x -= 1;
+                        let p = app.cursor;
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && p.x < node.position.x)
+                        {
+                            node.position.x -= 1;
+                        }
                         if let Some(ix) = node {
                             let node = &mut app.nodes[ix];
                             if node.op.len() > 1 {
@@ -390,6 +404,7 @@ pub fn run<P: AsRef<std::path::Path>>(
                     Key::Esc => {
                         app.input_mode = InputMode::Normal;
                         events.enable_exit_key();
+                        app.draft = app.nodes.iter().any(|node| node.op.is_empty());
                         app.nodes.retain(|node| !node.op.is_empty());
                     }
                     _ => {}
@@ -411,6 +426,8 @@ struct App {
     #[serde(skip, default)]
     input_mode: InputMode,
     cursor: Position,
+    #[serde(skip, default)]
+    draft: bool,
 }
 
 impl App {
@@ -421,6 +438,7 @@ impl App {
             nodes: Default::default(),
             input_mode: Default::default(),
             cursor: Position { y: 2, x: 2 },
+            draft: Default::default(),
         }
     }
 
