@@ -205,7 +205,6 @@ pub fn parse_tokens(tokens: &[String], sample_rate: u32, ctx: &mut Context) -> P
 }
 
 pub fn parse_program(s: &str, sample_rate: u32) -> Program {
-    let s = s.replace(|c| c == '[' || c == ']' || c == ',', " ");
     let tokens = s
         .split_terminator('\n')
         .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
