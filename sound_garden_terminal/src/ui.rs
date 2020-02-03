@@ -54,24 +54,22 @@ fn render_editor(
 ) -> Result<()> {
     terminal.draw(|mut f| {
         let size = f.size();
-        let color = if app.draft || app.nodes.iter().any(|node| node.draft) {
-            Color::Red
-        } else {
-            Color::White
-        };
-        Block::default()
-            .title("Sound Garden")
-            .title_style(Style::default().fg(color))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(color))
-            .render(&mut f, size);
-        for Node {
-            op,
-            draft,
-            position: p,
-            ..
-        } in app.nodes.iter()
+        let mut nodes_to_drop = Vec::new();
+        for (
+            i,
+            Node {
+                op,
+                draft,
+                position: p,
+                ..
+            },
+        ) in app.nodes.iter().enumerate()
         {
+            if p.x < 2 || p.y < 2 || p.x + op.len() > size.width as _ || p.y + 1 > size.height as _
+            {
+                nodes_to_drop.push(i);
+                continue;
+            }
             let text = [Text::raw(op.to_owned())];
             Paragraph::new(text.iter())
                 .style(Style::default().fg(if *draft { Color::Red } else { Color::White }))
@@ -80,6 +78,26 @@ fn render_editor(
                     Rect::new((p.x - 1) as _, (p.y - 1) as _, op.len() as _, 1),
                 );
         }
+        for ix in nodes_to_drop.drain(..) {
+            app.nodes.swap_remove(ix);
+            app.draft = true;
+        }
+        let color = if app.paused {
+            Color::Gray
+        } else if app.draft || app.nodes.iter().any(|node| node.draft) {
+            Color::Red
+        } else {
+            Color::White
+        };
+        Block::default()
+            .title(&format!(
+                "Sound Garden────{}",
+                if app.paused { "||" } else { "|>" }
+            ))
+            .title_style(Style::default().fg(color))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(color))
+            .render(&mut f, size);
     })?;
     write!(
         terminal.backend_mut(),
@@ -106,7 +124,7 @@ fn render_help(
     terminal.draw(|mut f| {
         let mut size = f.size();
         Block::default()
-            .title("Sound Garden -- Help")
+            .title("Sound Garden────Help")
             .title_style(Style::default().fg(Color::Green))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Green))
@@ -114,6 +132,10 @@ fn render_help(
         let text = [
             Text::raw(format!("Path: {}\n", filename)),
             Text::raw(format!("Sample rate: {}\n", sample_rate)),
+            Text::raw(format!(
+                "Cycles: {}\n",
+                app.cycles.iter().map(|cycle| cycle.join("->")).join(", ")
+            )),
             Text::raw(format!(
                 "Program: {}\n",
                 app.ops.iter().map(|op| op.op.to_owned()).join(" ")
@@ -147,7 +169,8 @@ fn handle_editor(
             InputMode::Normal => match input {
                 Key::Char('\n') => commit(app, vm, sample_rate, filename),
                 Key::Char('\\') => {
-                    vm.lock().unwrap().toggle_play();
+                    app.paused = !app.paused;
+                    vm.lock().unwrap().play(!app.paused);
                 }
                 Key::Char('i') => {
                     app.input_mode = InputMode::Editing;
@@ -216,7 +239,7 @@ fn handle_editor(
                         }
                     }
                 }
-                Key::Char('h') | Key::Left => {
+                Key::Char('h') | Key::Left | Key::Backspace => {
                     app.cursor.x -= 1;
                 }
                 Key::Char('j') | Key::Down => {
@@ -333,34 +356,39 @@ fn handle_editor(
                 }
                 Key::Char('=') => {
                     if let Some(ix) = app.node_at_cursor() {
-                        if let Ok(x) = app.nodes[ix].op.parse::<f64>() {
-                            app.nodes[ix].op = format!("{}", x + 1.0);
+                        let node = &mut app.nodes[ix];
+                        let i = app.cursor.x - node.position.x;
+                        if let Some(d) = node.op.get(i..(i + 1)).and_then(|c| c.parse::<u8>().ok())
+                        {
+                            let d = (d + 1) % 10;
+                            node.op.replace_range(i..(i + 1), &d.to_string());
+
                             commit(app, vm, sample_rate, filename);
-                        };
+                        } else {
+                            for cycle in &app.cycles {
+                                if let Some(ops) = cycle.windows(2).find(|ops| ops[0] == node.op) {
+                                    node.op = ops[1].to_owned();
+                                }
+                            }
+                        }
                     }
                 }
                 Key::Char('-') => {
                     if let Some(ix) = app.node_at_cursor() {
-                        if let Ok(x) = app.nodes[ix].op.parse::<f64>() {
-                            app.nodes[ix].op = format!("{}", x - 1.0);
+                        let node = &mut app.nodes[ix];
+                        let i = app.cursor.x - node.position.x;
+                        if let Some(d) = node.op.get(i..(i + 1)).and_then(|c| c.parse::<u8>().ok())
+                        {
+                            let d = (d + 9) % 10;
+                            node.op.replace_range(i..(i + 1), &d.to_string());
                             commit(app, vm, sample_rate, filename);
-                        };
-                    }
-                }
-                Key::Char('+') => {
-                    if let Some(ix) = app.node_at_cursor() {
-                        if let Ok(x) = app.nodes[ix].op.parse::<f64>() {
-                            app.nodes[ix].op = format!("{}", x + 10.0);
-                            commit(app, vm, sample_rate, filename);
-                        };
-                    }
-                }
-                Key::Char('_') => {
-                    if let Some(ix) = app.node_at_cursor() {
-                        if let Ok(x) = app.nodes[ix].op.parse::<f64>() {
-                            app.nodes[ix].op = format!("{}", x - 10.0);
-                            commit(app, vm, sample_rate, filename);
-                        };
+                        } else {
+                            for cycle in &app.cycles {
+                                if let Some(ops) = cycle.windows(2).find(|ops| ops[1] == node.op) {
+                                    node.op = ops[0].to_owned();
+                                }
+                            }
+                        }
                     }
                 }
                 Key::Char('q') => {
@@ -555,6 +583,10 @@ struct App {
     screen: Screen,
     #[serde(skip, default)]
     help_scroll: u16,
+    #[serde(skip, default)]
+    paused: bool,
+    #[serde(skip, default = "default_cycles")]
+    cycles: Vec<Vec<String>>,
 }
 
 impl App {
@@ -568,6 +600,8 @@ impl App {
             draft: Default::default(),
             screen: Default::default(),
             help_scroll: 0,
+            paused: Default::default(),
+            cycles: default_cycles(),
         }
     }
 
@@ -653,4 +687,12 @@ impl Default for Screen {
     fn default() -> Self {
         Screen::Editor
     }
+}
+
+fn default_cycles() -> Vec<Vec<String>> {
+    // NOTE Always repeat the first element at the end.
+    vec![vec!["s", "t", "w", "c", "s"]]
+        .iter()
+        .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
+        .collect()
 }

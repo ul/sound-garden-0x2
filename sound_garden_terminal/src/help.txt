@@ -2,41 +2,42 @@
 
 Normal mode
 
-/------------------------------------\
-| q      | Quit.                     |
-| Return | Commit.                   |
-| \      | Play/pause.               | 
-| i      | Edit mode.                |
-| I      | Edit mode splash!         |
-| c      | Cut & edit.               |
-| h      | Left.                     |
-| j      | Down.                     |
-| k      | Up.                       |
-| l      | Right.                    |
-| d      | Delete node.              |
-| Alt+h  | Move node left.           |
-| Alt+j  | Move node down.           |
-| Alt+k  | Move node up.             |
-| Alt+l  | Move node right.          |
-| J      | Move node and after down. |
-| K      | Move node and before up.  |
-| H      | Move line up.             |
-| L      | Move line down.           |
-| ,      | Move left of line left.   |
-| <      | Move right of line left.  |
-| .      | Move right of line right. |
-| >      | Move left of line right.  |
-| =      | Increase by 1.            |
-| -      | Decrease by 1.            |
-| +      | Increase by 10.           |
-| _      | Decrease by 10.           |
-| ?      | Help (this screen).       |
-\------------------------------------/
+/--------------------------------------\
+| q      | Quit.                       |
+| Return | Commit.                     |
+| \      | Play/pause.                 |
+| i      | Edit mode.                  |
+| I      | Edit mode splash!           |
+| c      | Cut & edit.                 |
+| h      | Left.                       |
+| j      | Down.                       |
+| k      | Up.                         |
+| l      | Right.                      |
+| d      | Delete node.                |
+| Alt+h  | Move node left.             |
+| Alt+j  | Move node down.             |
+| Alt+k  | Move node up.               |
+| Alt+l  | Move node right.            |
+| J      | Move node and after down.   |
+| K      | Move node and before up.    |
+| H      | Move line up.               |
+| L      | Move line down.             |
+| ,      | Move left of line left.     |
+| <      | Move right of line left.    |
+| .      | Move right of line right.   |
+| >      | Move left of line right.    |
+| =      | Cycle up / Increase by 1.   |
+| -      | Cycle down / Decrease by 1. |
+| ?      | Help (this screen).         |
+\--------------------------------------/
+
+Cycle commands commit changes immideately.
+Moving node out of viewport will delete it.
 
 Edit mode
 
-/------------------------------------\
-| Esc, Return | Normal mode.         |
-| <char>      | Insert char.         |
-| Backspace   | Remove previous char.|
-\------------------------------------/
+/--------------------------------------\
+| Esc, Return | Normal mode.           |
+| <char>      | Insert char.           |
+| Backspace   | Remove previous char.  |
+\--------------------------------------/
