@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use thread_worker::Worker;
 
 const CHANNEL_CAPACITY: usize = 64;
-const RECORD_BUFFER_CAPACITY: usize = 5 * 48000;
+const RECORD_BUFFER_CAPACITY: usize = 48000;
 
 pub fn main() -> Result<()> {
     let filename = std::env::args().skip(1).next();

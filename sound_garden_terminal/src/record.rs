@@ -23,6 +23,7 @@ pub fn main(
         match rx.try_recv() {
             Ok(on) => {
                 writer.take().and_then(|w| w.finalize().ok());
+                consumer.pop_each(|_| true, None);
                 if on {
                     let filename = format!("{}-{}.wav", base_filename, Local::now().to_rfc3339());
                     writer = Some(WavWriter::create(filename, spec)?);
