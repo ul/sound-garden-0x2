@@ -6,6 +6,7 @@ Normal mode
 | q      | Quit.                       |
 | Return | Commit.                     |
 | \      | Play/pause.                 |
+| r      | Toggle recording.           |
 | i      | Edit mode.                  |
 | I      | Edit mode splash!           |
 | c      | Cut & edit.                 |

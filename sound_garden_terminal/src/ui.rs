@@ -2,6 +2,8 @@ use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
 use audio_program::{compile_program, rewrite_terms, Context, TextOp};
 use audio_vm::VM;
+use chrono::prelude::*;
+use crossbeam_channel::Sender;
 use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -19,7 +21,12 @@ use tui::style::{Color, Style};
 use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
 use tui::Terminal;
 
-pub fn run(vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) -> Result<()> {
+pub fn main(
+    vm: Arc<Mutex<VM>>,
+    sample_rate: u32,
+    filename: &str,
+    record_tx: &Sender<bool>,
+) -> Result<()> {
     let mut app = App::load(&filename).unwrap_or_else(|_| App::new());
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
@@ -40,6 +47,7 @@ pub fn run(vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) -> Result<()> {
                 sample_rate,
                 &filename,
                 &mut events,
+                record_tx,
             )?,
             Screen::Help => handle_help(&mut app, &mut events)?,
         };
@@ -91,8 +99,17 @@ fn render_editor(
         };
         Block::default()
             .title(&format!(
-                "Sound Garden────{}",
-                if app.paused { "||" } else { "|>" }
+                "Sound Garden────{}────{}",
+                if app.paused { "||" } else { "|>" },
+                if app.recording {
+                    if Utc::now().second() % 2 == 0 {
+                        "•R"
+                    } else {
+                        " R"
+                    }
+                } else {
+                    ""
+                }
             ))
             .title_style(Style::default().fg(color))
             .borders(Borders::ALL)
@@ -164,6 +181,7 @@ fn handle_editor(
     sample_rate: u32,
     filename: &str,
     events: &mut Events,
+    record_tx: &Sender<bool>,
 ) -> Result<()> {
     match events.next()? {
         Event::Input(input) => match app.input_mode {
@@ -409,6 +427,10 @@ fn handle_editor(
                         }
                     }
                 }
+                Key::Char('r') => {
+                    app.recording = !app.recording;
+                    record_tx.send(app.recording).ok();
+                }
                 Key::Char('q') => {
                     vm.lock().unwrap().pause();
                     return Err(anyhow!("Quit!"));
@@ -600,6 +622,8 @@ struct App {
     paused: bool,
     #[serde(skip, default = "default_cycles")]
     cycles: Vec<Vec<String>>,
+    #[serde(skip, default)]
+    recording: bool,
 }
 
 impl App {
@@ -615,6 +639,7 @@ impl App {
             help_scroll: 0,
             paused: Default::default(),
             cycles: default_cycles(),
+            recording: Default::default(),
         }
     }
 

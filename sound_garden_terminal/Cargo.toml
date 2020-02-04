@@ -7,14 +7,17 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.26"
+chrono = "0.4.10"
 cpal = "0.11.0"
 crossbeam-channel = "0.4.0"
+hound = "3.4.0"
+itertools = "0.8.2"
+rand = "0.7.3"
+ringbuf = "0.2.1"
+serde_json = "1.0.45"
 termion = "1.5.5"
 tui = "0.8.0"
-anyhow = "1.0.26"
-rand = "0.7.3"
-serde_json = "1.0.45"
-itertools = "0.8.2"
 
 [dependencies.serde]
 version = "1.0.104"

@@ -2,9 +2,15 @@ use anyhow::Result;
 use audio_vm::{Sample, CHANNELS, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use ringbuf::Producer;
 use std::sync::{Arc, Mutex};
 
-pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()> {
+pub fn main(
+    vm: Arc<Mutex<VM>>,
+    mut producer: Producer<Sample>,
+    rx: Receiver<()>,
+    tx: Sender<u32>,
+) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -55,8 +61,11 @@ pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()>
                 buffer: cpal::UnknownTypeOutputBuffer::U16(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
-                    for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = ((clip(sample) * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
+                    let next_frame = vm.next_frame();
+                    for (out, &sample) in frame.iter_mut().zip(&next_frame) {
+                        let sample = clip(sample);
+                        *out = ((sample * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
+                        producer.push(sample).ok();
                     }
                 }
             }
@@ -64,8 +73,11 @@ pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()>
                 buffer: cpal::UnknownTypeOutputBuffer::I16(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
-                    for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = (clip(sample) * std::i16::MAX as Sample) as i16;
+                    let next_frame = vm.next_frame();
+                    for (out, &sample) in frame.iter_mut().zip(&next_frame) {
+                        let sample = clip(sample);
+                        *out = (sample * std::i16::MAX as Sample) as i16;
+                        producer.push(sample).ok();
                     }
                 }
             }
@@ -73,8 +85,11 @@ pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()>
                 buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
-                    for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = clip(sample) as f32;
+                    let next_frame = vm.next_frame();
+                    for (out, &sample) in frame.iter_mut().zip(&next_frame) {
+                        let sample = clip(sample);
+                        *out = sample as f32;
+                        producer.push(sample).ok();
                     }
                 }
             }
