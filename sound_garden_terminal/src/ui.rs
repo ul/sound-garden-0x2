@@ -230,8 +230,17 @@ fn handle_editor(
                     match app.node_at_cursor() {
                         Some(ix) => {
                             let node = &mut app.nodes[ix];
+                            let push_left = node.position.x + node.op.len() - app.cursor.x;
                             node.op.truncate(app.cursor.x - node.position.x);
                             node.draft = true;
+                            let p = app.cursor;
+                            for node in app
+                                .nodes
+                                .iter_mut()
+                                .filter(|node| node.position.y == p.y && node.position.x > p.x)
+                            {
+                                node.position.x -= push_left;
+                            }
                         }
                         None => {
                             let node = Node {
