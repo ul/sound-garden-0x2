@@ -1,4 +1,4 @@
-use audio_vm::{Op, Stack};
+use audio_vm::{Frame, Op, Stack, CHANNELS};
 
 pub struct Dup;
 
@@ -63,3 +63,30 @@ impl Op for Pop {
         stack.pop();
     }
 }
+
+pub struct Dig {
+    t: Vec<Frame>,
+}
+
+impl Dig {
+    pub fn new(depth: usize) -> Self {
+        Dig {
+            t: vec![ZERO; depth],
+        }
+    }
+}
+
+impl Op for Dig {
+    fn perform(&mut self, stack: &mut Stack) {
+        for x in self.t.iter_mut() {
+            *x = stack.pop();
+        }
+        for x in self.t.iter_mut().rev().skip(1) {
+            stack.push(&std::mem::replace(x, ZERO));
+        }
+        let depth = self.t.len();
+        stack.push(&std::mem::replace(&mut self.t[depth - 1], ZERO));
+    }
+}
+
+const ZERO: Frame = [0.0; CHANNELS];

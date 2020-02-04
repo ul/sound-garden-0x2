@@ -120,6 +120,17 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                 Err(_) => {
                     let tokens = op.split(':').collect::<Vec<_>>();
                     match tokens[0] {
+                        "" | "dig" => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(n) => push_args!(id, Dig, n),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as depth", x);
+                                }
+                            },
+                            None => {
+                                log::warn!("Missing depth parameter.");
+                            }
+                        },
                         "ch" | "channel" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Channel, n),
