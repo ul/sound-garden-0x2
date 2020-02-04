@@ -7,5 +7,5 @@ pub use self::{
     op::Op,
     sample::{Frame, Sample, CHANNELS},
     stack::Stack,
-    vm::{Program, VM},
+    vm::{Program, Statement, VM},
 };

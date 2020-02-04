@@ -1,6 +1,6 @@
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_program::{parse_tokens, Context};
+use audio_program::{compile_program, rewrite_terms, Context, TextOp};
 use audio_vm::VM;
 use itertools::Itertools;
 use rand::prelude::*;
@@ -129,6 +129,7 @@ fn render_help(
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Green))
             .render(&mut f, size);
+        app.nodes.sort_by_key(|node| node.position);
         let text = [
             Text::raw(format!("Path: {}\n", filename)),
             Text::raw(format!("Sample rate: {}\n", sample_rate)),
@@ -138,7 +139,7 @@ fn render_help(
             )),
             Text::raw(format!(
                 "Program: {}\n",
-                app.ops.iter().map(|op| op.op.to_owned()).join(" ")
+                app.nodes.iter().map(|node| node.op.to_owned()).join(" ")
             )),
             Text::raw(format!("\n")),
             Text::raw(include_str!("help.txt")),
@@ -170,7 +171,11 @@ fn handle_editor(
                 Key::Char('\n') => commit(app, vm, sample_rate, filename),
                 Key::Char('\\') => {
                     app.paused = !app.paused;
-                    vm.lock().unwrap().play(!app.paused);
+                    if app.paused {
+                        vm.lock().unwrap().pause();
+                    } else {
+                        vm.lock().unwrap().play();
+                    }
                 }
                 Key::Char('i') => {
                     app.input_mode = InputMode::Editing;
@@ -368,6 +373,8 @@ fn handle_editor(
                             for cycle in &app.cycles {
                                 if let Some(ops) = cycle.windows(2).find(|ops| ops[0] == node.op) {
                                     node.op = ops[1].to_owned();
+                                    commit(app, vm, sample_rate, filename);
+                                    break;
                                 }
                             }
                         }
@@ -386,13 +393,15 @@ fn handle_editor(
                             for cycle in &app.cycles {
                                 if let Some(ops) = cycle.windows(2).find(|ops| ops[1] == node.op) {
                                     node.op = ops[0].to_owned();
+                                    commit(app, vm, sample_rate, filename);
+                                    break;
                                 }
                             }
                         }
                     }
                 }
                 Key::Char('q') => {
-                    vm.lock().unwrap().play(false);
+                    vm.lock().unwrap().pause();
                     return Err(anyhow!("Quit!"));
                 }
                 Key::Char('?') => app.screen = Screen::Help,
@@ -541,29 +550,24 @@ fn commit(app: &mut App, vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) {
     app.nodes.sort_by_key(|node| node.position);
     app.nodes.iter_mut().for_each(|node| node.draft = false);
     app.draft = false;
-    let next_ops = app
-        .nodes
-        .iter()
-        .map(|Node { id, op, .. }| CachedOp {
-            id: *id,
-            op: op.to_owned(),
-        })
-        .collect::<Vec<_>>();
-
-    if app.ops != next_ops {
-        let prg = next_ops.iter().map(|x| x.op.to_owned()).collect::<Vec<_>>();
-        let new_program = parse_tokens(&prg, sample_rate, &mut app.ctx);
-        let migrate = next_ops
+    let next_ops = rewrite_terms(
+        &app.nodes
             .iter()
-            .enumerate()
-            .filter_map(|(n, op)| app.ops.iter().position(|x| x.id == op.id).map(|p| (p, n)))
-            .collect::<Vec<_>>();
-        // Ensure the smallest possible scope to limit locking time.
-        {
-            vm.lock().unwrap().migrate_program(new_program, &migrate);
-        }
+            .map(|Node { id, op, .. }| TextOp {
+                id: *id,
+                op: op.to_owned(),
+            })
+            .collect::<Vec<_>>(),
+    );
+    if app.ops != next_ops {
         app.ops = next_ops;
         app.save(&filename).ok();
+        let new_program = compile_program(&app.ops, sample_rate, &mut app.ctx);
+        // Ensure the smallest possible scope to limit locking time.
+        let garbage = {
+            vm.lock().unwrap().load_program(new_program);
+        };
+        drop(garbage);
     }
 }
 
@@ -572,7 +576,7 @@ struct App {
     #[serde(skip, default)]
     ctx: Context,
     #[serde(skip, default)]
-    ops: Vec<CachedOp>,
+    ops: Vec<TextOp>,
     nodes: Vec<Node>,
     #[serde(skip, default)]
     input_mode: InputMode,
@@ -637,12 +641,6 @@ impl App {
 enum InputMode {
     Normal,
     Editing,
-}
-
-#[derive(Clone, PartialEq, Eq, Default)]
-struct CachedOp {
-    id: u64,
-    op: String,
 }
 
 #[derive(Serialize, Deserialize)]

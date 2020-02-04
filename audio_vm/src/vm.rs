@@ -7,7 +7,12 @@ use smallvec::SmallVec;
 /// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur exetra indirection.
 pub const FAST_PROGRAM_SIZE: usize = 64;
 
-pub type Program = SmallVec<[Box<dyn Op>; FAST_PROGRAM_SIZE]>;
+pub struct Statement {
+    pub id: u64,
+    pub op: Box<dyn Op>,
+}
+
+pub type Program = SmallVec<[Statement; FAST_PROGRAM_SIZE]>;
 
 pub struct VM {
     /// Program to generate audio.
@@ -44,25 +49,39 @@ impl VM {
         };
     }
 
-    pub fn play(&mut self, play: bool) {
+    pub fn play(&mut self) {
         self.pause_countdown = self.xfade_duration;
-        self.status = if play { Status::Play } else { Status::Pause };
+        self.status = Status::Play;
+    }
+
+    pub fn pause(&mut self) {
+        self.pause_countdown = self.xfade_duration;
+        self.status = Status::Pause;
     }
 
     pub fn set_xfade_duration(&mut self, frames: Sample) {
         self.xfade_duration = frames;
     }
 
-    pub fn load_program(&mut self, program: Program) {
-        self.previous_program = std::mem::replace(&mut self.active_program, program);
-        self.xfade_countdown = self.xfade_duration;
-    }
-
-    pub fn migrate_program(&mut self, program: Program, migrate: &[(usize, usize)]) {
-        self.load_program(program);
-        for &ix in migrate {
-            self.active_program[ix.1].migrate(&self.previous_program[ix.0]);
+    /// Load the new program and crossfade to it from the previous one.
+    /// Returns previous value of previous program so it could be deallocated
+    /// somewhere else.
+    pub fn load_program(&mut self, program: Program) -> Program {
+        let garbage = std::mem::replace(
+            &mut self.previous_program,
+            std::mem::replace(&mut self.active_program, program),
+        );
+        for stmt in &mut self.active_program {
+            if let Some(prev_stmt) = self
+                .previous_program
+                .iter()
+                .find(|prev_stmt| prev_stmt.id == stmt.id)
+            {
+                stmt.op.migrate(&prev_stmt.op);
+            }
         }
+        self.xfade_countdown = self.xfade_duration;
+        garbage
     }
 
     pub fn next_frame(&mut self) -> Frame {
@@ -126,8 +145,8 @@ impl VM {
 #[inline]
 fn perform(program: &mut Program) -> Frame {
     let mut stack = Stack::new();
-    for op in program {
-        op.perform(&mut stack);
+    for stmt in program {
+        stmt.op.perform(&mut stack);
     }
     stack.peek()
 }

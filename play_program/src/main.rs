@@ -1,5 +1,5 @@
-use audio_program::parse_program;
-use audio_vm::{Sample, VM};
+use audio_program::{compile_program, rewrite_terms, Context, TextOp};
+use audio_vm::{Program, Sample, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
 use std::io::Read;
 
@@ -63,4 +63,18 @@ fn main() {
             _ => (),
         }
     });
+}
+
+fn parse_program(s: &str, sample_rate: u32) -> Program {
+    let ops = s
+        .split_terminator('\n')
+        .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
+        .enumerate()
+        .map(|(id, op)| TextOp {
+            id: id as u64,
+            op: op.to_string(),
+        })
+        .collect::<Vec<_>>();
+    let ops = rewrite_terms(&ops);
+    compile_program(&ops, sample_rate, &mut Context::new())
 }

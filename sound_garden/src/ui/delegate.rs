@@ -1,6 +1,6 @@
 use crate::state::*;
 use crate::ui::{constants::*, util};
-use audio_program::{parse_tokens, Context};
+use audio_program::{compile_program, Context, TextOp};
 use audio_vm::VM;
 use brotli::{CompressorWriter, Decompressor};
 use druid::{AppDelegate, Application, DelegateCtx, Env, Event, KeyCode};
@@ -8,14 +8,8 @@ use std::sync::{Arc, Mutex};
 
 pub struct Delegate {
     ctx: Context,
-    ops: Vec<CachedOp>,
+    ops: Vec<TextOp>,
     vm: Arc<Mutex<VM>>,
-}
-
-#[derive(PartialEq, Eq)]
-struct CachedOp {
-    id: u64,
-    op: String,
 }
 
 impl AppDelegate<State> for Delegate {
@@ -118,7 +112,7 @@ impl AppDelegate<State> for Delegate {
                 }
                 order
                     .iter()
-                    .map(|i| CachedOp {
+                    .map(|i| TextOp {
                         id: nodes[*i].id,
                         op: nodes[*i].op.clone(),
                     })
@@ -126,21 +120,14 @@ impl AppDelegate<State> for Delegate {
             }
         };
         if self.ops != new_ops {
-            let prg = new_ops.iter().map(|x| x.op.to_owned()).collect::<Vec<_>>();
-            log::info!("New program is '{}'", prg.join(" "));
-            let new_program = parse_tokens(&prg, data.sample_rate, &mut self.ctx);
-            let migrate = new_ops
-                .iter()
-                .enumerate()
-                .filter_map(|(n, op)| self.ops.iter().position(|x| x == op).map(|p| (p, n)))
-                .collect::<Vec<_>>();
-            {
-                self.vm
-                    .lock()
-                    .unwrap()
-                    .migrate_program(new_program, &migrate);
-            }
             self.ops = new_ops;
+            let prg = self.ops.iter().map(|x| x.op.to_owned()).collect::<Vec<_>>();
+            log::info!("New program is '{}'", prg.join(" "));
+            let new_program = compile_program(&self.ops, data.sample_rate, &mut self.ctx);
+            let garbage = {
+                self.vm.lock().unwrap().load_program(new_program);
+            };
+            drop(garbage);
         }
         Some(event)
     }
