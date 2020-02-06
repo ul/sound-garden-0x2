@@ -23,6 +23,9 @@ pub fn main() -> Result<()> {
     let filename = filename.unwrap();
 
     let vm = Arc::new(Mutex::new(VM::new()));
+    {
+        vm.lock().unwrap().stop();
+    }
     let rb = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
     let (producer, consumer) = rb.split();
 

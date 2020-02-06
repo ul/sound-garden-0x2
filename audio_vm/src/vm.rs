@@ -59,6 +59,10 @@ impl VM {
         self.status = Status::Pause;
     }
 
+    pub fn stop(&mut self) {
+        self.status = Status::Pause;
+    }
+
     pub fn set_xfade_duration(&mut self, frames: Sample) {
         self.xfade_duration = frames;
     }
