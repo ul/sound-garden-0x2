@@ -6,6 +6,8 @@ use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+pub const HELP: &str = include_str!("help.adoc");
+
 pub struct Context {
     pub tables: HashMap<String, Arc<Mutex<Vec<Frame>>>, Hash64>,
 }
@@ -48,12 +50,13 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
     for TextOp { id, op } in ops {
         let id = *id;
         match op.as_str() {
-            "*" => push_args!(id, Fn2, pure::mul),
-            "+" => push_args!(id, Fn2, pure::add),
-            "-" => push_args!(id, Fn2, pure::sub),
-            "/" => push_args!(id, Fn2, pure::div),
+            "*" | "mul" => push_args!(id, Fn2, pure::mul),
+            "+" | "add" => push_args!(id, Fn2, pure::add),
+            "-" | "sub" => push_args!(id, Fn2, pure::sub),
+            "/" | "div" => push_args!(id, Fn2, pure::div),
             "\\" => push_args!(id, Fn1, pure::recip),
             "^" | "pow" => push_args!(id, Fn2, pure::pow),
+            "amp2db" | "a2db" => push_args!(id, Fn1, pure::amp2db),
             "c" => push_args!(id, Osc, sample_rate, pure::cosine),
             "cheb2" => push_args!(id, Fn1, pure::cheb2),
             "cheb3" => push_args!(id, Fn1, pure::cheb3),
@@ -62,35 +65,47 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "cheb6" => push_args!(id, Fn1, pure::cheb6),
             "circle" => push_args!(id, Fn1, pure::circle),
             "clamp" => push_args!(id, Fn3, pure::clamp),
+            "clip" => push_args!(id, Fn1, pure::clip),
             "cos" => push_args!(id, Fn1, pure::cos),
+            "cosh" => push_args!(id, Fn1, pure::cosh),
             "cosine" => push_args!(id, OscPhase, sample_rate, pure::cosine),
+            "db2amp" | "db2a" => push_args!(id, Fn1, pure::db2amp),
             "dm" | "dmetro" => push_args!(id, DMetro, sample_rate),
             "dmh" | "dmetro_hold" => push_args!(id, DMetroHold, sample_rate),
             "dup" => push!(id, Dup),
+            "exp" => push_args!(id, Fn1, pure::exp),
+            "f2m" | "freq2midi" => push_args!(id, Fn1, pure::freq2midi),
             "h" | "bqhpf" => push_args!(id, BiQuad, sample_rate, make_hpf_coefficients),
             "hpf" => push_args!(id, HPF, sample_rate),
-            "f2m" | "freq2midi" => push_args!(id, Fn1, pure::freq2midi),
             "impulse" => push_args!(id, Impulse, sample_rate),
             "l" | "bqlpf" => push_args!(id, BiQuad, sample_rate, make_lpf_coefficients),
+            "linlin" | "project" => push_args!(id, Fn5, pure::linlin),
             "lpf" => push_args!(id, LPF, sample_rate),
-            "m2f" | "midi2freq" => push_args!(id, Fn1, pure::midi2freq),
             "m" | "metro" => push_args!(id, Metro, sample_rate),
+            "m2f" | "midi2freq" => push_args!(id, Fn1, pure::midi2freq),
+            "max" => push_args!(id, Fn2, pure::max),
             "mh" | "metro_hold" => push_args!(id, MetroHold, sample_rate),
-            "n" | "noise" => push!(id, WhiteNoise),
-            "p" | "pulse" => push_args!(id, Pulse, sample_rate),
+            "min" => push_args!(id, Fn2, pure::min),
+            "n" | "noise" | "whiteNoise" => push!(id, WhiteNoise),
+            "p" => push_args!(id, Pulse, sample_rate),
             "pan1" => push!(id, Pan1),
             "pan2" => push!(id, Pan2),
             "panx" => push!(id, Pan3),
+            "pitch" => push_args!(id, Yin, sample_rate, 1024, 64, 0.2),
             "pop" => push!(id, Pop),
+            "prime" => push!(id, Prime),
+            "pulse" => push_args!(id, PulsePhase, sample_rate),
             "q" | "quantize" => push_args!(id, Fn2, pure::quantize),
             "r" | "range" => push_args!(id, Fn3, pure::range),
-            "round" => push_args!(id, Fn1, pure::round),
             "rot" => push!(id, Rot),
+            "round" => push_args!(id, Fn1, pure::round),
             "s" => push_args!(id, Osc, sample_rate, pure::sine),
-            "sh" | "sample&hold" => push!(id, SampleAndHold),
             "saw" => push_args!(id, Phasor0, sample_rate),
+            "sh" | "sample&hold" => push!(id, SampleAndHold),
+            "silence" => push_args!(id, Constant, 0.0),
             "sin" => push_args!(id, Fn1, pure::sin),
             "sine" => push_args!(id, OscPhase, sample_rate, pure::sine),
+            "sinh" => push_args!(id, Fn1, pure::sinh),
             "spectral_shuffle" => {
                 let mut rng = Box::new(SmallRng::from_entropy());
                 push_args!(
@@ -112,9 +127,12 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             }
             "swap" => push!(id, Swap),
             "t" => push_args!(id, Osc, sample_rate, pure::triangle),
+            "tan" => push_args!(id, Fn1, pure::tan),
+            "tanh" => push_args!(id, Fn1, pure::tanh),
             "tri" => push_args!(id, OscPhase, sample_rate, pure::triangle),
             "unit" => push_args!(id, Fn1, pure::unit),
             "w" => push_args!(id, Phasor, sample_rate),
+            "wrap" => push_args!(id, Fn1, pure::wrap),
             _ => match op.parse::<Sample>() {
                 Ok(x) => push_args!(id, Constant, x),
                 Err(_) => {
@@ -300,6 +318,11 @@ pub fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     result
 }
 
+struct Term {
+    holes: usize,
+    ops: Vec<TextOp>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,9 +404,4 @@ mod tests {
             ]
         );
     }
-}
-
-struct Term {
-    holes: usize,
-    ops: Vec<TextOp>,
 }

@@ -20,9 +20,10 @@ mod sample_and_hold;
 mod sampler;
 mod spectral_transform;
 mod stack;
+mod yin;
 
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*,
     filters::*, function::*, metro::*, noise::*, noop::*, osc::*, pan::*, phasor::*, pulse::*,
-    sample_and_hold::*, sampler::*, spectral_transform::*, stack::*,
+    sample_and_hold::*, sampler::*, spectral_transform::*, stack::*, yin::*,
 };

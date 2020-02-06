@@ -1,0 +1,110 @@
+=== Stack manipulations
+
+[horizontal]
+pop:: remove top element
+dup:: duplicate top element, a -> a a
+swap:: swap top element with the next one, a b -> b a
+rot:: take 3rd from the top element and put it on the top, a b c -> b c a
+dig:<N>:: take Nth from the top element and put it on the top
+
+=== Oscillators
+
+All non-hyperbolic oscillators produce signal in range -1..1
+
+[horizontal]
+saw:: (freq, phase0) -> saw oscillator
+w:: (freq) -> saw with phase0 = 0
+tri:: (freq, phase0) -> triangle oscillator (symmetric)
+t:: (freq) -> tri with phase0 = 0
+pulse:: (freq, width, phase0) -> rectangular oscillator with width of positive segment as a ratio of period
+p:: (freq, width) -> pulse with phase0 = 0
+sine:: (freq, phase0) -> sine oscillator
+s:: (freq) -> sine with phase0 = 0
+cosine:: (freq, phase0) -> cosine oscillator
+c:: (freq) -> cosine with phase0 = 0
+
+=== Basics
+
+[horizontal]
+silence:: () -> alias for constant 0 signal
+whiteNoise, noise, n:: () -> each sample in each channel is the next value provided by pseudo-random generator
+linlin, project:: (x, a, b, c, d) -> assuming that signal x varies in the range from a to b linearly project its values to the range from c to d
+Note that ranges are just signals and are allowed to vary in time
+
+range, r:: (x, c, d) -> same as project with a = -1 and b = 1
+unit:: (x) -> same as range with c = 0 and d = 1
+circle:: (x) -> same as range with c = -π and d = π
+sh:: (trigger, x) -> sample and hold
+db2amp, db2a:: (x) -> decibels to amplitude, base amplitude assumed to be 1.0
+amp2db, a2db:: (x) -> amplitude to decibels, base amplitude assumed to be 1.0
+freq2midi, f2m:: (x) -> frequency to midi pitch
+midi2freq, m2f:: (x) -> midi pitch to frequency
+quantize, q:: (x, step) -> round signal x values to the nearest step multiplicative
+channel:<N>, ch:<N>:: (x) -> compute only channel N of signal and broadcast it to all channels
+
+=== Math
+
+Binary arithmetic operations are available: `+`, `-`, `*`, `/`, `mod`. If you prefer, you can use aliases `add`, `sub`, `mul`, `div`.
+
+`\\` is for reciprocal. `16 \\` will produce 1/16th.
+
+[horizontal]
+min:: (a, b)
+max:: (a, b)
+clip:: (x) -> forces signal values to be in the range -1..1 by outputting nearest edge for values outside
+wrap:: (x) -> forces signal values to be in the range -1..1 by wrapping it around the range
+exp:: (x) -> e^x
+sin:: (x)
+cos:: (x)
+tan:: (x)
+sinh:: (x)
+cosh:: (x)
+tanh:: (x)
+round:: (x) -> round signal value to the nearest integer
+
+=== Filters
+
+[horizontal]
+lpf:: (x, freq) -> https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter[Simple infinite impulse response low-pass filter]
+hpf:: (x, freq) -> https://en.wikipedia.org/wiki/High-pass_filter#Algorithmic_implementation[Simple infinite impulse response high-pass filter]
+bqlpf, l:: (x, freq, Q) -> biquad LPF as described https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[here]
+bqhpf, h:: (x, freq, Q) -> biquad HPF as described https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[here]
+prime:: (x) -> delay x by one sample
+delay:<N>, dl:<N>:: (x, time) -> max delay time is <N> seconds
+feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo, max delay is <N> seconds
+conv:<N>:: (x, y) -> convolve two signals with a N frames wide window
+convm:<N>:: (x, ...ys) -> convolve x with a N frames wide kernel of ys
+
+=== Triggers
+
+[horizontal]
+metro, m:: (freq) -> emit 1.0 with given frequency, 0.0 all other time
+dmetro, dm:: (period) -> emit 1.0 every given period, 0.0 all other time
+metro_hold, m:: (freq) -> emit 1.0 with given frequency, 0.0 all other time; don't set new freq until the next trigger
+dmetro_hold, dm:: (period) -> emit 1.0 every given period, 0.0 all other time; don't set new period until the next trigger
+
+=== Envelopes
+
+[horizontal]
+impulse:: (trigger, apex) -> generate exponential impulse which reaches 1.0 in apex seconds and then fades
+adsr:: (gate, a, d, s, r) -> classic ADSR envelope
+
+=== Modulation
+
+[horizontal]
+cheb2:: (x) -> Chebyshev polynomial of degree 2
+cheb3:: (x) -> Chebyshev polynomial of degree 3
+cheb4:: (x) -> Chebyshev polynomial of degree 4
+cheb5:: (x) -> Chebyshev polynomial of degree 5
+cheb6:: (x) -> Chebyshev polynomial of degree 6
+
+=== Analyzers
+
+[horizontal]
+pitch:: (x) -> pitch detector, implemented as YIN algorithm with block size of 1024 samples and threshold 0.2
+
+=== Tables
+
+[horizontal]
+writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigger write N seconds (for each channel) of signal x to the table NAME. It puts the signal back on the stack which passes through x values.
+readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from the table NAME using indexer signal as a position in seconds, with linear interpolation.

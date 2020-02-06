@@ -55,6 +55,26 @@ pub fn cos(x: Sample) -> Sample {
     x.cos()
 }
 
+#[inline]
+pub fn tan(x: Sample) -> Sample {
+    x.tan()
+}
+
+#[inline]
+pub fn sinh(x: Sample) -> Sample {
+    x.sinh()
+}
+
+#[inline]
+pub fn cosh(x: Sample) -> Sample {
+    x.cosh()
+}
+
+#[inline]
+pub fn tanh(x: Sample) -> Sample {
+    x.tanh()
+}
+
 // Projections
 
 /// Assuming that x varies in the range a..b linearly project it into the range c..d
@@ -193,4 +213,47 @@ pub fn clamp(x: Sample, min: Sample, max: Sample) -> Sample {
     } else {
         x
     }
+}
+
+// Convert decibels to amplitude.
+#[inline]
+pub fn db2amp(x: Sample) -> Sample {
+    20.0 * x.log10()
+}
+
+// Convert amplitude to decibels.
+#[inline]
+pub fn amp2db(x: Sample) -> Sample {
+    10.0f64.powf(x / 20.0)
+}
+
+#[inline]
+pub fn min(x: Sample, y: Sample) -> Sample {
+    x.min(y)
+}
+
+#[inline]
+pub fn max(x: Sample, y: Sample) -> Sample {
+    x.max(y)
+}
+
+#[inline]
+pub fn clip(x: Sample) -> Sample {
+    if x < -1.0 {
+        -1.0
+    } else if 1.0 < x {
+        1.0
+    } else {
+        x
+    }
+}
+
+#[inline]
+pub fn wrap(x: Sample) -> Sample {
+    (x + 1.0) % 2.0 - 1.0
+}
+
+#[inline]
+pub fn exp(x: Sample) -> Sample {
+    x.exp()
 }

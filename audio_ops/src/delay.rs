@@ -50,3 +50,29 @@ impl Op for Delay {
         }
     }
 }
+
+pub struct Prime {
+    previous: Frame,
+}
+
+impl Prime {
+    pub fn new() -> Self {
+        Prime {
+            previous: Default::default(),
+        }
+    }
+}
+
+impl Op for Prime {
+    fn perform(&mut self, stack: &mut Stack) {
+        let current = stack.pop();
+        stack.push(&self.previous);
+        self.previous = current;
+    }
+
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.previous = other.previous;
+        }
+    }
+}
