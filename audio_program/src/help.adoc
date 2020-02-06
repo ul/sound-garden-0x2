@@ -34,7 +34,7 @@ Note that ranges are just signals and are allowed to vary in time
 range, r:: (x, c, d) -> same as project with a = -1 and b = 1
 unit:: (x) -> same as range with c = 0 and d = 1
 circle:: (x) -> same as range with c = -π and d = π
-sh:: (trigger, x) -> sample and hold
+sh:: (x, trigger) -> sample and hold
 db2amp, db2a:: (x) -> decibels to amplitude, base amplitude assumed to be 1.0
 amp2db, a2db:: (x) -> amplitude to decibels, base amplitude assumed to be 1.0
 freq2midi, f2m:: (x) -> frequency to midi pitch
