@@ -28,6 +28,7 @@ pub fn main(
     record_tx: &Sender<bool>,
 ) -> Result<()> {
     let mut app = App::load(&filename).unwrap_or_else(|_| App::new());
+    commit(&mut app, Arc::clone(&vm), sample_rate, filename);
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
@@ -90,7 +91,7 @@ fn render_editor(
             app.nodes.swap_remove(ix);
             app.draft = true;
         }
-        let color = if app.paused {
+        let color = if !app.play {
             Color::Gray
         } else if app.draft || app.nodes.iter().any(|node| node.draft) {
             Color::Red
@@ -100,7 +101,7 @@ fn render_editor(
         Block::default()
             .title(&format!(
                 "Sound Garden────{}────{}",
-                if app.paused { "||" } else { "|>" },
+                if app.play { "|>" } else { "||" },
                 if app.recording {
                     if Utc::now().second() % 2 == 0 {
                         "•R"
@@ -184,11 +185,11 @@ fn handle_editor(
             InputMode::Normal => match input {
                 Key::Char('\n') => commit(app, vm, sample_rate, filename),
                 Key::Char('\\') => {
-                    app.paused = !app.paused;
-                    if app.paused {
-                        vm.lock().unwrap().pause();
-                    } else {
+                    app.play = !app.play;
+                    if app.play {
                         vm.lock().unwrap().play();
+                    } else {
+                        vm.lock().unwrap().pause();
                     }
                 }
                 Key::Char('i') => {
@@ -440,16 +441,16 @@ fn handle_editor(
                     app.nodes.retain(|node| !node.op.is_empty());
                 }
                 Key::Char(c) => {
+                    let p = app.cursor;
+                    for node in app
+                        .nodes
+                        .iter_mut()
+                        .filter(|node| node.position.y == p.y && p.x < node.position.x)
+                    {
+                        node.position.x += 1;
+                    }
                     let node = app.node_at_cursor();
                     if let Some(ix) = node {
-                        let p = app.cursor;
-                        for node in app
-                            .nodes
-                            .iter_mut()
-                            .filter(|node| node.position.y == p.y && p.x < node.position.x)
-                        {
-                            node.position.x += 1;
-                        }
                         let node = &mut app.nodes[ix];
                         if app.cursor.x >= node.position.x + node.op.chars().count() {
                             node.op.push(c);
@@ -585,7 +586,7 @@ struct App {
     #[serde(skip, default)]
     help_scroll: u16,
     #[serde(skip, default)]
-    paused: bool,
+    play: bool,
     #[serde(skip, default = "default_cycles")]
     cycles: Vec<Vec<String>>,
     #[serde(skip, default)]
@@ -605,7 +606,7 @@ impl App {
             draft: Default::default(),
             screen: Default::default(),
             help_scroll: 0,
-            paused: Default::default(),
+            play: Default::default(),
             cycles: default_cycles(),
             recording: Default::default(),
             program: Default::default(),
