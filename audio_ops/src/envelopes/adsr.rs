@@ -29,6 +29,7 @@ impl Op for ADSR {
         let d = stack.pop();
         let a = stack.pop();
         let gate = stack.pop();
+        let now = self.frame as Sample * self.sample_period;
         for (output, &gate, &a, &d, &s, &r, last_gate, gate_frame_on, gate_frame_off) in izip!(
             &mut frame,
             &gate,
@@ -48,14 +49,15 @@ impl Op for ADSR {
             }
             *last_gate = gate;
 
-            let mut delta = (self.frame - *gate_frame_on) as Sample * self.sample_period;
+            let on = *gate_frame_on as Sample * self.sample_period;
+            let delta = now - on;
 
             if delta <= a {
                 *output = delta / a;
                 continue;
             }
 
-            delta -= a;
+            let delta = delta - a;
 
             if delta <= d {
                 *output = 1.0 - (1.0 - s) * delta / d;
@@ -67,7 +69,8 @@ impl Op for ADSR {
                 continue;
             }
 
-            delta = (self.frame - *gate_frame_off) as Sample * self.sample_period;
+            let off = *gate_frame_off as Sample * self.sample_period;
+            let delta = now - off.max(on + a + d);
 
             if delta <= r {
                 *output = s * (1.0 - delta / r);

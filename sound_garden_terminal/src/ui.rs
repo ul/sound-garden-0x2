@@ -194,15 +194,6 @@ fn handle_editor(
                 Key::Char('i') => {
                     app.input_mode = InputMode::Editing;
                     events.disable_exit_key();
-                    if app.node_at_cursor().is_none() {
-                        let node = Node {
-                            id: random(),
-                            draft: true,
-                            op: String::new(),
-                            position: app.cursor,
-                        };
-                        app.nodes.push(node);
-                    }
                 }
                 Key::Char('I') => {
                     app.input_mode = InputMode::Editing;
@@ -230,40 +221,22 @@ fn handle_editor(
                     {
                         node.position.x += push_right;
                     }
-                    let node = Node {
-                        id: random(),
-                        draft: true,
-                        op: String::new(),
-                        position: app.cursor,
-                    };
-                    app.nodes.push(node);
                 }
                 Key::Char('c') => {
                     app.input_mode = InputMode::Editing;
                     events.disable_exit_key();
-                    match app.node_at_cursor() {
-                        Some(ix) => {
-                            let node = &mut app.nodes[ix];
-                            let push_left = node.position.x + node.op.len() - app.cursor.x;
-                            node.op.truncate(app.cursor.x - node.position.x);
-                            node.draft = true;
-                            let p = app.cursor;
-                            for node in app
-                                .nodes
-                                .iter_mut()
-                                .filter(|node| node.position.y == p.y && node.position.x > p.x)
-                            {
-                                node.position.x -= push_left;
-                            }
-                        }
-                        None => {
-                            let node = Node {
-                                id: random(),
-                                draft: true,
-                                op: String::new(),
-                                position: app.cursor,
-                            };
-                            app.nodes.push(node);
+                    if let Some(ix) = app.node_at_cursor() {
+                        let node = &mut app.nodes[ix];
+                        let push_left = node.position.x + node.op.len() - app.cursor.x;
+                        node.op.truncate(app.cursor.x - node.position.x);
+                        node.draft = true;
+                        let p = app.cursor;
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && node.position.x > p.x)
+                        {
+                            node.position.x -= push_left;
                         }
                     }
                 }
@@ -459,15 +432,6 @@ fn handle_editor(
                         node.position.x += 1;
                     }
                     app.cursor.x += 1;
-                    if app.node_at_cursor().is_none() {
-                        let node = Node {
-                            id: random(),
-                            draft: true,
-                            op: String::new(),
-                            position: app.cursor,
-                        };
-                        app.nodes.push(node);
-                    }
                 }
                 Key::Char('\n') => {
                     app.input_mode = InputMode::Normal;
@@ -511,8 +475,6 @@ fn handle_editor(
                     app.cursor.x += 1;
                 }
                 Key::Backspace => {
-                    let node = app.node_at_cursor();
-                    app.cursor.x -= 1;
                     let p = app.cursor;
                     for node in app
                         .nodes
@@ -521,26 +483,29 @@ fn handle_editor(
                     {
                         node.position.x -= 1;
                     }
+                    app.cursor.x -= 1;
+                    let node = app.node_at_cursor();
                     if let Some(ix) = node {
                         let node = &mut app.nodes[ix];
-                        if node.op.len() > 1 {
-                            let x = (app.cursor.x - node.position.x) as usize;
-                            let ixs = node
-                                .op
-                                .char_indices()
-                                .skip(x)
-                                .take(2)
-                                .map(|x| x.0)
-                                .collect::<Vec<_>>();
-                            node.op.replace_range(
-                                ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
-                                &"",
-                            );
+                        if app.cursor.x < node.position.x + node.op.len() {
+                            if node.op.len() > 1 {
+                                let x = (app.cursor.x - node.position.x) as usize;
+                                let ixs = node
+                                    .op
+                                    .char_indices()
+                                    .skip(x)
+                                    .take(2)
+                                    .map(|x| x.0)
+                                    .collect::<Vec<_>>();
+                                node.op.replace_range(
+                                    ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
+                                    &"",
+                                );
+                            } else if app.cursor.x == node.position.x {
+                                node.op.pop();
+                            };
                             node.draft = true;
-                        } else {
-                            node.op.pop();
-                            // app.nodes.swap_remove(ix);
-                        };
+                        }
                     }
                 }
                 Key::Esc => {
