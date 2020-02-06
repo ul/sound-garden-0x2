@@ -103,6 +103,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "s" => push_args!(id, Osc, sample_rate, pure::sine),
             "saw" => push_args!(id, Phasor0, sample_rate),
             "sh" | "sample&hold" => push!(id, SampleAndHold),
+            "ssh" => push!(id, SmoothSampleAndHold),
             "silence" => push_args!(id, Constant, 0.0),
             "sin" => push_args!(id, Fn1, pure::sin),
             "sine" => push_args!(id, OscPhase, sample_rate, pure::sine),
