@@ -441,16 +441,16 @@ fn handle_editor(
                     app.nodes.retain(|node| !node.op.is_empty());
                 }
                 Key::Char(c) => {
+                    let p = app.cursor;
+                    for node in app
+                        .nodes
+                        .iter_mut()
+                        .filter(|node| node.position.y == p.y && p.x < node.position.x)
+                    {
+                        node.position.x += 1;
+                    }
                     let node = app.node_at_cursor();
                     if let Some(ix) = node {
-                        let p = app.cursor;
-                        for node in app
-                            .nodes
-                            .iter_mut()
-                            .filter(|node| node.position.y == p.y && p.x < node.position.x)
-                        {
-                            node.position.x += 1;
-                        }
                         let node = &mut app.nodes[ix];
                         if app.cursor.x >= node.position.x + node.op.chars().count() {
                             node.op.push(c);
