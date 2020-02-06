@@ -146,7 +146,6 @@ fn render_help(
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Green))
             .render(&mut f, size);
-        app.nodes.sort_by_key(|node| node.position);
         let text = [
             Text::raw(format!("Path: {}\n", filename)),
             Text::raw(format!("Sample rate: {}\n", sample_rate)),
@@ -154,10 +153,7 @@ fn render_help(
                 "Cycles: {}\n",
                 app.cycles.iter().map(|cycle| cycle.join("->")).join(", ")
             )),
-            Text::raw(format!(
-                "Program: {}\n",
-                app.nodes.iter().map(|node| node.op.to_owned()).join(" ")
-            )),
+            Text::raw(format!("Program: {}\n", app.program)),
             Text::raw(format!("\n")),
             Text::raw(include_str!("help.txt")),
         ];
@@ -579,6 +575,7 @@ fn handle_help(app: &mut App, events: &mut Events) -> Result<()> {
 
 fn commit(app: &mut App, vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) {
     app.nodes.sort_by_key(|node| node.position);
+    app.program = app.nodes.iter().map(|node| node.op.to_owned()).join(" ");
     app.nodes.iter_mut().for_each(|node| node.draft = false);
     app.draft = false;
     let next_ops = rewrite_terms(
@@ -624,6 +621,8 @@ struct App {
     cycles: Vec<Vec<String>>,
     #[serde(skip, default)]
     recording: bool,
+    #[serde(default)]
+    program: String,
 }
 
 impl App {
@@ -640,6 +639,7 @@ impl App {
             paused: Default::default(),
             cycles: default_cycles(),
             recording: Default::default(),
+            program: Default::default(),
         }
     }
 

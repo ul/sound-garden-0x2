@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use thread_worker::Worker;
 
 const CHANNEL_CAPACITY: usize = 64;
+/// It's about 500ms, should be more than enough for write cycle of ~10ms.
 const RECORD_BUFFER_CAPACITY: usize = 48000;
 
 pub fn main() -> Result<()> {

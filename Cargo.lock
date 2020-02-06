@@ -1255,6 +1255,16 @@ version = "0.6.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "render_program"
+version = "0.1.0"
+dependencies = [
+ "audio_ops 0.1.0",
+ "audio_program 0.1.0",
+ "audio_vm 0.1.0",
+ "hound 3.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "rental"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
