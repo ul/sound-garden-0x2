@@ -511,8 +511,6 @@ fn handle_editor(
                     app.cursor.x += 1;
                 }
                 Key::Backspace => {
-                    let node = app.node_at_cursor();
-                    app.cursor.x -= 1;
                     let p = app.cursor;
                     for node in app
                         .nodes
@@ -521,26 +519,29 @@ fn handle_editor(
                     {
                         node.position.x -= 1;
                     }
+                    app.cursor.x -= 1;
+                    let node = app.node_at_cursor();
                     if let Some(ix) = node {
                         let node = &mut app.nodes[ix];
-                        if node.op.len() > 1 {
-                            let x = (app.cursor.x - node.position.x) as usize;
-                            let ixs = node
-                                .op
-                                .char_indices()
-                                .skip(x)
-                                .take(2)
-                                .map(|x| x.0)
-                                .collect::<Vec<_>>();
-                            node.op.replace_range(
-                                ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
-                                &"",
-                            );
+                        if app.cursor.x < node.position.x + node.op.len() {
+                            if node.op.len() > 1 {
+                                let x = (app.cursor.x - node.position.x) as usize;
+                                let ixs = node
+                                    .op
+                                    .char_indices()
+                                    .skip(x)
+                                    .take(2)
+                                    .map(|x| x.0)
+                                    .collect::<Vec<_>>();
+                                node.op.replace_range(
+                                    ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
+                                    &"",
+                                );
+                            } else if app.cursor.x == node.position.x {
+                                node.op.pop();
+                            };
                             node.draft = true;
-                        } else {
-                            node.op.pop();
-                            // app.nodes.swap_remove(ix);
-                        };
+                        }
                     }
                 }
                 Key::Esc => {
