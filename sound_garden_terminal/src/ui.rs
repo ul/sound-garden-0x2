@@ -382,6 +382,10 @@ fn handle_editor(
                         app.draft = true;
                     }
                 }
+                Key::Char('D') => {
+                    let p = app.cursor;
+                    app.nodes.retain(|node| node.position.y != p.y);
+                }
                 Key::Char('=') => {
                     if let Some(ix) = app.node_at_cursor() {
                         let node = &mut app.nodes[ix];

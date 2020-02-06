@@ -15,6 +15,7 @@ Normal mode
 | k      | Up.                         |
 | l      | Right.                      |
 | d      | Delete node.                |
+| D      | Delete line.                |
 | Alt+h  | Move node left.             |
 | Alt+j  | Move node down.             |
 | Alt+k  | Move node up.               |
