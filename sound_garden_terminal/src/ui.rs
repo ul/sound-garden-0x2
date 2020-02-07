@@ -1,6 +1,6 @@
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_program::{compile_program, rewrite_terms, Context, TextOp};
+use audio_program::{compile_program, get_help, rewrite_terms, Context, TextOp};
 use audio_vm::VM;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
@@ -8,6 +8,7 @@ use itertools::Itertools;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use termion::cursor;
@@ -36,6 +37,15 @@ pub fn main(
     let mut terminal = Terminal::new(backend)?;
     let mut events = Events::new();
     loop {
+        app.status = String::new();
+        if let Some(ix) = app.node_at_cursor() {
+            let node = &app.nodes[ix];
+            if app.cursor.x < node.position.x + node.op.len() {
+                if let Some(help) = app.op_help.get(&node.op) {
+                    app.status = help.to_owned();
+                }
+            }
+        }
         match app.screen {
             Screen::Editor => render_editor(&mut app, &mut terminal)?,
             Screen::Help => render_help(&mut app, sample_rate, &filename, &mut terminal)?,
@@ -100,7 +110,7 @@ fn render_editor(
         };
         Block::default()
             .title(&format!(
-                "Sound Garden────{}────{}",
+                "Sound Garden────{}────{}────{}",
                 if app.play { "|>" } else { "||" },
                 if app.recording {
                     if Utc::now().second() % 2 == 0 {
@@ -110,7 +120,8 @@ fn render_editor(
                     }
                 } else {
                     ""
-                }
+                },
+                app.status
             ))
             .title_style(Style::default().fg(color))
             .borders(Borders::ALL)
@@ -573,43 +584,49 @@ fn commit(app: &mut App, vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) {
 struct App {
     #[serde(skip, default)]
     ctx: Context,
-    #[serde(skip, default)]
-    ops: Vec<TextOp>,
-    nodes: Vec<Node>,
-    #[serde(skip, default)]
-    input_mode: InputMode,
     cursor: Position,
-    #[serde(skip, default)]
-    draft: bool,
-    #[serde(skip, default)]
-    screen: Screen,
-    #[serde(skip, default)]
-    help_scroll: u16,
-    #[serde(skip, default)]
-    play: bool,
     #[serde(skip, default = "default_cycles")]
     cycles: Vec<Vec<String>>,
     #[serde(skip, default)]
-    recording: bool,
+    draft: bool,
+    #[serde(skip, default)]
+    help_scroll: u16,
+    #[serde(skip, default)]
+    input_mode: InputMode,
+    nodes: Vec<Node>,
+    #[serde(skip, default = "get_help")]
+    op_help: HashMap<String, String>,
+    #[serde(skip, default)]
+    ops: Vec<TextOp>,
+    #[serde(skip, default)]
+    play: bool,
     #[serde(default)]
     program: String,
+    #[serde(skip, default)]
+    recording: bool,
+    #[serde(skip, default)]
+    screen: Screen,
+    #[serde(skip, default)]
+    status: String,
 }
 
 impl App {
     pub fn new() -> Self {
         App {
             ctx: Default::default(),
-            ops: Default::default(),
-            nodes: Default::default(),
-            input_mode: Default::default(),
             cursor: Position { y: 2, x: 2 },
-            draft: Default::default(),
-            screen: Default::default(),
-            help_scroll: 0,
-            play: Default::default(),
             cycles: default_cycles(),
-            recording: Default::default(),
+            draft: Default::default(),
+            help_scroll: 0,
+            input_mode: Default::default(),
+            nodes: Default::default(),
+            op_help: get_help(),
+            ops: Default::default(),
+            play: Default::default(),
             program: Default::default(),
+            recording: Default::default(),
+            screen: Default::default(),
+            status: Default::default(),
         }
     }
 
