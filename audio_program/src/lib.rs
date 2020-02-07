@@ -2,6 +2,7 @@ use audio_ops::*;
 use audio_vm::{Frame, Op, Program, Sample, Statement, CHANNELS};
 use fasthash::sea::Hash64;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
+use regex::Regex;
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -316,6 +317,20 @@ pub fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                 result.push(stmt);
             }
         }
+    }
+    result
+}
+
+pub fn get_help() -> HashMap<String, String> {
+    let mut result = HashMap::new();
+    for item in Regex::new(r"((?P<term>\w+)(:<\w+>)?[, ]*)+::(?P<definition>.+)")
+        .unwrap()
+        .captures_iter(HELP)
+    {
+        result.insert(
+            item.name("term").unwrap().as_str().to_owned(),
+            item.name("definition").unwrap().as_str().trim().to_owned(),
+        );
     }
     result
 }
