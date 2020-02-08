@@ -52,6 +52,7 @@ pub fn main(
         match app.screen {
             Screen::Editor => render_editor(&mut app, &mut terminal)?,
             Screen::Help => render_help(&mut app, sample_rate, &filename, &mut terminal)?,
+            Screen::Ops => render_ops(&mut app, sample_rate, &filename, &mut terminal)?,
         };
 
         match app.screen {
@@ -64,6 +65,7 @@ pub fn main(
                 record_tx,
             )?,
             Screen::Help => handle_help(&mut app, &mut events)?,
+            Screen::Ops => handle_ops(&mut app, &mut events)?,
         };
     }
 }
@@ -182,6 +184,47 @@ fn render_help(
         Paragraph::new(text.iter())
             .scroll(app.help_scroll)
             .wrap(true)
+            .render(&mut f, size);
+    })?;
+    write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn render_ops(
+    app: &mut App,
+    sample_rate: u32,
+    filename: &str,
+    terminal: &mut Terminal<
+        TermionBackend<AlternateScreen<MouseTerminal<termion::raw::RawTerminal<std::io::Stdout>>>>,
+    >,
+) -> Result<()> {
+    terminal.draw(|mut f| {
+        let mut size = f.size();
+        Block::default()
+            .title("Sound Garden────Ops")
+            .title_style(Style::default().fg(Color::Green))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Green))
+            .render(&mut f, size);
+        let text = [
+            Text::raw(format!("Path: {}\n", filename)),
+            Text::raw(format!("Sample rate: {}\n", sample_rate)),
+            Text::raw(format!(
+                "Cycles: {}\n",
+                app.cycles.iter().map(|cycle| cycle.join("->")).join(", ")
+            )),
+            Text::raw(format!("Program: {}\n", app.program)),
+            Text::raw(format!("\n")),
+            Text::raw(include_str!("ops.txt")),
+        ];
+        size.x = 2;
+        size.y = 2;
+        size.width -= 3;
+        size.height -= 3;
+        Paragraph::new(text.iter())
+            .scroll(app.help_scroll)
+            .wrap(false)
             .render(&mut f, size);
     })?;
     write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
@@ -443,6 +486,7 @@ fn handle_editor(
                     return Err(anyhow!("Quit!"));
                 }
                 Key::Char('?') => app.screen = Screen::Help,
+                Key::Char('¿') => app.screen = Screen::Ops,
                 _ => {}
             },
             InputMode::Editing => match input {
@@ -560,6 +604,26 @@ fn handle_help(app: &mut App, events: &mut Events) -> Result<()> {
     match events.next()? {
         Event::Input(input) => match input {
             Key::Char('?') => app.screen = Screen::Editor,
+            Key::Esc => app.screen = Screen::Editor,
+            Key::Char('j') | Key::Down => {
+                app.help_scroll += 1;
+            }
+            Key::Char('k') | Key::Up => {
+                if app.help_scroll > 0 {
+                    app.help_scroll -= 1;
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_ops(app: &mut App, events: &mut Events) -> Result<()> {
+    match events.next()? {
+        Event::Input(input) => match input {
+            Key::Char('¿') => app.screen = Screen::Editor,
             Key::Esc => app.screen = Screen::Editor,
             Key::Char('j') | Key::Down => {
                 app.help_scroll += 1;
@@ -722,6 +786,7 @@ impl Default for InputMode {
 enum Screen {
     Editor,
     Help,
+    Ops,
 }
 
 impl Default for Screen {
