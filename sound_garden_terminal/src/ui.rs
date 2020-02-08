@@ -557,11 +557,15 @@ fn handle_editor(
                     app.cursor.x += 1;
                 }
                 Key::Backspace => {
+                    let node_prev_x = app
+                        .node_at_cursor()
+                        .map(|ix| app.nodes[ix].position.x)
+                        .unwrap_or_default();
                     let p = app.cursor;
                     for node in app
                         .nodes
                         .iter_mut()
-                        .filter(|node| node.position.y == p.y && p.x < node.position.x)
+                        .filter(|node| node.position.y == p.y && p.x <= node.position.x)
                     {
                         node.position.x -= 1;
                     }
@@ -569,7 +573,9 @@ fn handle_editor(
                     let node = app.node_at_cursor();
                     if let Some(ix) = node {
                         let node = &mut app.nodes[ix];
-                        if app.cursor.x < node.position.x + node.op.len() {
+                        if node_prev_x == node.position.x
+                            && app.cursor.x < node.position.x + node.op.len()
+                        {
                             if node.op.len() > 1 {
                                 let x = (app.cursor.x - node.position.x) as usize;
                                 let ixs = node
@@ -583,7 +589,7 @@ fn handle_editor(
                                     ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
                                     &"",
                                 );
-                            } else if app.cursor.x == node.position.x {
+                            } else {
                                 node.op.pop();
                             };
                             node.draft = true;

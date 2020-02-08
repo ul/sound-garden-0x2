@@ -1,4 +1,4 @@
-use audio_vm::{Frame, Op, Stack, CHANNELS};
+use audio_vm::{Frame, Op, Stack};
 
 pub struct Dup;
 
@@ -71,7 +71,7 @@ pub struct Dig {
 impl Dig {
     pub fn new(depth: usize) -> Self {
         Dig {
-            t: vec![ZERO; depth],
+            t: vec![Default::default(); depth],
         }
     }
 }
@@ -82,11 +82,36 @@ impl Op for Dig {
             *x = stack.pop();
         }
         for x in self.t.iter_mut().rev().skip(1) {
-            stack.push(&std::mem::replace(x, ZERO));
+            stack.push(&std::mem::replace(x, Default::default()));
         }
         let depth = self.t.len();
-        stack.push(&std::mem::replace(&mut self.t[depth - 1], ZERO));
+        stack.push(&std::mem::replace(
+            &mut self.t[depth - 1],
+            Default::default(),
+        ));
     }
 }
 
-const ZERO: Frame = [0.0; CHANNELS];
+pub struct Bury {
+    t: Vec<Frame>,
+}
+
+impl Bury {
+    pub fn new(depth: usize) -> Self {
+        Bury {
+            t: vec![Default::default(); depth],
+        }
+    }
+}
+
+impl Op for Bury {
+    fn perform(&mut self, stack: &mut Stack) {
+        for x in self.t.iter_mut() {
+            *x = stack.pop();
+        }
+        stack.push(&std::mem::replace(&mut self.t[0], Default::default()));
+        for x in self.t[1..].iter_mut().rev() {
+            stack.push(&std::mem::replace(x, Default::default()));
+        }
+    }
+}

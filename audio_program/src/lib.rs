@@ -11,12 +11,14 @@ pub const HELP: &str = include_str!("help.adoc");
 
 pub struct Context {
     pub tables: HashMap<String, Arc<Mutex<Vec<Frame>>>, Hash64>,
+    pub variables: HashMap<String, Arc<Mutex<Frame>>, Hash64>,
 }
 
 impl Context {
     pub fn new() -> Self {
         Context {
             tables: HashMap::with_hasher(Hash64),
+            variables: HashMap::with_hasher(Hash64),
         }
     }
 }
@@ -152,6 +154,17 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                 log::warn!("Missing depth parameter.");
                             }
                         },
+                        "-" | "bury" => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(n) => push_args!(id, Bury, n),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as depth", x);
+                                }
+                            },
+                            None => {
+                                log::warn!("Missing depth parameter.");
+                            }
+                        },
                         "ch" | "channel" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Channel, n),
@@ -177,6 +190,39 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                 x.parse::<f64>().unwrap_or(60.0)
                             ),
                             None => push_args!(id, Feedback, sample_rate, 60.0),
+                        },
+                        "get" => match tokens
+                            .get(1)
+                            .map(|x| ctx.variables.entry(x.to_string()).or_default())
+                        {
+                            Some(var) => {
+                                push_args!(id, ReadVariable, Arc::clone(var));
+                            }
+                            None => {
+                                log::warn!("Missing var name parameter.");
+                            }
+                        },
+                        "set" => match tokens
+                            .get(1)
+                            .map(|x| ctx.variables.entry(x.to_string()).or_default())
+                        {
+                            Some(var) => {
+                                push_args!(id, WriteVariable, Arc::clone(var));
+                            }
+                            None => {
+                                log::warn!("Missing var name parameter.");
+                            }
+                        },
+                        "var" => match tokens
+                            .get(1)
+                            .map(|x| ctx.variables.entry(x.to_string()).or_default())
+                        {
+                            Some(var) => {
+                                push_args!(id, TakeVariable, Arc::clone(var));
+                            }
+                            None => {
+                                log::warn!("Missing var name parameter.");
+                            }
                         },
                         "rt" | "rtab" | "readtable" => {
                             match tokens.get(1).and_then(|x| ctx.tables.get(*x)) {

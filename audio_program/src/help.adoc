@@ -6,6 +6,7 @@ dup:: duplicate top element, a -> a a
 swap:: swap top element with the next one, a b -> b a
 rot:: take 3rd from the top element and put it on the top, a b c -> b c a
 dig:<N>:: take Nth from the top element and put it on the top
+bury:<N>:: take the top element and put it as Nth from the top
 
 === Oscillators
 
@@ -104,8 +105,15 @@ cheb6:: (x) -> Chebyshev polynomial of degree 6
 [horizontal]
 pitch:: (x) -> pitch detector, implemented as YIN algorithm with block size of 1024 samples and threshold 0.2
 
+=== Variables
+
+[horizontal]
+var:<NAME>:: (x) -> move top element to var <NAME> 
+set:<NAME>:: (x) -> copy top element to var <NAME> 
+get:<NAME>:: (x) -> put value of var <NAME> to the top
+
 === Tables
 
 [horizontal]
-writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigger write N seconds (for each channel) of signal x to the table NAME. It puts the signal back on the stack which passes through x values.
-readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from the table NAME using indexer signal as a position in seconds, with linear interpolation.
+writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigger write N seconds (for each channel) of signal x to the table NAME. It puts the signal back on the stack which passes through x values
+readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from the table NAME using indexer signal as a position in seconds, with linear interpolation
