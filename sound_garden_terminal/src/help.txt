@@ -30,6 +30,7 @@ Normal mode
 | >      | Move left of line right.    |
 | =      | Cycle up / Increase by 1.   |
 | -      | Cycle down / Decrease by 1. |
+| /      | List ops.                   |
 | ?      | Help (this screen).         |
 \--------------------------------------/
 

@@ -1,0 +1,112 @@
+= Sound Garden
+
+(consider reading this document at http://ul.mantike.pro/sound-garden-0x2/README.html because GitHub parses AsciiDoc improperly)
+
+== What?
+
+Sound Garden is a text based modular synthesis environment. If you ever considered text like this
+
+----
+.0625 .5 p 110 s * dup .5 t 0.0625 5 range 0.5 fb swap .125 t 0.0625 5 range 0.5 fb + .1 * 
+---- 
+
+to be a valid musical notation and sound like https://soundcloud.com/ruslan-prokopchuk/rf-01[this]
+to be a subject of interest then you might find Sound Garden worthwhile having a look at.
+
+== Why?
+
+There is https://paulbatchelor.github.io/proj/sporth[Sporth],
+https://github.com/digego/extempore[Extempore], https://supercollider.github.io[SuperCollider],
+https://puredata.info[PureData], https://sonic-pi.net[SonicPi], https://tidalcycles.org[TidalCycles]
+and other excellent mature environments out there, why to build own? Because I want to understand
+how audio synth works and true understanding comes as an ability to re-create subject from the
+scratch in a different form. http://ul.mantike.pro/SoundGardenManifesto[More]
+
+== How?
+
+Continue reading, the rest of the document is Sound Garden manual.
+
+== Prerequsites
+
+* https://rustup.rs[Rust]
+
+== Build & install
+
+----
+$ git clone https://github.com/ul/sound-garden-0x2.git
+$ cd sound-garden-0x2
+$ cargo install --path play_program --force
+$ cargo install --path sound_garden_terminal --force
+----
+
+== (Inter)Faces of Sound Garden
+
+Just a quick note before we start. Sound Garden is a set of libraries which fulfil various audio
+synth and livecoding needs and binaries which provide multiple layers of experience, from just
+producing sound when given a program to experiments with graphical tree-like representation. What
+you've built and installed in the previous section is the "simplest" interface which just plays
+programs and the "default" one which embodies Sound Garden aesthetics the most, but you are free to
+interact with it your way.
+
+== Run
+
+=== First steps
+
+Sound Garden is operated via simple concatenative stack-based language. The only type of element
+to be put on stack is a frame. Frame is a pair of amplitude values, one for the left channel and
+another for the right. Each sample (typically 44100 or 48000 times per second) Sound Garden
+executes your program against empty stack and sends top frame values to audio driver.
+
+Let's use the simplest Sound Garden interface to play tuning fork sound (please be sure to reduce
+your speaker volume before running it!):
+
+----
+$ echo '440 0 sine' | play_program
+----
+
+`sine` word corresponds to the stack operation which consumes frequency (440) and initial phase (0)
+from the top of the stack and puts back the next frame of sine wave.
+
+Many words in Sound Garden has aliases. Some aliases are just shorter forms which make quick
+experiments easier for experienced users and some provide default value. For example `s` produces
+the same sine wave but always starts with phase 0:
+
+----
+$ echo '440 s' | play_program
+----
+
+To compose Sound Garden programs just slap them together separated by whitespace. This is why it's
+called concatenative:
+
+----
+$ echo '440 s 0.5 *' | play_program
+----
+
+`0.5 *` will reduce our sine wave amplitude by half. Each channel, every sample. 
+
+Sound Garden is esoteric and sometimes cryptic but it's very forgiving. Unknown words or stack
+overflows or underflow wouldn't explode but will be ignored.
+
+As you are free to put any values on the stack to be consumed by following ops (stack operations in
+Sound Garden lingo), you can easily make your sine wave more funky by modulating it with another
+wave:
+
+----
+$ echo '2 s 1 + 220 * s' | play_program
+----
+
+Take some time to meditate on what happens here.
+
+That's it about Sound Garden as a language (not really, it has few
+more tricks in its sleeve to be revealed in <<Templates>> section!). Please find list of available ops
+https://github.com/ul/sound-garden-0x2/tree/master/audio_program/src/help.adoc[here].
+
+Now its time to dive into Sound Garden as a livecoding environment.
+
+=== Sound Garden Terminal
+
+TBD
+
+=== Templates
+
+TBD

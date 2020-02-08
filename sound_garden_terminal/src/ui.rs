@@ -1,6 +1,6 @@
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_program::{compile_program, get_help, rewrite_terms, Context, TextOp};
+use audio_program::{compile_program, get_help, get_op_groups, rewrite_terms, Context, TextOp};
 use audio_vm::VM;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
@@ -21,6 +21,9 @@ use tui::layout::Rect;
 use tui::style::{Color, Style};
 use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
 use tui::Terminal;
+
+const MIN_X: usize = 2;
+const MIN_Y: usize = 2;
 
 pub fn main(
     vm: Arc<Mutex<VM>>,
@@ -86,7 +89,10 @@ fn render_editor(
             },
         ) in app.nodes.iter().enumerate()
         {
-            if p.x < 2 || p.y < 2 || p.x + op.len() > size.width as _ || p.y + 1 > size.height as _
+            if p.x < MIN_X
+                || p.y < MIN_Y
+                || p.x + op.len() > size.width as _
+                || p.y + 1 > size.height as _
             {
                 nodes_to_drop.push(i);
                 continue;
@@ -171,8 +177,8 @@ fn render_help(
             Text::raw(format!("\n")),
             Text::raw(include_str!("help.txt")),
         ];
-        size.x = 2;
-        size.y = 2;
+        size.x = MIN_X as u16;
+        size.y = MIN_Y as u16;
         size.width -= 3;
         size.height -= 3;
         Paragraph::new(text.iter())
@@ -210,7 +216,14 @@ fn render_ops(
             )),
             Text::raw(format!("Program: {}\n", app.program)),
             Text::raw(format!("\n")),
-            Text::raw(include_str!("ops.txt")),
+            Text::raw(format!("(Press Esc to close, j/k to scroll)\n")),
+            Text::raw(format!("\n")),
+            Text::raw(
+                app.op_groups
+                    .iter()
+                    .map(|(group, ops)| format!("=== {}\n{}\n", group, ops.join(", ")))
+                    .join("\n"),
+            ),
         ];
         size.x = 2;
         size.y = 2;
@@ -218,7 +231,7 @@ fn render_ops(
         size.height -= 3;
         Paragraph::new(text.iter())
             .scroll(app.help_scroll)
-            .wrap(false)
+            .wrap(true)
             .render(&mut f, size);
     })?;
     write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
@@ -276,6 +289,22 @@ fn handle_editor(
                     {
                         node.position.x += push_right;
                     }
+                }
+                Key::Char('o') => {
+                    app.input_mode = InputMode::Editing;
+                    events.disable_exit_key();
+                    let p = app.cursor;
+                    for node in app.nodes.iter_mut().filter(|node| node.position.y > p.y) {
+                        node.position.y += 1;
+                    }
+                    app.cursor.x = app
+                        .nodes
+                        .iter()
+                        .filter(|node| node.position.y == p.y)
+                        .min_by_key(|node| node.position.x)
+                        .map(|node| node.position.x)
+                        .unwrap_or(MIN_X);
+                    app.cursor.y += 1;
                 }
                 Key::Char('c') => {
                     app.input_mode = InputMode::Editing;
@@ -464,7 +493,7 @@ fn handle_editor(
                     return Err(anyhow!("Quit!"));
                 }
                 Key::Char('?') => app.screen = Screen::Help,
-                Key::Char('¿') => app.screen = Screen::Ops,
+                Key::Char('/') => app.screen = Screen::Ops,
                 _ => {}
             },
             InputMode::Editing => match input {
@@ -601,7 +630,7 @@ fn handle_help(app: &mut App, events: &mut Events) -> Result<()> {
 fn handle_ops(app: &mut App, events: &mut Events) -> Result<()> {
     match events.next()? {
         Event::Input(input) => match input {
-            Key::Char('¿') => app.screen = Screen::Editor,
+            Key::Char('/') => app.screen = Screen::Editor,
             Key::Esc => app.screen = Screen::Editor,
             Key::Char('j') | Key::Down => {
                 app.help_scroll += 1;
@@ -658,6 +687,8 @@ struct App {
     #[serde(skip, default)]
     input_mode: InputMode,
     nodes: Vec<Node>,
+    #[serde(skip, default = "get_op_groups")]
+    op_groups: Vec<(String, Vec<String>)>,
     #[serde(skip, default = "get_help")]
     op_help: HashMap<String, String>,
     #[serde(skip, default)]
@@ -678,12 +709,13 @@ impl App {
     pub fn new() -> Self {
         App {
             ctx: Default::default(),
-            cursor: Position { y: 2, x: 2 },
+            cursor: Position { y: MIN_X, x: MIN_Y },
             cycles: default_cycles(),
             draft: Default::default(),
             help_scroll: 0,
             input_mode: Default::default(),
             nodes: Default::default(),
+            op_groups: get_op_groups(),
             op_help: get_help(),
             ops: Default::default(),
             play: Default::default(),
