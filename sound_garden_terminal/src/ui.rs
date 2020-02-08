@@ -22,6 +22,9 @@ use tui::style::{Color, Style};
 use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
 use tui::Terminal;
 
+const MIN_X: usize = 2;
+const MIN_Y: usize = 2;
+
 pub fn main(
     vm: Arc<Mutex<VM>>,
     sample_rate: u32,
@@ -84,7 +87,10 @@ fn render_editor(
             },
         ) in app.nodes.iter().enumerate()
         {
-            if p.x < 2 || p.y < 2 || p.x + op.len() > size.width as _ || p.y + 1 > size.height as _
+            if p.x < MIN_X
+                || p.y < MIN_Y
+                || p.x + op.len() > size.width as _
+                || p.y + 1 > size.height as _
             {
                 nodes_to_drop.push(i);
                 continue;
@@ -169,8 +175,8 @@ fn render_help(
             Text::raw(format!("\n")),
             Text::raw(include_str!("help.txt")),
         ];
-        size.x = 2;
-        size.y = 2;
+        size.x = MIN_X as u16;
+        size.y = MIN_Y as u16;
         size.width -= 3;
         size.height -= 3;
         Paragraph::new(text.iter())
@@ -233,6 +239,22 @@ fn handle_editor(
                     {
                         node.position.x += push_right;
                     }
+                }
+                Key::Char('o') => {
+                    app.input_mode = InputMode::Editing;
+                    events.disable_exit_key();
+                    let p = app.cursor;
+                    for node in app.nodes.iter_mut().filter(|node| node.position.y > p.y) {
+                        node.position.y += 1;
+                    }
+                    app.cursor.x = app
+                        .nodes
+                        .iter()
+                        .filter(|node| node.position.y == p.y)
+                        .min_by_key(|node| node.position.x)
+                        .map(|node| node.position.x)
+                        .unwrap_or(MIN_X);
+                    app.cursor.y += 1;
                 }
                 Key::Char('c') => {
                     app.input_mode = InputMode::Editing;
@@ -614,7 +636,7 @@ impl App {
     pub fn new() -> Self {
         App {
             ctx: Default::default(),
-            cursor: Position { y: 2, x: 2 },
+            cursor: Position { y: MIN_X, x: MIN_Y },
             cycles: default_cycles(),
             draft: Default::default(),
             help_scroll: 0,
