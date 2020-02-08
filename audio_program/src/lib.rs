@@ -323,14 +323,14 @@ pub fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
 
 pub fn get_help() -> HashMap<String, String> {
     let mut result = HashMap::new();
-    for item in Regex::new(r"((?P<term>\w+)(:<\w+>)?[, ]*)+::(?P<definition>.+)")
+    for item in Regex::new(r"(?P<term>(\w+(:<\w+>)?(, )*)+)::(?P<definition>.+)")
         .unwrap()
         .captures_iter(HELP)
     {
-        result.insert(
-            item.name("term").unwrap().as_str().to_owned(),
-            item.name("definition").unwrap().as_str().trim().to_owned(),
-        );
+        let definition = item.name("definition").unwrap().as_str().trim();
+        for term in item.name("term").unwrap().as_str().split(", ") {
+            result.insert(term.to_owned(), definition.to_owned());
+        }
     }
     result
 }
