@@ -335,6 +335,32 @@ pub fn get_help() -> HashMap<String, String> {
     result
 }
 
+pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
+    let mut result = Vec::new();
+    let group_re = Regex::new("=== (.+)").unwrap();
+    let item_re = Regex::new(r"(?P<term>(\w+(:<\w+>)?(, )*)+)::").unwrap();
+    let mut current_group = None;
+    for line in HELP.split('\n') {
+        if let Some(m) = group_re.captures(line) {
+            if let Some(group) = current_group {
+                result.push(group);
+            }
+            current_group = Some((m.get(1).unwrap().as_str().to_owned(), Vec::new()));
+        } else if let Some(m) = item_re.captures(line) {
+            if let Some(group) = &mut current_group {
+                group.1.extend(
+                    m.name("term")
+                        .unwrap()
+                        .as_str()
+                        .split(", ")
+                        .map(|x| x.to_owned()),
+                );
+            }
+        }
+    }
+    result
+}
+
 struct Term {
     holes: usize,
     ops: Vec<TextOp>,

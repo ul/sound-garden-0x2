@@ -1,6 +1,6 @@
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_program::{compile_program, get_help, rewrite_terms, Context, TextOp};
+use audio_program::{compile_program, get_help, get_op_groups, rewrite_terms, Context, TextOp};
 use audio_vm::VM;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
@@ -52,6 +52,7 @@ pub fn main(
         match app.screen {
             Screen::Editor => render_editor(&mut app, &mut terminal)?,
             Screen::Help => render_help(&mut app, sample_rate, &filename, &mut terminal)?,
+            Screen::Ops => render_ops(&mut app, sample_rate, &filename, &mut terminal)?,
         };
 
         match app.screen {
@@ -64,6 +65,7 @@ pub fn main(
                 record_tx,
             )?,
             Screen::Help => handle_help(&mut app, &mut events)?,
+            Screen::Ops => handle_ops(&mut app, &mut events)?,
         };
     }
 }
@@ -177,6 +179,54 @@ fn render_help(
         ];
         size.x = MIN_X as u16;
         size.y = MIN_Y as u16;
+        size.width -= 3;
+        size.height -= 3;
+        Paragraph::new(text.iter())
+            .scroll(app.help_scroll)
+            .wrap(true)
+            .render(&mut f, size);
+    })?;
+    write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
+    io::stdout().flush()?;
+    Ok(())
+}
+
+fn render_ops(
+    app: &mut App,
+    sample_rate: u32,
+    filename: &str,
+    terminal: &mut Terminal<
+        TermionBackend<AlternateScreen<MouseTerminal<termion::raw::RawTerminal<std::io::Stdout>>>>,
+    >,
+) -> Result<()> {
+    terminal.draw(|mut f| {
+        let mut size = f.size();
+        Block::default()
+            .title("Sound Garden────Ops")
+            .title_style(Style::default().fg(Color::Green))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Green))
+            .render(&mut f, size);
+        let text = [
+            Text::raw(format!("Path: {}\n", filename)),
+            Text::raw(format!("Sample rate: {}\n", sample_rate)),
+            Text::raw(format!(
+                "Cycles: {}\n",
+                app.cycles.iter().map(|cycle| cycle.join("->")).join(", ")
+            )),
+            Text::raw(format!("Program: {}\n", app.program)),
+            Text::raw(format!("\n")),
+            Text::raw(format!("(Press Esc to close, j/k to scroll)\n")),
+            Text::raw(format!("\n")),
+            Text::raw(
+                app.op_groups
+                    .iter()
+                    .map(|(group, ops)| format!("=== {}\n{}\n", group, ops.join(", ")))
+                    .join("\n"),
+            ),
+        ];
+        size.x = 2;
+        size.y = 2;
         size.width -= 3;
         size.height -= 3;
         Paragraph::new(text.iter())
@@ -443,6 +493,7 @@ fn handle_editor(
                     return Err(anyhow!("Quit!"));
                 }
                 Key::Char('?') => app.screen = Screen::Help,
+                Key::Char('/') => app.screen = Screen::Ops,
                 _ => {}
             },
             InputMode::Editing => match input {
@@ -576,6 +627,26 @@ fn handle_help(app: &mut App, events: &mut Events) -> Result<()> {
     Ok(())
 }
 
+fn handle_ops(app: &mut App, events: &mut Events) -> Result<()> {
+    match events.next()? {
+        Event::Input(input) => match input {
+            Key::Char('/') => app.screen = Screen::Editor,
+            Key::Esc => app.screen = Screen::Editor,
+            Key::Char('j') | Key::Down => {
+                app.help_scroll += 1;
+            }
+            Key::Char('k') | Key::Up => {
+                if app.help_scroll > 0 {
+                    app.help_scroll -= 1;
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    Ok(())
+}
+
 fn commit(app: &mut App, vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) {
     app.nodes.sort_by_key(|node| node.position);
     app.program = app.nodes.iter().map(|node| node.op.to_owned()).join(" ");
@@ -616,6 +687,8 @@ struct App {
     #[serde(skip, default)]
     input_mode: InputMode,
     nodes: Vec<Node>,
+    #[serde(skip, default = "get_op_groups")]
+    op_groups: Vec<(String, Vec<String>)>,
     #[serde(skip, default = "get_help")]
     op_help: HashMap<String, String>,
     #[serde(skip, default)]
@@ -642,6 +715,7 @@ impl App {
             help_scroll: 0,
             input_mode: Default::default(),
             nodes: Default::default(),
+            op_groups: get_op_groups(),
             op_help: get_help(),
             ops: Default::default(),
             play: Default::default(),
@@ -722,6 +796,7 @@ impl Default for InputMode {
 enum Screen {
     Editor,
     Help,
+    Ops,
 }
 
 impl Default for Screen {
