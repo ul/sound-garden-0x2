@@ -329,7 +329,10 @@ pub fn get_help() -> HashMap<String, String> {
     {
         let definition = item.name("definition").unwrap().as_str().trim();
         for term in item.name("term").unwrap().as_str().split(", ") {
-            result.insert(term.to_owned(), definition.to_owned());
+            result.insert(
+                term.split(':').next().unwrap().to_owned(),
+                definition.to_owned(),
+            );
         }
     }
     result

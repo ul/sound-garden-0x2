@@ -42,11 +42,8 @@ pub fn main(
     loop {
         app.status = String::new();
         if let Some(ix) = app.node_at_cursor() {
-            let node = &app.nodes[ix];
-            if app.cursor.x < node.position.x + node.op.len() {
-                if let Some(help) = app.op_help.get(&node.op) {
-                    app.status = help.to_owned();
-                }
+            if let Some(help) = app.op_help.get(app.nodes[ix].op.split(':').next().unwrap()) {
+                app.status = help.to_owned();
             }
         }
         match app.screen {
