@@ -1,6 +1,6 @@
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_program::{compile_program, get_help, rewrite_terms, Context, TextOp};
+use audio_program::{compile_program, get_help, get_op_groups, rewrite_terms, Context, TextOp};
 use audio_vm::VM;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
@@ -216,7 +216,14 @@ fn render_ops(
             )),
             Text::raw(format!("Program: {}\n", app.program)),
             Text::raw(format!("\n")),
-            Text::raw(include_str!("ops.txt")),
+            Text::raw(format!("(Press Esc to close, j/k to scroll)\n")),
+            Text::raw(format!("\n")),
+            Text::raw(
+                app.op_groups
+                    .iter()
+                    .map(|(group, ops)| format!("=== {}\n{}\n", group, ops.join(", ")))
+                    .join("\n"),
+            ),
         ];
         size.x = 2;
         size.y = 2;
@@ -224,7 +231,7 @@ fn render_ops(
         size.height -= 3;
         Paragraph::new(text.iter())
             .scroll(app.help_scroll)
-            .wrap(false)
+            .wrap(true)
             .render(&mut f, size);
     })?;
     write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
@@ -486,7 +493,7 @@ fn handle_editor(
                     return Err(anyhow!("Quit!"));
                 }
                 Key::Char('?') => app.screen = Screen::Help,
-                Key::Char('¿') => app.screen = Screen::Ops,
+                Key::Char('/') => app.screen = Screen::Ops,
                 _ => {}
             },
             InputMode::Editing => match input {
@@ -623,7 +630,7 @@ fn handle_help(app: &mut App, events: &mut Events) -> Result<()> {
 fn handle_ops(app: &mut App, events: &mut Events) -> Result<()> {
     match events.next()? {
         Event::Input(input) => match input {
-            Key::Char('¿') => app.screen = Screen::Editor,
+            Key::Char('/') => app.screen = Screen::Editor,
             Key::Esc => app.screen = Screen::Editor,
             Key::Char('j') | Key::Down => {
                 app.help_scroll += 1;
@@ -680,6 +687,8 @@ struct App {
     #[serde(skip, default)]
     input_mode: InputMode,
     nodes: Vec<Node>,
+    #[serde(skip, default = "get_op_groups")]
+    op_groups: Vec<(String, Vec<String>)>,
     #[serde(skip, default = "get_help")]
     op_help: HashMap<String, String>,
     #[serde(skip, default)]
@@ -706,6 +715,7 @@ impl App {
             help_scroll: 0,
             input_mode: Default::default(),
             nodes: Default::default(),
+            op_groups: get_op_groups(),
             op_help: get_help(),
             ops: Default::default(),
             play: Default::default(),
