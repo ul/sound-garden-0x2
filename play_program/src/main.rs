@@ -1,3 +1,4 @@
+use audio_ops::pure::clip;
 use audio_program::{compile_program, rewrite_terms, Context, TextOp};
 use audio_vm::{Program, Sample, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
@@ -39,7 +40,7 @@ fn main() {
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
                     for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = ((sample * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
+                        *out = ((clip(sample) * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
                     }
                 }
             }
@@ -48,7 +49,7 @@ fn main() {
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
                     for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = (sample * std::i16::MAX as Sample) as i16;
+                        *out = (clip(sample) * std::i16::MAX as Sample) as i16;
                     }
                 }
             }
@@ -57,7 +58,7 @@ fn main() {
             } => {
                 for frame in buffer.chunks_mut(format.channels as usize) {
                     for (out, &sample) in frame.iter_mut().zip(&vm.next_frame()) {
-                        *out = sample as f32;
+                        *out = clip(sample) as f32;
                     }
                 }
             }

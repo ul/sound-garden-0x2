@@ -1,4 +1,5 @@
 use anyhow::Result;
+use audio_ops::pure::clip;
 use audio_vm::{Sample, CHANNELS, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
@@ -82,14 +83,4 @@ pub fn main(vm: Arc<Mutex<VM>>, rx: Receiver<()>, tx: Sender<u32>) -> Result<()>
             _ => (),
         }
     });
-}
-
-fn clip(sample: Sample) -> Sample {
-    if sample < -1.0 {
-        -1.0
-    } else if 1.0 < sample {
-        1.0
-    } else {
-        sample
-    }
 }

@@ -1,3 +1,4 @@
+use audio_ops::pure::clip;
 use audio_program::{compile_program, rewrite_terms, Context, TextOp};
 use audio_vm::{Program, Sample, CHANNELS, VM};
 use hound::{SampleFormat, WavSpec, WavWriter};
@@ -52,14 +53,4 @@ fn parse_program(s: &str, sample_rate: u32) -> Program {
         .collect::<Vec<_>>();
     let ops = rewrite_terms(&ops);
     compile_program(&ops, sample_rate, &mut Context::new())
-}
-
-fn clip(sample: Sample) -> Sample {
-    if sample < -1.0 {
-        -1.0
-    } else if 1.0 < sample {
-        1.0
-    } else {
-        sample
-    }
 }
