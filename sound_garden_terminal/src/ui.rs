@@ -439,6 +439,7 @@ fn handle_editor(
                 Key::Char('D') => {
                     let p = app.cursor;
                     app.nodes.retain(|node| node.position.y != p.y);
+                    app.draft = true;
                 }
                 Key::Char('=') => {
                     if let Some(ix) = app.node_at_cursor() {
