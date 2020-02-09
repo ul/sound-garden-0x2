@@ -56,7 +56,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
             "+" | "add" => push_args!(id, Fn2, pure::add),
             "-" | "sub" => push_args!(id, Fn2, pure::sub),
-            "/" | "div" => push_args!(id, Fn2, pure::div),
+            "/" | "div" => push_args!(id, Fn2, pure::safe_div),
             "\\" => push_args!(id, Fn1, pure::recip),
             "^" | "pow" => push_args!(id, Fn2, pure::pow),
             "adsr" => push_args!(id, ADSR, sample_rate),

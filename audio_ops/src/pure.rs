@@ -28,6 +28,15 @@ pub fn div(x: Sample, y: Sample) -> Sample {
 }
 
 #[inline]
+pub fn safe_div(x: Sample, y: Sample) -> Sample {
+    if y != 0.0 {
+        x / y
+    } else {
+        0.0
+    }
+}
+
+#[inline]
 pub fn pow(x: Sample, y: Sample) -> Sample {
     x.powf(y)
 }
