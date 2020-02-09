@@ -1,6 +1,7 @@
 use audio_program::{compile_program, rewrite_terms, Context, TextOp};
 use audio_vm::{Program, Sample, CHANNELS, VM};
 use hound::{SampleFormat, WavSpec, WavWriter};
+use rand::prelude::*;
 use std::io::Read;
 
 fn main() {
@@ -43,11 +44,9 @@ fn main() {
 
 fn parse_program(s: &str, sample_rate: u32) -> Program {
     let ops = s
-        .split_terminator('\n')
-        .flat_map(|s| s.splitn(2, "//").take(1).flat_map(|s| s.split_whitespace()))
-        .enumerate()
-        .map(|(id, op)| TextOp {
-            id: id as u64,
+        .split_whitespace()
+        .map(|op| TextOp {
+            id: random(),
             op: op.to_string(),
         })
         .collect::<Vec<_>>();

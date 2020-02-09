@@ -1124,6 +1124,7 @@ dependencies = [
  "audio_program 0.1.0",
  "audio_vm 0.1.0",
  "cpal 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1263,6 +1264,7 @@ dependencies = [
  "audio_program 0.1.0",
  "audio_vm 0.1.0",
  "hound 3.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
