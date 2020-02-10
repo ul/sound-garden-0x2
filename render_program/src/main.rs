@@ -4,6 +4,7 @@ use audio_vm::{Program, Sample, CHANNELS, VM};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use rand::prelude::*;
 use std::io::Read;
+use std::time::Instant;
 
 fn main() {
     let mut text = String::new();
@@ -33,6 +34,7 @@ fn main() {
     let mut vm = VM::new();
     vm.load_program(parse_program(&text, sample_rate));
 
+    let t = Instant::now();
     for _ in 0..((duration * (sample_rate as f64)) as _) {
         for &sample in &vm.next_frame() {
             let sample = (clip(sample) * std::i16::MAX as Sample) as i16;
@@ -41,6 +43,8 @@ fn main() {
                 .expect("Failed to write sample.");
         }
     }
+    let elapsed = t.elapsed().as_secs_f64();
+    println!("Done at x{:.1} speed.", duration / elapsed);
 }
 
 fn parse_program(s: &str, sample_rate: u32) -> Program {
