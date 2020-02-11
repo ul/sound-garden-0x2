@@ -46,7 +46,7 @@ channel:<N>, ch:<N>:: (x) -> compute only channel N of signal and broadcast it t
 
 === Math
 
-Binary arithmetic operations are available: `+`, `-`, `*`, `/`, `mod`. If you prefer, you can use aliases `add`, `sub`, `mul`, `div`.
+Binary arithmetic operations are available: `+`, `-`, `*`, `/`, `%`, '^'. If you prefer, you can use aliases `add`, `sub`, `mul`, `div`, `mod`, `pow`.
 
 `\\` is for reciprocal. `16 \\` will produce 1/16th.
 
@@ -90,6 +90,12 @@ dmetro_hold, dmh:: (period) -> emit 1.0 every given period, 0.0 all other time; 
 [horizontal]
 impulse:: (trigger, apex) -> generate exponential impulse which reaches 1.0 in apex seconds and then fades
 adsr:: (gate, a, d, s, r) -> classic ADSR envelope
+
+=== Spatial
+
+pan1:: (input, position) -> pan between left and right channel
+pan2:: (left, right, position) -> pan left channel of one signal with left channel of another using left channel of position
+panx:: (left, right, position) -> pan left and right channels of inputs as two pairs of left and right and then output left channel of lefts' pan as left, and right channel of rights' pan as right
 
 === Modulation
 

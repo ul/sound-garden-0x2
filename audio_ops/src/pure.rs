@@ -37,6 +37,11 @@ pub fn safe_div(x: Sample, y: Sample) -> Sample {
 }
 
 #[inline]
+pub fn modulo(x: Sample, y: Sample) -> Sample {
+    x % y
+}
+
+#[inline]
 pub fn pow(x: Sample, y: Sample) -> Sample {
     x.powf(y)
 }
@@ -44,6 +49,15 @@ pub fn pow(x: Sample, y: Sample) -> Sample {
 #[inline]
 pub fn recip(x: Sample) -> Sample {
     x.recip()
+}
+
+#[inline]
+pub fn safe_recip(x: Sample) -> Sample {
+    if x != 0.0 {
+        x.recip()
+    } else {
+        0.0
+    }
 }
 
 /// Round `x` to the nearest `step` multiplicative.
