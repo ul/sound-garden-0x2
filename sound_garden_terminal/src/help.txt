@@ -5,6 +5,7 @@ Normal mode
 /--------------------------------------\
 | q      | Quit.                       |
 | Return | Commit.                     |
+| '      | Commit without migration.   |
 | \      | Play/pause.                 |
 | r      | Toggle recording.           |
 | i      | Insert mode.                |

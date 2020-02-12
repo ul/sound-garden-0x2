@@ -247,6 +247,10 @@ fn handle_editor(
         Event::Input(input) => match app.input_mode {
             InputMode::Normal => match input {
                 Key::Char('\n') => commit(app, vm, sample_rate, filename),
+                Key::Char('\'') => {
+                    app.nodes.iter_mut().for_each(|node| node.id = random());
+                    commit(app, vm, sample_rate, filename);
+                }
                 Key::Char('\\') => {
                     app.play = !app.play;
                     if app.play {
