@@ -267,40 +267,27 @@ fn handle_editor(
                 Key::Char('I') => {
                     app.input_mode = InputMode::Insert;
                     events.disable_exit_key();
-                    let mut push_left = 1;
-                    if let Some(ix) = app.node_at_cursor() {
+                    app.cursor.x = if let Some(ix) = app.node_at_cursor() {
                         let Node {
                             op, position: p, ..
                         } = &app.nodes[ix];
-                        if p.x < app.cursor.x {
-                            push_left += p.x + op.len() - app.cursor.x;
+                        if p.x == app.cursor.x && op.len() > 1 {
+                            p.x
                         } else {
-                            let p = app.cursor;
-                            for node in app
-                                .nodes
-                                .iter_mut()
-                                .filter(|node| node.position.y == p.y && node.position.x >= p.x)
-                            {
-                                node.position.x += 1;
-                            }
+                            p.x + op.len() + 1
                         }
-                    }
-                    let p = app.cursor;
-                    let mut nodes_to_drop = Vec::new();
-                    for node in app
-                        .nodes
-                        .iter_mut()
-                        .filter(|node| node.position.y == p.y && node.position.x < p.x)
-                    {
-                        if node.position.x >= push_left + MIN_X {
-                            node.position.x -= push_left;
-                        } else {
-                            nodes_to_drop.push(node.id);
+                    } else {
+                        app.cursor.x
+                    };
+                    if app.node_at_cursor().is_some() {
+                        let p = app.cursor;
+                        for node in app
+                            .nodes
+                            .iter_mut()
+                            .filter(|node| node.position.y == p.y && node.position.x >= p.x)
+                        {
+                            node.position.x += 1;
                         }
-                    }
-                    if !nodes_to_drop.is_empty() {
-                        app.nodes.retain(|node| !nodes_to_drop.contains(&node.id));
-                        app.draft = true;
                     }
                 }
                 Key::Alt('i') => {
