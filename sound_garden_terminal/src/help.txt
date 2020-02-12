@@ -7,9 +7,11 @@ Normal mode
 | Return | Commit.                     |
 | \      | Play/pause.                 |
 | r      | Toggle recording.           |
-| i      | Edit mode.                  |
-| I      | Edit mode splash!           |
-| c      | Cut & edit.                 |
+| i      | Insert mode.                |
+| I      | Insert mode splash!         |
+| a      | Move left and insert mode.  |
+| c      | Cut & insert.               |
+| Alt+i  | Replace mode.               |
 | h      | Left.                       |
 | j      | Down.                       |
 | k      | Up.                         |
@@ -24,9 +26,9 @@ Normal mode
 | K      | Move node and before up.    |
 | H      | Move line up.               |
 | L      | Move line down.             |
-| ,      | Move left of line left.     |
-| <      | Move right of line left.    |
+| ,      | Move right of line left.    |
 | .      | Move right of line right.   |
+| <      | Move left of line left.     |
 | >      | Move left of line right.    |
 | =      | Cycle up / Increase by 1.   |
 | -      | Cycle down / Decrease by 1. |
@@ -37,10 +39,12 @@ Normal mode
 Cycle commands commit changes immideately.
 Moving node out of viewport will delete it.
 
-Edit mode
+Insert mode
 
 /--------------------------------------\
 | Esc, Return | Normal mode.           |
 | <char>      | Insert char.           |
 | Backspace   | Remove previous char.  |
 \--------------------------------------/
+
+Replace mode is the same as insert but doesn't push right of line.

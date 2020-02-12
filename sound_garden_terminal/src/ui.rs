@@ -76,22 +76,19 @@ fn render_editor(
     terminal.draw(|mut f| {
         let size = f.size();
         let mut nodes_to_drop = Vec::new();
-        for (
-            i,
-            Node {
-                op,
-                draft,
-                position: p,
-                ..
-            },
-        ) in app.nodes.iter().enumerate()
+        for Node {
+            id,
+            op,
+            draft,
+            position: p,
+        } in app.nodes.iter()
         {
             if p.x < MIN_X
                 || p.y < MIN_Y
                 || p.x + op.len() > size.width as _
                 || p.y + 1 > size.height as _
             {
-                nodes_to_drop.push(i);
+                nodes_to_drop.push(*id);
                 continue;
             }
             let text = [Text::raw(op.to_owned())];
@@ -102,10 +99,11 @@ fn render_editor(
                     Rect::new((p.x - 1) as _, (p.y - 1) as _, op.len() as _, 1),
                 );
         }
-        for ix in nodes_to_drop.drain(..) {
-            app.nodes.swap_remove(ix);
+        if !nodes_to_drop.is_empty() {
+            app.nodes.retain(|node| !nodes_to_drop.contains(&node.id));
             app.draft = true;
         }
+
         let color = if !app.play {
             Color::Gray
         } else if app.draft || app.nodes.iter().any(|node| node.draft) {
@@ -141,7 +139,8 @@ fn render_editor(
     )?;
     match app.input_mode {
         InputMode::Normal => write!(terminal.backend_mut(), "{}", cursor::SteadyBlock)?,
-        InputMode::Editing => write!(terminal.backend_mut(), "{}", cursor::SteadyUnderline)?,
+        InputMode::Insert => write!(terminal.backend_mut(), "{}", cursor::SteadyBar)?,
+        InputMode::Replace => write!(terminal.backend_mut(), "{}", cursor::SteadyUnderline)?,
     }
     io::stdout().flush()?;
     Ok(())
@@ -256,39 +255,53 @@ fn handle_editor(
                         vm.lock().unwrap().pause();
                     }
                 }
+                Key::Char('a') => {
+                    app.input_mode = InputMode::Insert;
+                    events.disable_exit_key();
+                    app.cursor.x += 1;
+                }
                 Key::Char('i') => {
-                    app.input_mode = InputMode::Editing;
+                    app.input_mode = InputMode::Insert;
                     events.disable_exit_key();
                 }
                 Key::Char('I') => {
-                    app.input_mode = InputMode::Editing;
+                    app.input_mode = InputMode::Insert;
                     events.disable_exit_key();
                     let mut push_left = 1;
-                    let push_right = 1;
                     if let Some(ix) = app.node_at_cursor() {
                         let Node {
                             op, position: p, ..
                         } = &app.nodes[ix];
-                        push_left += p.x + op.len() - app.cursor.x;
+                        if p.x < app.cursor.x {
+                            push_left += p.x + op.len() - app.cursor.x;
+                        } else {
+                            app.nodes[ix].position.x += 1;
+                        }
                     }
                     let p = app.cursor;
+                    let mut nodes_to_drop = Vec::new();
                     for node in app
                         .nodes
                         .iter_mut()
-                        .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                        .filter(|node| node.position.y == p.y && node.position.x < p.x)
                     {
-                        node.position.x -= push_left;
+                        if node.position.x >= push_left + MIN_X {
+                            node.position.x -= push_left;
+                        } else {
+                            nodes_to_drop.push(node.id);
+                        }
                     }
-                    for node in app
-                        .nodes
-                        .iter_mut()
-                        .filter(|node| node.position.y == p.y && node.position.x > p.x)
-                    {
-                        node.position.x += push_right;
+                    if !nodes_to_drop.is_empty() {
+                        app.nodes.retain(|node| !nodes_to_drop.contains(&node.id));
+                        app.draft = true;
                     }
                 }
+                Key::Alt('i') => {
+                    app.input_mode = InputMode::Replace;
+                    events.disable_exit_key();
+                }
                 Key::Char('o') => {
-                    app.input_mode = InputMode::Editing;
+                    app.input_mode = InputMode::Insert;
                     events.disable_exit_key();
                     let p = app.cursor;
                     for node in app.nodes.iter_mut().filter(|node| node.position.y > p.y) {
@@ -304,7 +317,7 @@ fn handle_editor(
                     app.cursor.y += 1;
                 }
                 Key::Char('c') => {
-                    app.input_mode = InputMode::Editing;
+                    app.input_mode = InputMode::Insert;
                     events.disable_exit_key();
                     if let Some(ix) = app.node_at_cursor() {
                         let node = &mut app.nodes[ix];
@@ -392,17 +405,6 @@ fn handle_editor(
                 }
                 Key::Char(',') => {
                     let p = app.cursor;
-                    for node in app
-                        .nodes
-                        .iter_mut()
-                        .filter(|node| node.position.y == p.y && node.position.x <= p.x)
-                    {
-                        node.position.x -= 1;
-                    }
-                    app.cursor.x -= 1;
-                }
-                Key::Char('<') => {
-                    let p = app.cursor;
                     for node in app.nodes.iter_mut().filter(|node| {
                         node.position.y == p.y && p.x < node.position.x + node.op.len()
                     }) {
@@ -418,6 +420,17 @@ fn handle_editor(
                         node.position.x += 1;
                     }
                     app.cursor.x += 1;
+                }
+                Key::Char('<') => {
+                    let p = app.cursor;
+                    for node in app
+                        .nodes
+                        .iter_mut()
+                        .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                    {
+                        node.position.x -= 1;
+                    }
+                    app.cursor.x -= 1;
                 }
                 Key::Char('>') => {
                     let p = app.cursor;
@@ -494,7 +507,7 @@ fn handle_editor(
                 Key::Char('/') => app.screen = Screen::Ops,
                 _ => {}
             },
-            InputMode::Editing => match input {
+            InputMode::Insert => match input {
                 Key::Left => {
                     app.cursor.x -= 1;
                 }
@@ -519,7 +532,7 @@ fn handle_editor(
                 Key::Char('\n') => {
                     app.input_mode = InputMode::Normal;
                     events.enable_exit_key();
-                    app.draft = app.nodes.iter().any(|node| node.op.is_empty());
+                    app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
                     app.nodes.retain(|node| !node.op.is_empty());
                 }
                 Key::Char(c) => {
@@ -600,7 +613,106 @@ fn handle_editor(
                 Key::Esc => {
                     app.input_mode = InputMode::Normal;
                     events.enable_exit_key();
-                    app.draft = app.nodes.iter().any(|node| node.op.is_empty());
+                    app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
+                    app.nodes.retain(|node| !node.op.is_empty());
+                }
+                _ => {}
+            },
+            InputMode::Replace => match input {
+                Key::Left => {
+                    app.cursor.x -= 1;
+                }
+                Key::Down => {
+                    app.cursor.y += 1;
+                }
+                Key::Up => {
+                    app.cursor.y -= 1;
+                }
+                Key::Right => {
+                    app.cursor.x += 1;
+                }
+                Key::Char(' ') => {
+                    if let Some(ix) = app.node_at_cursor() {
+                        let node = &mut app.nodes[ix];
+                        let new_len = node
+                            .op
+                            .char_indices()
+                            .nth((app.cursor.x - node.position.x) as usize)
+                            .map(|x| x.0)
+                            .unwrap_or(node.op.len());
+                        node.op.truncate(new_len);
+                    }
+                    app.cursor.x += 1;
+                }
+                Key::Char('\n') => {
+                    app.input_mode = InputMode::Normal;
+                    events.enable_exit_key();
+                    app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
+                    app.nodes.retain(|node| !node.op.is_empty());
+                }
+                Key::Char(c) => {
+                    let node = app.node_at_cursor();
+                    if let Some(ix) = node {
+                        let node = &mut app.nodes[ix];
+                        if app.cursor.x >= node.position.x + node.op.chars().count() {
+                            node.op.push(c);
+                        } else {
+                            let ix = node
+                                .op
+                                .char_indices()
+                                .nth((app.cursor.x - node.position.x) as usize)
+                                .map(|x| x.0)
+                                .unwrap();
+                            node.op.replace_range(ix..(ix + 1), &c.to_string());
+                        }
+                        node.draft = true;
+                    } else {
+                        let node = Node {
+                            id: random(),
+                            draft: true,
+                            op: c.to_string(),
+                            position: app.cursor,
+                        };
+                        app.nodes.push(node);
+                    };
+                    app.cursor.x += 1;
+                }
+                Key::Backspace => {
+                    let node_prev_x = app
+                        .node_at_cursor()
+                        .map(|ix| app.nodes[ix].position.x)
+                        .unwrap_or_default();
+                    app.cursor.x -= 1;
+                    let node = app.node_at_cursor();
+                    if let Some(ix) = node {
+                        let node = &mut app.nodes[ix];
+                        if node_prev_x == node.position.x
+                            && app.cursor.x < node.position.x + node.op.len()
+                        {
+                            if node.op.len() > 1 {
+                                let x = (app.cursor.x - node.position.x) as usize;
+                                let ixs = node
+                                    .op
+                                    .char_indices()
+                                    .skip(x)
+                                    .take(2)
+                                    .map(|x| x.0)
+                                    .collect::<Vec<_>>();
+                                node.op.replace_range(
+                                    ixs[0]..*(ixs.get(1).unwrap_or(&node.op.len())),
+                                    &"",
+                                );
+                            } else {
+                                node.op.pop();
+                            };
+                            node.draft = true;
+                        }
+                    }
+                }
+                Key::Esc => {
+                    app.input_mode = InputMode::Normal;
+                    events.enable_exit_key();
+                    app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
                     app.nodes.retain(|node| !node.op.is_empty());
                 }
                 _ => {}
@@ -761,7 +873,8 @@ impl App {
 #[derive(Serialize, Deserialize)]
 enum InputMode {
     Normal,
-    Editing,
+    Insert,
+    Replace,
 }
 
 #[derive(Serialize, Deserialize)]
