@@ -275,7 +275,14 @@ fn handle_editor(
                         if p.x < app.cursor.x {
                             push_left += p.x + op.len() - app.cursor.x;
                         } else {
-                            app.nodes[ix].position.x += 1;
+                            let p = app.cursor;
+                            for node in app
+                                .nodes
+                                .iter_mut()
+                                .filter(|node| node.position.y == p.y && node.position.x >= p.x)
+                            {
+                                node.position.x += 1;
+                            }
                         }
                     }
                     let p = app.cursor;
