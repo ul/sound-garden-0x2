@@ -131,6 +131,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                     Box::new(|freqs| freqs.reverse()),
                 )
             }
+            "sr" => push_args!(id, Constant, sample_rate as _),
             "swap" => push!(id, Swap),
             "t" => push_args!(id, Osc, sample_rate, pure::triangle),
             "tan" => push_args!(id, Fn1, pure::tan),

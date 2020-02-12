@@ -28,6 +28,7 @@ c:: (freq) -> cosine with phase0 = 0
 
 [horizontal]
 silence:: () -> alias for constant 0 signal
+sr:: () -> put sample rate on the stack
 whiteNoise, noise, n:: () -> each sample in each channel is the next value provided by pseudo-random generator
 linlin, project:: (x, a, b, c, d) -> assuming that signal x varies in the range from a to b linearly project its values to the range from c to d
 Note that ranges are just signals and are allowed to vary in time
