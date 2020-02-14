@@ -280,3 +280,11 @@ pub fn wrap(x: Sample) -> Sample {
 pub fn exp(x: Sample) -> Sample {
     x.exp()
 }
+
+pub fn linear_curve(a: Sample, dx: Sample) -> Sample {
+    a * dx
+}
+
+pub fn quadratic_curve(a: Sample, dx: Sample) -> Sample {
+    a.powi(4) * dx
+}

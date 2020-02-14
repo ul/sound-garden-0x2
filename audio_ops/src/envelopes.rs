@@ -1,5 +1,5 @@
 mod adsr;
 mod impulse;
+mod transition;
 
-pub use self::adsr::*;
-pub use self::impulse::*;
+pub use self::{adsr::*, impulse::*, transition::*};

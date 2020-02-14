@@ -91,6 +91,8 @@ dmetro_hold, dmh:: (period) -> emit 1.0 every given period, 0.0 all other time; 
 [horizontal]
 impulse:: (trigger, apex) -> generate exponential impulse which reaches 1.0 in apex seconds and then fades
 adsr:: (gate, a, d, s, r) -> classic ADSR envelope
+tline:: (value, delta) -> linearly smooth value change over delta timeframe 
+tquad:: (value, delta) -> quadratically smooth value change over delta timeframe 
 
 === Spatial
 

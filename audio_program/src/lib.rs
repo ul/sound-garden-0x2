@@ -137,6 +137,8 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "tan" => push_args!(id, Fn1, pure::tan),
             "tanh" => push_args!(id, Fn1, pure::tanh),
             "tri" => push_args!(id, OscPhase, sample_rate, pure::triangle),
+            "tline" => push_args!(id, Transition, sample_rate, pure::linear_curve),
+            "tquad" => push_args!(id, Transition, sample_rate, pure::quadratic_curve),
             "unit" => push_args!(id, Fn1, pure::unit),
             "w" => push_args!(id, Phasor, sample_rate),
             "wrap" => push_args!(id, Fn1, pure::wrap),
