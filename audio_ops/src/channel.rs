@@ -12,8 +12,7 @@ impl Channel {
 
 impl Op for Channel {
     fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = [0.0; CHANNELS];
-        frame[self.channel] = stack.pop()[self.channel];
+        let frame = [stack.pop()[self.channel]; CHANNELS];
         stack.push(&frame);
     }
 }
