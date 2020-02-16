@@ -126,3 +126,4 @@ get:<NAME>:: (x) -> put value of var <NAME> to the top
 [horizontal]
 writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigger write N seconds (for each channel) of signal x to the table NAME. It puts the signal back on the stack which passes through x values
 readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from the table NAME using indexer signal as a position in seconds, with linear interpolation
+filetable:<FILE>, ftab:<FILE>, ft:<FILE>:: (indexer) -> read from the table loaded from FILE using indexer signal as a position in seconds, with linear interpolation. Supported formats: WAV, FLAC, OGG.

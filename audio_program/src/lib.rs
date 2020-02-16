@@ -228,6 +228,26 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                 log::warn!("Missing var name parameter.");
                             }
                         },
+                        "ft" | "ftab" | "filetable" => match tokens.get(1) {
+                            Some(path) => {
+                                if !ctx.tables.contains_key(*path) {
+                                    if let Ok(mut r) = audrey::read::open(path) {
+                                        let table: Vec<Frame> = r
+                                            .frames::<Frame>()
+                                            .map(|frame| frame.unwrap_or_default())
+                                            .collect();
+                                        let table = Arc::new(Mutex::new(table));
+                                        ctx.tables.insert(path.to_string(), table);
+                                    }
+                                }
+                                if let Some(table) = ctx.tables.get(*path) {
+                                    push_args!(id, TableReader, sample_rate, Arc::clone(table));
+                                }
+                            }
+                            None => {
+                                log::warn!("Missing table file parameter.");
+                            }
+                        },
                         "rt" | "rtab" | "readtable" => {
                             match tokens.get(1).and_then(|x| ctx.tables.get(*x)) {
                                 Some(table) => {
@@ -373,7 +393,7 @@ pub fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
 
 pub fn get_help() -> HashMap<String, String> {
     let mut result = HashMap::new();
-    for item in Regex::new(r"(?P<term>(\w+(:<\w+>)?(, )*)+)::(?P<definition>.+)")
+    for item in Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::(?P<definition>.+)")
         .unwrap()
         .captures_iter(HELP)
     {
@@ -391,7 +411,7 @@ pub fn get_help() -> HashMap<String, String> {
 pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
     let mut result = Vec::new();
     let group_re = Regex::new("=== (.+)").unwrap();
-    let item_re = Regex::new(r"(?P<term>(\w+(:<\w+>)?(, )*)+)::").unwrap();
+    let item_re = Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::").unwrap();
     let mut current_group = None;
     for line in HELP.split('\n') {
         if let Some(m) = group_re.captures(line) {
