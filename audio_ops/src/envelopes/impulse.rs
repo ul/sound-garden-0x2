@@ -2,10 +2,10 @@ use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
 pub struct Impulse {
-    frame: usize,
+    frame: u64,
     last_trigger: Frame,
     sample_period: Sample,
-    trigger_frame: [usize; CHANNELS],
+    trigger_frame: [u64; CHANNELS],
 }
 
 impl Impulse {
@@ -14,7 +14,7 @@ impl Impulse {
             frame: 0,
             last_trigger: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            trigger_frame: [0; CHANNELS],
+            trigger_frame: [std::u64::MAX; CHANNELS],
         }
     }
 }
@@ -34,10 +34,15 @@ impl Op for Impulse {
             if *last_trigger <= 0.0 && trigger > 0.0 {
                 *trigger_frame = self.frame;
             }
+            *last_trigger = trigger;
+
+            if self.frame < *trigger_frame {
+                continue;
+            }
+
             let time = (self.frame - *trigger_frame) as Sample * self.sample_period;
             let h = time / apex;
             *output = h * (1.0 - h).exp();
-            *last_trigger = trigger;
         }
         self.frame += 1;
         stack.push(&frame);

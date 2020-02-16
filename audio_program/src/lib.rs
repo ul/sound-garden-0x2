@@ -92,6 +92,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "mh" | "metro_hold" => push_args!(id, MetroHold, sample_rate),
             "min" => push_args!(id, Fn2, pure::min),
             "n" | "noise" | "whiteNoise" => push!(id, WhiteNoise),
+            "oneshot" | "shot" => push_args!(id, OneShot, sample_rate),
             "p" => push_args!(id, Pulse, sample_rate),
             "pan1" => push!(id, Pan1),
             "pan2" => push!(id, Pan2),

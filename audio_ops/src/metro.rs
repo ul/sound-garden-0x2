@@ -186,3 +186,39 @@ impl Op for DMetroHold {
         }
     }
 }
+
+pub struct OneShot {
+    frame_number: u64,
+    sample_rate: Sample,
+}
+
+impl OneShot {
+    pub fn new(sample_rate: u32) -> Self {
+        OneShot {
+            frame_number: 0,
+            sample_rate: Sample::from(sample_rate),
+        }
+    }
+}
+
+impl Op for OneShot {
+    fn perform(&mut self, stack: &mut Stack) {
+        let mut frame = [0.0; CHANNELS];
+        for (output, &dt) in izip!(&mut frame, &stack.pop()) {
+            let delta = self.sample_rate * dt;
+            *output = if delta > 0.0 && delta as u64 == self.frame_number {
+                1.0
+            } else {
+                0.0
+            };
+        }
+        self.frame_number += 1;
+        stack.push(&frame);
+    }
+
+    fn migrate(&mut self, other: &Box<dyn Op>) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.frame_number = other.frame_number;
+        }
+    }
+}

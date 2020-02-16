@@ -11,7 +11,7 @@ pub struct Transition {
     current_value: Frame,
     next_value: Frame,
     sample_period: Sample,
-    frame: usize,
+    frame: u64,
 }
 
 impl Transition {

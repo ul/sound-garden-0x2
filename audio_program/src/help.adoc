@@ -85,6 +85,7 @@ metro, m:: (freq) -> emit 1.0 with given frequency, 0.0 all other time
 dmetro, dm:: (period) -> emit 1.0 every given period, 0.0 all other time
 metro_hold, mh:: (freq) -> emit 1.0 with given frequency, 0.0 all other time; don't set new freq until the next trigger
 dmetro_hold, dmh:: (period) -> emit 1.0 every given period, 0.0 all other time; don't set new period until the next trigger
+oneshot, shot:: (period) -> emit 1.0 after a given period, 0.0 all other time
 
 === Envelopes
 

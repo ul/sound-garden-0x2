@@ -2,9 +2,9 @@ use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
 use itertools::izip;
 
 pub struct ADSR {
-    frame: usize,
-    gate_frame_on: [usize; CHANNELS],
-    gate_frame_off: [usize; CHANNELS],
+    frame: u64,
+    gate_frame_on: [u64; CHANNELS],
+    gate_frame_off: [u64; CHANNELS],
     last_gate: Frame,
     sample_period: Sample,
 }
@@ -13,7 +13,7 @@ impl ADSR {
     pub fn new(sample_rate: u32) -> Self {
         ADSR {
             frame: 0,
-            gate_frame_on: [0; CHANNELS],
+            gate_frame_on: [std::u64::MAX; CHANNELS],
             gate_frame_off: [0; CHANNELS],
             last_gate: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
@@ -48,6 +48,10 @@ impl Op for ADSR {
                 *gate_frame_off = self.frame;
             }
             *last_gate = gate;
+
+            if self.frame < *gate_frame_on {
+                continue;
+            }
 
             let on = *gate_frame_on as Sample * self.sample_period;
             let delta = now - on;
