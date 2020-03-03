@@ -1,14 +1,12 @@
+use crate::app::{App, InputMode, Node, Position, Screen, MIN_X, MIN_Y};
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_program::{compile_program, get_help, get_op_groups, rewrite_terms, Context, TextOp};
+use audio_program::{compile_program, rewrite_terms, TextOp};
 use audio_vm::VM;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
 use rand::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use termion::cursor;
@@ -22,16 +20,13 @@ use tui::style::{Color, Style};
 use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
 use tui::Terminal;
 
-const MIN_X: usize = 2;
-const MIN_Y: usize = 2;
-
 pub fn main(
     vm: Arc<Mutex<VM>>,
     sample_rate: u32,
     filename: &str,
     record_tx: &Sender<bool>,
 ) -> Result<()> {
-    let mut app = App::load(&filename).unwrap_or_else(|_| App::new());
+    let mut app = App::load(&filename).unwrap_or_default();
     commit(&mut app, Arc::clone(&vm), sample_rate, filename);
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
@@ -40,12 +35,6 @@ pub fn main(
     let mut terminal = Terminal::new(backend)?;
     let mut events = Events::new();
     loop {
-        app.status = String::new();
-        if let Some(ix) = app.node_at_cursor() {
-            if let Some(help) = app.op_help.get(app.nodes[ix].op.split(':').next().unwrap()) {
-                app.status = help.to_owned();
-            }
-        }
         match app.screen {
             Screen::Editor => render_editor(&mut app, &mut terminal)?,
             Screen::Help => render_help(&mut app, sample_rate, &filename, &mut terminal)?,
@@ -75,22 +64,13 @@ fn render_editor(
 ) -> Result<()> {
     terminal.draw(|mut f| {
         let size = f.size();
-        let mut nodes_to_drop = Vec::new();
         for Node {
             id,
             op,
             draft,
             position: p,
-        } in app.nodes.iter()
+        } in app.nodes()
         {
-            if p.x < MIN_X
-                || p.y < MIN_Y
-                || p.x + op.len() > size.width as _
-                || p.y + 1 > size.height as _
-            {
-                nodes_to_drop.push(*id);
-                continue;
-            }
             let text = [Text::raw(op.to_owned())];
             Paragraph::new(text.iter())
                 .style(Style::default().fg(if *draft { Color::Red } else { Color::White }))
@@ -99,14 +79,10 @@ fn render_editor(
                     Rect::new((p.x - 1) as _, (p.y - 1) as _, op.len() as _, 1),
                 );
         }
-        if !nodes_to_drop.is_empty() {
-            app.nodes.retain(|node| !nodes_to_drop.contains(&node.id));
-            app.draft = true;
-        }
 
         let color = if !app.play {
             Color::Gray
-        } else if app.draft || app.nodes.iter().any(|node| node.draft) {
+        } else if app.draft() {
             Color::Red
         } else {
             Color::White
@@ -135,9 +111,9 @@ fn render_editor(
         terminal.backend_mut(),
         "{}{}",
         cursor::Show,
-        cursor::Goto(app.cursor.x as _, app.cursor.y as _),
+        cursor::Goto(app.cursor().x as _, app.cursor().y as _),
     )?;
-    match app.input_mode {
+    match app.input_mode() {
         InputMode::Normal => write!(terminal.backend_mut(), "{}", cursor::SteadyBlock)?,
         InputMode::Insert => write!(terminal.backend_mut(), "{}", cursor::SteadyBar)?,
         InputMode::Replace => write!(terminal.backend_mut(), "{}", cursor::SteadyUnderline)?,
@@ -169,7 +145,7 @@ fn render_help(
                 "Cycles: {}\n",
                 app.cycles.iter().map(|cycle| cycle.join("->")).join(", ")
             )),
-            Text::raw(format!("Program: {}\n", app.program)),
+            Text::raw(format!("Program: {}\n", app.program())),
             Text::raw(format!("\n")),
             Text::raw(include_str!("help.txt")),
         ];
@@ -210,7 +186,7 @@ fn render_ops(
                 "Cycles: {}\n",
                 app.cycles.iter().map(|cycle| cycle.join("->")).join(", ")
             )),
-            Text::raw(format!("Program: {}\n", app.program)),
+            Text::raw(format!("Program: {}\n", app.program())),
             Text::raw(format!("\n")),
             Text::raw(format!("(Press Esc to close, j/k to scroll)\n")),
             Text::raw(format!("\n")),
@@ -244,11 +220,13 @@ fn handle_editor(
     record_tx: &Sender<bool>,
 ) -> Result<()> {
     match events.next()? {
-        Event::Input(input) => match app.input_mode {
+        Event::Input(input) => match app.input_mode() {
             InputMode::Normal => match input {
-                Key::Char('\n') => commit(app, vm, sample_rate, filename),
+                Key::Char('\n') => {
+                    commit(app, vm, sample_rate, filename);
+                }
                 Key::Char('\'') => {
-                    app.nodes.iter_mut().for_each(|node| node.id = random());
+                    app.randomize_node_ids();
                     commit(app, vm, sample_rate, filename);
                 }
                 Key::Char('\\') => {
@@ -260,34 +238,34 @@ fn handle_editor(
                     }
                 }
                 Key::Char('a') => {
-                    app.input_mode = InputMode::Insert;
+                    app.insert_mode();
+                    app.move_cursor(Position::x(1));
                     events.disable_exit_key();
-                    app.cursor.x += 1;
                 }
                 Key::Char('i') => {
-                    app.input_mode = InputMode::Insert;
+                    app.insert_mode();
                     events.disable_exit_key();
                 }
                 Key::Char('I') => {
-                    app.input_mode = InputMode::Insert;
+                    app.insert_mode();
                     events.disable_exit_key();
-                    app.cursor.x = if let Some(ix) = app.node_at_cursor() {
+                    let new_cursor_x = if let Some(ix) = app.node_at_cursor() {
                         let Node {
                             op, position: p, ..
-                        } = &app.nodes[ix];
-                        if p.x == app.cursor.x && op.len() > 1 {
+                        } = &app.nodes()[ix];
+                        if p.x == app.cursor().x && op.len() > 1 {
                             p.x
                         } else {
-                            p.x + op.len() + 1
+                            p.x + (op.len() as i16) + 1
                         }
                     } else {
-                        app.cursor.x
+                        app.cursor().x
                     };
+                    app.move_cursor(Position::x(new_cursor_x));
                     if app.node_at_cursor().is_some() {
-                        let p = app.cursor;
+                        let p = app.cursor();
                         for node in app
-                            .nodes
-                            .iter_mut()
+                            .nodes()
                             .filter(|node| node.position.y == p.y && node.position.x >= p.x)
                         {
                             node.position.x += 1;
@@ -295,11 +273,11 @@ fn handle_editor(
                     }
                 }
                 Key::Alt('i') => {
-                    app.input_mode = InputMode::Replace;
+                    app.replace_mode();
                     events.disable_exit_key();
                 }
                 Key::Char('o') => {
-                    app.input_mode = InputMode::Insert;
+                    app.insert_mode();
                     events.disable_exit_key();
                     let p = app.cursor;
                     for node in app.nodes.iter_mut().filter(|node| node.position.y > p.y) {
@@ -315,7 +293,7 @@ fn handle_editor(
                     app.cursor.y += 1;
                 }
                 Key::Char('c') => {
-                    app.input_mode = InputMode::Insert;
+                    app.insert_mode();
                     events.disable_exit_key();
                     if let Some(ix) = app.node_at_cursor() {
                         let node = &mut app.nodes[ix];
@@ -501,23 +479,17 @@ fn handle_editor(
                     vm.lock().unwrap().pause();
                     return Err(anyhow!("Quit!"));
                 }
+                Key::Char('u') => app.undo(),
+                Key::Char('U') => app.redo(),
                 Key::Char('?') => app.screen = Screen::Help,
                 Key::Char('/') => app.screen = Screen::Ops,
                 _ => {}
             },
             InputMode::Insert => match input {
-                Key::Left => {
-                    app.cursor.x -= 1;
-                }
-                Key::Down => {
-                    app.cursor.y += 1;
-                }
-                Key::Up => {
-                    app.cursor.y -= 1;
-                }
-                Key::Right => {
-                    app.cursor.x += 1;
-                }
+                Key::Left => app.move_cursor(Position::x(-1)),
+                Key::Down => app.move_cursor(Position::y(1)),
+                Key::Up => app.move_cursor(Position::y(-1)),
+                Key::Right => app.move_cursor(Position::x(1)),
                 Key::Char(' ') => {
                     let p = app.cursor;
                     for node in app.nodes.iter_mut().filter(|node| {
@@ -528,7 +500,7 @@ fn handle_editor(
                     app.cursor.x += 1;
                 }
                 Key::Char('\n') => {
-                    app.input_mode = InputMode::Normal;
+                    app.normal_mode();
                     events.enable_exit_key();
                     app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
                     app.nodes.retain(|node| !node.op.is_empty());
@@ -609,7 +581,7 @@ fn handle_editor(
                     }
                 }
                 Key::Esc => {
-                    app.input_mode = InputMode::Normal;
+                    app.normal_mode();
                     events.enable_exit_key();
                     app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
                     app.nodes.retain(|node| !node.op.is_empty());
@@ -617,18 +589,10 @@ fn handle_editor(
                 _ => {}
             },
             InputMode::Replace => match input {
-                Key::Left => {
-                    app.cursor.x -= 1;
-                }
-                Key::Down => {
-                    app.cursor.y += 1;
-                }
-                Key::Up => {
-                    app.cursor.y -= 1;
-                }
-                Key::Right => {
-                    app.cursor.x += 1;
-                }
+                Key::Left => app.move_cursor(Position::x(-1)),
+                Key::Down => app.move_cursor(Position::y(1)),
+                Key::Up => app.move_cursor(Position::y(-1)),
+                Key::Right => app.move_cursor(Position::x(1)),
                 Key::Char(' ') => {
                     if let Some(ix) = app.node_at_cursor() {
                         let node = &mut app.nodes[ix];
@@ -643,7 +607,7 @@ fn handle_editor(
                     app.cursor.x += 1;
                 }
                 Key::Char('\n') => {
-                    app.input_mode = InputMode::Normal;
+                    app.normal_mode();
                     events.enable_exit_key();
                     app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
                     app.nodes.retain(|node| !node.op.is_empty());
@@ -708,7 +672,7 @@ fn handle_editor(
                     }
                 }
                 Key::Esc => {
-                    app.input_mode = InputMode::Normal;
+                    app.normal_mode();
                     events.enable_exit_key();
                     app.draft = app.draft || app.nodes.iter().any(|node| node.op.is_empty());
                     app.nodes.retain(|node| !node.op.is_empty());
@@ -785,145 +749,4 @@ fn commit(app: &mut App, vm: Arc<Mutex<VM>>, sample_rate: u32, filename: &str) {
         };
         drop(garbage);
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct App {
-    #[serde(skip, default)]
-    ctx: Context,
-    cursor: Position,
-    #[serde(skip, default = "default_cycles")]
-    cycles: Vec<Vec<String>>,
-    #[serde(skip, default)]
-    draft: bool,
-    #[serde(skip, default)]
-    help_scroll: u16,
-    #[serde(skip, default)]
-    input_mode: InputMode,
-    nodes: Vec<Node>,
-    #[serde(skip, default = "get_op_groups")]
-    op_groups: Vec<(String, Vec<String>)>,
-    #[serde(skip, default = "get_help")]
-    op_help: HashMap<String, String>,
-    #[serde(skip, default)]
-    ops: Vec<TextOp>,
-    #[serde(skip, default)]
-    play: bool,
-    #[serde(default)]
-    program: String,
-    #[serde(skip, default)]
-    recording: bool,
-    #[serde(skip, default)]
-    screen: Screen,
-    #[serde(skip, default)]
-    status: String,
-}
-
-impl App {
-    pub fn new() -> Self {
-        App {
-            ctx: Default::default(),
-            cursor: Position { y: MIN_X, x: MIN_Y },
-            cycles: default_cycles(),
-            draft: Default::default(),
-            help_scroll: 0,
-            input_mode: Default::default(),
-            nodes: Default::default(),
-            op_groups: get_op_groups(),
-            op_help: get_help(),
-            ops: Default::default(),
-            play: Default::default(),
-            program: Default::default(),
-            recording: Default::default(),
-            screen: Default::default(),
-            status: Default::default(),
-        }
-    }
-
-    pub fn node_at_cursor(&self) -> Option<usize> {
-        self.nodes.iter().position(
-            |Node {
-                 position: Position { y, x },
-                 op,
-                 ..
-             }| {
-                *y == self.cursor.y
-                    && *x <= self.cursor.x
-                    // space after node is counted as a part of the node
-                    && self.cursor.x <= *x + op.len()
-            },
-        )
-    }
-
-    // TODO Atomic write.
-    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
-        let f = std::fs::File::create(path)?;
-        serde_json::to_writer_pretty(f, self)?;
-        Ok(())
-    }
-
-    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
-        let f = std::fs::File::open(path)?;
-        Ok(serde_json::from_reader(f)?)
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-enum InputMode {
-    Normal,
-    Insert,
-    Replace,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Node {
-    #[serde(skip, default = "random")]
-    id: u64,
-    #[serde(skip, default)]
-    draft: bool,
-    op: String,
-    position: Position,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq, Ord, Deserialize, Serialize)]
-struct Position {
-    x: usize,
-    y: usize,
-}
-
-impl PartialOrd for Position {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let y = self.y.cmp(&other.y);
-        Some(if let Ordering::Equal = y {
-            self.x.cmp(&other.x)
-        } else {
-            y
-        })
-    }
-}
-
-impl Default for InputMode {
-    fn default() -> Self {
-        InputMode::Normal
-    }
-}
-
-enum Screen {
-    Editor,
-    Help,
-    Ops,
-}
-
-impl Default for Screen {
-    fn default() -> Self {
-        Screen::Editor
-    }
-}
-
-fn default_cycles() -> Vec<Vec<String>> {
-    // NOTE Always repeat the first element at the end.
-    vec![vec!["s", "t", "w", "c", "s"]]
-        .iter()
-        .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
-        .collect()
 }

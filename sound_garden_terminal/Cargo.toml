@@ -34,3 +34,7 @@ path = "../audio_vm"
 
 [dependencies.thread_worker]
 path = "../thread_worker"
+
+[dependencies.redo]
+version = "0.40.0"
+features = ["serde"]
