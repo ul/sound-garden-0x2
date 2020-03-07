@@ -7,13 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-pub const MIN_X: usize = 2;
-pub const MIN_Y: usize = 2;
+pub const MIN_X: i16 = 2;
+pub const MIN_Y: i16 = 2;
 
 pub struct App {
     pub ctx: Context,
     pub cycles: Vec<Vec<String>>,
-    pub draft: bool,
     pub help_scroll: u16,
     pub input_mode: InputMode,
     pub op_groups: Vec<(String, Vec<String>)>,
@@ -89,7 +88,7 @@ impl App {
     }
 
     pub fn draft(&self) -> bool {
-        self.draft
+        !self.saved_state.is_saved()
             || self
                 .saved_state
                 .target()
@@ -103,6 +102,7 @@ impl App {
     }
 
     pub fn normal_mode(&mut self) {
+        // TODO cleanup empty nodes
         self.input_mode = InputMode::Normal;
     }
 
@@ -123,15 +123,27 @@ impl App {
     pub fn move_cursor(&mut self, offset: Position) {
         self.saved_state
             .apply(SavedStateCommand::MoveCursor { offset });
-        self.status = String::new();
-        if let Some(ix) = self.node_at_cursor() {
-            if let Some(help) = self
-                .op_help
-                .get(self.nodes()[ix].op.split(':').next().unwrap())
-            {
-                self.status = help.to_owned();
-            }
-        }
+        self.update_status();
+    }
+
+    pub fn move_nodes(&mut self, ids: Vec<u64>, offset: Position) {
+        self.saved_state
+            .apply(SavedStateCommand::MoveNodes { ids, offset });
+        self.update_status();
+    }
+
+    pub fn delete_nodes(&mut self, ids: Vec<u64>) {
+        self.saved_state.apply(SavedStateCommand::DeleteNodes {
+            ids,
+            nodes: Vec::new(),
+        });
+        self.update_status();
+    }
+
+    pub fn insert_char(&mut self, id: u64, ix: usize, char: char) {
+        self.saved_state
+            .apply(SavedStateCommand::InsertChar { id, ix, char });
+        self.update_status();
     }
 
     pub fn nodes(&self) -> &[Node] {
@@ -148,6 +160,32 @@ impl App {
 
     pub fn node_at_cursor(&self) -> Option<usize> {
         self.saved_state.target().node_at_cursor()
+    }
+
+    pub fn sort_nodes(&mut self) {
+        let target = self.saved_state.target();
+        target.nodes.sort_by_key(|node| node.position);
+        target.program = target.nodes.iter().map(|node| node.op.to_owned()).join(" ");
+    }
+
+    pub fn undraft(&mut self) {
+        self.saved_state
+            .target()
+            .nodes
+            .iter_mut()
+            .for_each(|node| node.draft = false);
+    }
+
+    fn update_status(&mut self) {
+        self.status = String::new();
+        if let Some(ix) = self.node_at_cursor() {
+            if let Some(help) = self
+                .op_help
+                .get(self.nodes()[ix].op.split(':').next().unwrap())
+            {
+                self.status = help.to_owned();
+            }
+        }
     }
 }
 
@@ -202,7 +240,6 @@ impl Default for App {
         App {
             ctx: Default::default(),
             cycles: default_cycles(),
-            draft: Default::default(),
             help_scroll: 0,
             input_mode: Default::default(),
             op_groups: get_op_groups(),
@@ -235,6 +272,9 @@ impl Default for Screen {
 enum SavedStateCommand {
     RandomizeNodeIds { previous_ids: HashMap<u64, u64> },
     MoveCursor { offset: Position },
+    MoveNodes { ids: Vec<u64>, offset: Position },
+    DeleteNodes { ids: Vec<u64>, nodes: Vec<Node> },
+    InsertChar { id: u64, ix: usize, char: char },
 }
 
 impl Command for SavedStateCommand {
@@ -255,6 +295,30 @@ impl Command for SavedStateCommand {
                 state.cursor.x += offset.x;
                 state.cursor.y += offset.y;
             }
+            MoveNodes { ids, offset } => {
+                for node in state.nodes.iter_mut().filter(|node| ids.contains(&node.id)) {
+                    node.position.x += offset.x;
+                    node.position.y += offset.y;
+                }
+            }
+            DeleteNodes { ids, nodes } => {
+                nodes.clear();
+                let mut i = 0;
+                while i < state.nodes.len() {
+                    if ids.contains(&state.nodes[i].id) {
+                        nodes.push(state.nodes.remove(i));
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            InsertChar { id, ix, char } => {
+                if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                    let mut chars: Vec<_> = node.op.chars().collect();
+                    chars.insert(*ix, *char);
+                    node.op = chars.iter().join("");
+                }
+            }
         }
         Ok(())
     }
@@ -270,6 +334,22 @@ impl Command for SavedStateCommand {
             MoveCursor { offset } => {
                 state.cursor.x -= offset.x;
                 state.cursor.y -= offset.y;
+            }
+            MoveNodes { ids, offset } => {
+                for node in state.nodes.iter_mut().filter(|node| ids.contains(&node.id)) {
+                    node.position.x -= offset.x;
+                    node.position.y -= offset.y;
+                }
+            }
+            DeleteNodes { ids, nodes } => {
+                state.nodes.extend(nodes.drain(..));
+            }
+            InsertChar { id, ix, .. } => {
+                if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                    let mut chars: Vec<_> = node.op.chars().collect();
+                    chars.remove(*ix);
+                    node.op = chars.iter().join("");
+                }
             }
         }
         Ok(())
@@ -303,24 +383,6 @@ impl Command for SavedStateCommand {
 }
 
 /*
-pub struct InsertChar(usize, char);
-
-impl Command<Node> for InsertChar {
-    fn apply(&mut self, node: &mut Node) -> undo::Result {
-        let mut chars: Vec<_> = node.op.chars().collect();
-        chars.insert(self.0, self.1);
-        node.op = chars.iter().join("");
-        Ok(())
-    }
-
-    fn undo(&mut self, node: &mut Node) -> undo::Result {
-        let mut chars: Vec<_> = node.op.chars().collect();
-        chars.remove(self.0);
-        node.op = chars.iter().join("");
-        Ok(())
-    }
-}
-
 pub struct Cut(usize, Option<String>);
 
 impl Command for Cut {
