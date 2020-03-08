@@ -1,15 +1,18 @@
 use anyhow::Result;
-use audio_program::{get_help, get_op_groups, Context, TextOp};
+use audio_program::{compile_program, get_help, get_op_groups, Context, TextOp};
+use audio_vm::VM;
 use itertools::Itertools;
 use rand::prelude::*;
 use redo::{Command, Record};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub const MIN_X: i16 = 2;
 pub const MIN_Y: i16 = 2;
 
+// TODO make less pub
 pub struct App {
     pub ctx: Context,
     pub cycles: Vec<Vec<String>>,
@@ -17,12 +20,14 @@ pub struct App {
     pub input_mode: InputMode,
     pub op_groups: Vec<(String, Vec<String>)>,
     pub op_help: HashMap<String, String>,
-    pub ops: Vec<TextOp>,
     pub play: bool,
     pub recording: bool,
     pub screen: Screen,
     pub status: String,
+    filename: String,
+    sample_rate: u32,
     saved_state: Record<SavedStateCommand>,
+    vm: Arc<Mutex<VM>>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -47,7 +52,6 @@ pub struct Node {
 pub enum InputMode {
     Normal,
     Insert,
-    Replace,
 }
 
 pub enum Screen {
@@ -63,28 +67,69 @@ pub struct Position {
 }
 
 impl App {
+    pub fn new(filename: String, vm: Arc<Mutex<VM>>, sample_rate: u32) -> Self {
+        App {
+            ctx: Default::default(),
+            cycles: default_cycles(),
+            filename,
+            help_scroll: 0,
+            input_mode: Default::default(),
+            op_groups: get_op_groups(),
+            op_help: get_help(),
+            play: Default::default(),
+            recording: Default::default(),
+            sample_rate,
+            saved_state: Default::default(),
+            screen: Default::default(),
+            status: Default::default(),
+            vm,
+        }
+    }
+
     // TODO Atomic write.
-    pub fn save<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<()> {
-        let f = std::fs::File::create(path)?;
+    pub fn save(&mut self) -> Result<()> {
+        let target = &mut self.saved_state.target_mut();
+        target.nodes.iter_mut().for_each(|node| node.draft = false);
+        // TODO mv to load_program
+        target.nodes.sort_by_key(|node| node.position);
+        target.program = target.nodes.iter().map(|node| node.op.to_owned()).join(" ");
+
+        let f = std::fs::File::create(&self.filename)?;
         serde_json::to_writer_pretty(f, &self.saved_state)?;
         self.saved_state.set_saved(true);
         Ok(())
     }
 
-    pub fn load<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
-        let f = std::fs::File::open(path)?;
-        Ok(Self {
-            saved_state: serde_json::from_reader(f)?,
-            ..Default::default()
-        })
+    pub fn load(path: &str, vm: Arc<Mutex<VM>>, sample_rate: u32) -> Self {
+        let mut app = Self::new(path.to_owned(), vm, sample_rate);
+        if let Ok(f) = std::fs::File::open(path) {
+            if let Ok(saved_state) = serde_json::from_reader(f) {
+                app.saved_state = saved_state;
+            }
+        }
+        app.load_program();
+        app
+    }
+
+    pub fn commit(&mut self) {
+        self.save().ok();
+        self.load_program();
     }
 
     pub fn undo(&mut self) {
-        self.saved_state.undo();
+        self.saved_state.undo().ok();
     }
 
     pub fn redo(&mut self) {
-        self.saved_state.undo();
+        self.saved_state.undo().ok();
+    }
+
+    pub fn play(&mut self) {
+        self.vm.lock().unwrap().play();
+    }
+
+    pub fn pause(&mut self) {
+        self.vm.lock().unwrap().pause();
     }
 
     pub fn draft(&self) -> bool {
@@ -110,39 +155,59 @@ impl App {
         self.input_mode = InputMode::Insert;
     }
 
-    pub fn replace_mode(&mut self) {
-        self.input_mode = InputMode::Replace;
-    }
-
     pub fn randomize_node_ids(&mut self) {
-        self.saved_state.apply(SavedStateCommand::RandomizeNodeIds {
-            previous_ids: Default::default(),
-        });
+        self.saved_state
+            .apply(SavedStateCommand::RandomizeNodeIds {
+                previous_ids: Default::default(),
+            })
+            .ok();
     }
 
     pub fn move_cursor(&mut self, offset: Position) {
         self.saved_state
-            .apply(SavedStateCommand::MoveCursor { offset });
+            .apply(SavedStateCommand::MoveCursor { offset })
+            .ok();
         self.update_status();
     }
 
     pub fn move_nodes(&mut self, ids: Vec<u64>, offset: Position) {
         self.saved_state
-            .apply(SavedStateCommand::MoveNodes { ids, offset });
+            .apply(SavedStateCommand::MoveNodes { ids, offset })
+            .ok();
         self.update_status();
     }
 
     pub fn delete_nodes(&mut self, ids: Vec<u64>) {
-        self.saved_state.apply(SavedStateCommand::DeleteNodes {
-            ids,
-            nodes: Vec::new(),
-        });
+        self.saved_state
+            .apply(SavedStateCommand::DeleteNodes {
+                ids,
+                nodes: Vec::new(),
+            })
+            .ok();
         self.update_status();
     }
 
     pub fn insert_char(&mut self, id: u64, ix: usize, char: char) {
         self.saved_state
-            .apply(SavedStateCommand::InsertChar { id, ix, char });
+            .apply(SavedStateCommand::InsertChar { id, ix, char })
+            .ok();
+        self.update_status();
+    }
+
+    pub fn delete_char(&mut self, id: u64, ix: usize) {
+        self.saved_state
+            .apply(SavedStateCommand::DeleteChar { id, ix, char: None })
+            .ok();
+        self.update_status();
+    }
+
+    pub fn insert_node(&mut self, node: Node) {
+        self.saved_state
+            .apply(SavedStateCommand::InsertNode {
+                id: node.id,
+                node: Some(node),
+            })
+            .ok();
         self.update_status();
     }
 
@@ -162,20 +227,6 @@ impl App {
         self.saved_state.target().node_at_cursor()
     }
 
-    pub fn sort_nodes(&mut self) {
-        let target = self.saved_state.target();
-        target.nodes.sort_by_key(|node| node.position);
-        target.program = target.nodes.iter().map(|node| node.op.to_owned()).join(" ");
-    }
-
-    pub fn undraft(&mut self) {
-        self.saved_state
-            .target()
-            .nodes
-            .iter_mut()
-            .for_each(|node| node.draft = false);
-    }
-
     fn update_status(&mut self) {
         self.status = String::new();
         if let Some(ix) = self.node_at_cursor() {
@@ -186,6 +237,25 @@ impl App {
                 self.status = help.to_owned();
             }
         }
+    }
+
+    fn load_program(&mut self) {
+        let program = compile_program(&self.ops(), self.sample_rate, &mut self.ctx);
+        // Ensure the smallest possible scope to limit locking time.
+        let garbage = {
+            self.vm.lock().unwrap().load_program(program);
+        };
+        drop(garbage);
+    }
+
+    fn ops(&self) -> Vec<TextOp> {
+        self.nodes()
+            .iter()
+            .map(|Node { id, op, .. }| TextOp {
+                id: *id,
+                op: op.to_owned(),
+            })
+            .collect()
     }
 }
 
@@ -235,25 +305,6 @@ impl PartialOrd for Position {
     }
 }
 
-impl Default for App {
-    fn default() -> Self {
-        App {
-            ctx: Default::default(),
-            cycles: default_cycles(),
-            help_scroll: 0,
-            input_mode: Default::default(),
-            op_groups: get_op_groups(),
-            op_help: get_help(),
-            ops: Default::default(),
-            play: Default::default(),
-            recording: Default::default(),
-            saved_state: Default::default(),
-            screen: Default::default(),
-            status: Default::default(),
-        }
-    }
-}
-
 impl Default for InputMode {
     fn default() -> Self {
         InputMode::Normal
@@ -270,11 +321,34 @@ impl Default for Screen {
 
 #[derive(Serialize, Deserialize)]
 enum SavedStateCommand {
-    RandomizeNodeIds { previous_ids: HashMap<u64, u64> },
-    MoveCursor { offset: Position },
-    MoveNodes { ids: Vec<u64>, offset: Position },
-    DeleteNodes { ids: Vec<u64>, nodes: Vec<Node> },
-    InsertChar { id: u64, ix: usize, char: char },
+    DeleteChar {
+        id: u64,
+        ix: usize,
+        char: Option<char>,
+    },
+    DeleteNodes {
+        ids: Vec<u64>,
+        nodes: Vec<Node>,
+    },
+    InsertChar {
+        id: u64,
+        ix: usize,
+        char: char,
+    },
+    InsertNode {
+        id: u64,
+        node: Option<Node>,
+    },
+    MoveCursor {
+        offset: Position,
+    },
+    MoveNodes {
+        ids: Vec<u64>,
+        offset: Position,
+    },
+    RandomizeNodeIds {
+        previous_ids: HashMap<u64, u64>,
+    },
 }
 
 impl Command for SavedStateCommand {
@@ -319,6 +393,18 @@ impl Command for SavedStateCommand {
                     node.op = chars.iter().join("");
                 }
             }
+            InsertNode { node, .. } => {
+                if let Some(node) = node.take() {
+                    state.nodes.push(node);
+                }
+            }
+            DeleteChar { id, ix, char } => {
+                if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                    let mut chars: Vec<_> = node.op.chars().collect();
+                    *char = Some(chars.remove(*ix));
+                    node.op = chars.iter().join("");
+                }
+            }
         }
         Ok(())
     }
@@ -328,7 +414,11 @@ impl Command for SavedStateCommand {
         match self {
             RandomizeNodeIds { previous_ids } => {
                 state.nodes.iter_mut().for_each(|node| {
-                    node.id = *previous_ids.get(&node.id).unwrap_or_else(|| &random());
+                    if let Some(&id) = previous_ids.get(&node.id) {
+                        node.id = id;
+                    } else {
+                        node.id = random();
+                    }
                 });
             }
             MoveCursor { offset } => {
@@ -341,13 +431,25 @@ impl Command for SavedStateCommand {
                     node.position.y -= offset.y;
                 }
             }
-            DeleteNodes { ids, nodes } => {
+            DeleteNodes { nodes, .. } => {
                 state.nodes.extend(nodes.drain(..));
             }
             InsertChar { id, ix, .. } => {
                 if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
                     let mut chars: Vec<_> = node.op.chars().collect();
                     chars.remove(*ix);
+                    node.op = chars.iter().join("");
+                }
+            }
+            InsertNode { id, node } => {
+                if let Some(ix) = state.nodes.iter().position(|node| node.id == *id) {
+                    *node = Some(state.nodes.swap_remove(ix));
+                }
+            }
+            DeleteChar { id, ix, char } => {
+                if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                    let mut chars: Vec<_> = node.op.chars().collect();
+                    chars.insert(*ix, char.unwrap());
                     node.op = chars.iter().join("");
                 }
             }

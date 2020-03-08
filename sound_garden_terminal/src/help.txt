@@ -12,7 +12,6 @@ Normal mode
 | I      | Insert mode splash!         |
 | a      | Move left and insert mode.  |
 | c      | Cut & insert.               |
-| Alt+i  | Replace mode.               |
 | h      | Left.                       |
 | j      | Down.                       |
 | k      | Up.                         |
@@ -49,5 +48,3 @@ Insert mode
 | <char>      | Insert char.           |
 | Backspace   | Remove previous char.  |
 \--------------------------------------/
-
-Replace mode is the same as insert but doesn't push right of line.

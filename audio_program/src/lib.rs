@@ -36,6 +36,7 @@ pub struct TextOp {
 }
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
+    let ops = rewrite_terms(ops);
     let mut program = SmallVec::new();
     macro_rules! push {
         ( $id:ident, $class:ident ) => {
@@ -51,7 +52,6 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
         };
     }
     for TextOp { id, op } in ops {
-        let id = *id;
         match op.as_str() {
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
             "+" | "add" => push_args!(id, Fn2, pure::add),
@@ -312,7 +312,50 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
     program
 }
 
-pub fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
+pub fn get_help() -> HashMap<String, String> {
+    let mut result = HashMap::new();
+    for item in Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::(?P<definition>.+)")
+        .unwrap()
+        .captures_iter(HELP)
+    {
+        let definition = item.name("definition").unwrap().as_str().trim();
+        for term in item.name("term").unwrap().as_str().split(", ") {
+            result.insert(
+                term.split(':').next().unwrap().to_owned(),
+                definition.to_owned(),
+            );
+        }
+    }
+    result
+}
+
+pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
+    let mut result = Vec::new();
+    let group_re = Regex::new("=== (.+)").unwrap();
+    let item_re = Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::").unwrap();
+    let mut current_group = None;
+    for line in HELP.split('\n') {
+        if let Some(m) = group_re.captures(line) {
+            if let Some(group) = current_group {
+                result.push(group);
+            }
+            current_group = Some((m.get(1).unwrap().as_str().to_owned(), Vec::new()));
+        } else if let Some(m) = item_re.captures(line) {
+            if let Some(group) = &mut current_group {
+                group.1.extend(
+                    m.name("term")
+                        .unwrap()
+                        .as_str()
+                        .split(", ")
+                        .map(|x| x.to_owned()),
+                );
+            }
+        }
+    }
+    result
+}
+
+fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     let mut result: Vec<TextOp> = Vec::new();
     let mut new_term: Option<Term> = None;
     let mut terms: HashMap<String, Term> = Default::default();
@@ -386,49 +429,6 @@ pub fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                 term.ops.push(stmt);
             } else {
                 result.push(stmt);
-            }
-        }
-    }
-    result
-}
-
-pub fn get_help() -> HashMap<String, String> {
-    let mut result = HashMap::new();
-    for item in Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::(?P<definition>.+)")
-        .unwrap()
-        .captures_iter(HELP)
-    {
-        let definition = item.name("definition").unwrap().as_str().trim();
-        for term in item.name("term").unwrap().as_str().split(", ") {
-            result.insert(
-                term.split(':').next().unwrap().to_owned(),
-                definition.to_owned(),
-            );
-        }
-    }
-    result
-}
-
-pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
-    let mut result = Vec::new();
-    let group_re = Regex::new("=== (.+)").unwrap();
-    let item_re = Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::").unwrap();
-    let mut current_group = None;
-    for line in HELP.split('\n') {
-        if let Some(m) = group_re.captures(line) {
-            if let Some(group) = current_group {
-                result.push(group);
-            }
-            current_group = Some((m.get(1).unwrap().as_str().to_owned(), Vec::new()));
-        } else if let Some(m) = item_re.captures(line) {
-            if let Some(group) = &mut current_group {
-                group.1.extend(
-                    m.name("term")
-                        .unwrap()
-                        .as_str()
-                        .split(", ")
-                        .map(|x| x.to_owned()),
-                );
             }
         }
     }

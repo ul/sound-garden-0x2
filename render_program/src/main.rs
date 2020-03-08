@@ -1,5 +1,5 @@
 use audio_ops::pure::clip;
-use audio_program::{compile_program, rewrite_terms, Context, TextOp};
+use audio_program::{compile_program, Context, TextOp};
 use audio_vm::{Program, Sample, CHANNELS, VM};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use rand::prelude::*;
@@ -55,6 +55,5 @@ fn parse_program(s: &str, sample_rate: u32) -> Program {
             op: op.to_string(),
         })
         .collect::<Vec<_>>();
-    let ops = rewrite_terms(&ops);
     compile_program(&ops, sample_rate, &mut Context::new())
 }
