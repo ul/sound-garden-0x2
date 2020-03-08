@@ -71,7 +71,7 @@ fn render_editor(
                 );
         }
 
-        let color = if !app.play {
+        let color = if !app.play() {
             Color::Gray
         } else if app.draft() {
             Color::Red
@@ -81,7 +81,7 @@ fn render_editor(
         Block::default()
             .title(&format!(
                 "Sound Garden────{}────{}────{}",
-                if app.play { "|>" } else { "||" },
+                if app.play() { "|>" } else { "||" },
                 if app.recording {
                     if Utc::now().second() % 2 == 0 {
                         "•R"
@@ -212,14 +212,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                     app.randomize_node_ids();
                     app.commit();
                 }
-                Key::Char('\\') => {
-                    app.play = !app.play;
-                    if app.play {
-                        app.play();
-                    } else {
-                        app.pause();
-                    }
-                }
+                Key::Char('\\') => app.toggle_play(),
                 Key::Char('a') => {
                     app.insert_mode();
                     app.move_cursor(Position::x(1));
@@ -232,10 +225,10 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 Key::Char('I') => {
                     app.insert_mode();
                     events.disable_exit_key();
-                    if let Some(ix) = app.node_at_cursor() {
-                        let Node {
-                            op, position: p, ..
-                        } = &app.nodes()[ix];
+                    if let Some(Node {
+                        op, position: p, ..
+                    }) = app.node_at_cursor()
+                    {
                         let len = op.chars().count();
                         let new_cursor_x = if p.x == app.cursor().x && len > 1 {
                             p.x
@@ -283,8 +276,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 Key::Char('c') => {
                     app.insert_mode();
                     events.disable_exit_key();
-                    if let Some(ix) = app.node_at_cursor() {
-                        let node = &app.nodes()[ix];
+                    if let Some(node) = app.node_at_cursor() {
                         let push_left = node.position.x + node.op.len() as i16 - app.cursor().x;
                         // TODO command
                         // node.op
@@ -315,29 +307,29 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 }
                 Key::Alt('h') => {
                     let offset = Position::x(-1);
-                    if let Some(ix) = app.node_at_cursor() {
-                        app.move_nodes(vec![app.nodes()[ix].id], offset);
+                    if let Some(id) = app.node_at_cursor().map(|node| node.id) {
+                        app.move_nodes(vec![id], offset);
                     }
                     app.move_cursor(offset);
                 }
                 Key::Alt('j') => {
                     let offset = Position::y(1);
-                    if let Some(ix) = app.node_at_cursor() {
-                        app.move_nodes(vec![app.nodes()[ix].id], offset);
+                    if let Some(id) = app.node_at_cursor().map(|node| node.id) {
+                        app.move_nodes(vec![id], offset);
                     }
                     app.move_cursor(offset);
                 }
                 Key::Alt('k') => {
                     let offset = Position::y(-1);
-                    if let Some(ix) = app.node_at_cursor() {
-                        app.move_nodes(vec![app.nodes()[ix].id], offset);
+                    if let Some(id) = app.node_at_cursor().map(|node| node.id) {
+                        app.move_nodes(vec![id], offset);
                     }
                     app.move_cursor(offset);
                 }
                 Key::Alt('l') => {
                     let offset = Position::x(1);
-                    if let Some(ix) = app.node_at_cursor() {
-                        app.move_nodes(vec![app.nodes()[ix].id], offset);
+                    if let Some(id) = app.node_at_cursor().map(|node| node.id) {
+                        app.move_nodes(vec![id], offset);
                     }
                     app.move_cursor(offset);
                 }
@@ -459,8 +451,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                     app.move_cursor(offset);
                 }
                 Key::Char('d') => {
-                    if let Some(ix) = app.node_at_cursor() {
-                        let id = app.nodes()[ix].id;
+                    if let Some(id) = app.node_at_cursor().map(|node| node.id) {
                         app.delete_nodes(vec![id]);
                     }
                 }
@@ -480,8 +471,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                     app.delete_nodes(ids);
                 }
                 Key::Char('=') => {
-                    if let Some(ix) = app.node_at_cursor() {
-                        let node = &app.nodes()[ix];
+                    if let Some(node) = app.node_at_cursor() {
                         let i = (app.cursor().x - node.position.x) as usize;
                         if let Some(d) = node.op.get(i..(i + 1)).and_then(|c| c.parse::<u8>().ok())
                         {
@@ -503,8 +493,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                     }
                 }
                 Key::Char('-') => {
-                    if let Some(ix) = app.node_at_cursor() {
-                        let node = &app.nodes()[ix];
+                    if let Some(node) = app.node_at_cursor() {
                         let i = (app.cursor().x - node.position.x) as usize;
                         if let Some(d) = node.op.get(i..(i + 1)).and_then(|c| c.parse::<u8>().ok())
                         {
@@ -529,7 +518,6 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                     record_tx.send(app.recording).ok();
                 }
                 Key::Char('q') => {
-                    app.pause();
                     return Err(anyhow!("Quit!"));
                 }
                 Key::Char('u') => app.undo(),
@@ -573,8 +561,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                             .collect(),
                         Position::x(1),
                     );
-                    if let Some(ix) = app.node_at_cursor() {
-                        let node = &app.nodes()[ix];
+                    if let Some(node) = app.node_at_cursor() {
                         let id = node.id;
                         let position = node.position;
                         let ix = app.cursor().x - position.x;
@@ -593,7 +580,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 Key::Backspace => {
                     let node_prev_x = app
                         .node_at_cursor()
-                        .map(|ix| app.nodes()[ix].position.x)
+                        .map(|node| node.position.x)
                         .unwrap_or_default();
                     let p = app.cursor();
                     let offset = Position::x(-1);
@@ -606,8 +593,7 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                         offset,
                     );
                     app.move_cursor(offset);
-                    if let Some(ix) = app.node_at_cursor() {
-                        let node = &app.nodes()[ix];
+                    if let Some(node) = app.node_at_cursor() {
                         let id = node.id;
                         let position = node.position;
                         let len = node.op.len();

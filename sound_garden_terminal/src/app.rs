@@ -20,11 +20,11 @@ pub struct App {
     pub input_mode: InputMode,
     pub op_groups: Vec<(String, Vec<String>)>,
     pub op_help: HashMap<String, String>,
-    pub play: bool,
     pub recording: bool,
     pub screen: Screen,
     pub status: String,
     filename: String,
+    play: bool,
     sample_rate: u32,
     saved_state: Record<SavedStateCommand>,
     vm: Arc<Mutex<VM>>,
@@ -124,12 +124,17 @@ impl App {
         self.saved_state.undo().ok();
     }
 
-    pub fn play(&mut self) {
-        self.vm.lock().unwrap().play();
+    pub fn toggle_play(&mut self) {
+        self.play = !self.play;
+        if self.play {
+            self.vm.lock().unwrap().play();
+        } else {
+            self.vm.lock().unwrap().pause();
+        }
     }
 
-    pub fn pause(&mut self) {
-        self.vm.lock().unwrap().pause();
+    pub fn play(&self) -> bool {
+        self.play
     }
 
     pub fn draft(&self) -> bool {
@@ -223,17 +228,14 @@ impl App {
         &self.saved_state.target().program
     }
 
-    pub fn node_at_cursor(&self) -> Option<usize> {
+    pub fn node_at_cursor(&self) -> Option<&Node> {
         self.saved_state.target().node_at_cursor()
     }
 
     fn update_status(&mut self) {
         self.status = String::new();
-        if let Some(ix) = self.node_at_cursor() {
-            if let Some(help) = self
-                .op_help
-                .get(self.nodes()[ix].op.split(':').next().unwrap())
-            {
+        if let Some(Node { op, .. }) = self.node_at_cursor() {
+            if let Some(help) = self.op_help.get(op.split(':').next().unwrap()) {
                 self.status = help.to_owned();
             }
         }
@@ -260,8 +262,8 @@ impl App {
 }
 
 impl SavedState {
-    pub fn node_at_cursor(&self) -> Option<usize> {
-        self.nodes.iter().position(
+    pub fn node_at_cursor(&self) -> Option<&Node> {
+        self.nodes.iter().find(
             |Node {
                  position: Position { y, x },
                  op,
