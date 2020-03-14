@@ -740,6 +740,7 @@ impl SavedStateCommand {
             } => {
                 if let Some(id) = id {
                     if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                        node.draft = true;
                         node.op.push_str(tail);
                         state.move_nodes(ids, -*nodes_offset);
                     }
@@ -763,6 +764,7 @@ impl SavedStateCommand {
                             let mut chars: Vec<_> = node.op.chars().collect();
                             chars.remove(*ix);
                             node.op = chars.iter().collect();
+                            node.draft = true;
                         } else {
                             remove_node = true;
                         }
@@ -783,6 +785,7 @@ impl SavedStateCommand {
                         let mut chars: Vec<_> = node.op.chars().collect();
                         chars.insert(*ix, char.unwrap());
                         node.op = chars.iter().collect();
+                        node.draft = true;
                     }
                 }
             }
