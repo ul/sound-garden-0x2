@@ -614,6 +614,7 @@ impl SavedStateCommand {
             }
             ReplaceOp { id, op } => {
                 if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                    node.draft = true;
                     *op = std::mem::replace(&mut node.op, op.to_owned());
                 }
             }
@@ -748,6 +749,7 @@ impl SavedStateCommand {
             }
             ReplaceOp { id, op } => {
                 if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
+                    node.draft = true;
                     *op = std::mem::replace(&mut node.op, op.to_owned());
                 }
             }

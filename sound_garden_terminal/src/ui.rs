@@ -233,8 +233,8 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 }
                 Key::Char('c') => {
                     events.disable_exit_key();
-                    app.insert_mode();
                     app.cut_op();
+                    app.insert_mode();
                 }
                 Key::Char('h') | Key::Left | Key::Backspace => {
                     app.move_cursor(Position::x(-1));
