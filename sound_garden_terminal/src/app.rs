@@ -78,7 +78,7 @@ impl App {
             play: Default::default(),
             recording: Default::default(),
             sample_rate,
-            saved_state: Default::default(),
+            saved_state: redo::record::Builder::new().limit(10000).default(),
             screen: Default::default(),
             status: Default::default(),
             vm,
