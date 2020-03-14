@@ -238,6 +238,7 @@ impl App {
             .apply(SavedStateCommand::CutOp {
                 id: Default::default(),
                 ids: Default::default(),
+                node: Default::default(),
                 nodes_offset: Default::default(),
                 tail: Default::default(),
             })
@@ -474,6 +475,7 @@ enum SavedStateCommand {
     CutOp {
         id: Option<u64>,
         ids: Vec<u64>,
+        node: Option<Node>,
         nodes_offset: Position,
         tail: String,
     },
@@ -589,10 +591,12 @@ impl SavedStateCommand {
             CutOp {
                 id,
                 ids,
+                node,
                 nodes_offset,
                 tail,
             } => {
                 let cursor = state.cursor;
+                let mut remove_node = false;
                 if let Some(node) = state.node_at_cursor_mut() {
                     *id = Some(node.id);
                     node.draft = true;
@@ -601,7 +605,11 @@ impl SavedStateCommand {
                     let ix = (cursor.x - node.position.x) as usize;
                     let chars = node.op.chars().collect::<Vec<_>>();
                     let chars = &mut chars.iter();
-                    node.op = chars.take(ix).collect();
+                    if ix > 0 {
+                        node.op = chars.take(ix).collect();
+                    } else {
+                        remove_node = true;
+                    }
                     *tail = chars.collect();
                     *ids = state
                         .nodes
@@ -610,6 +618,11 @@ impl SavedStateCommand {
                         .map(|node| node.id)
                         .collect();
                     state.move_nodes(ids, *nodes_offset);
+                }
+                if remove_node {
+                    *node = id
+                        .and_then(|id| state.nodes.iter().position(|node| node.id == id))
+                        .map(|ix| state.nodes.remove(ix));
                 }
             }
             ReplaceOp { id, op } => {
@@ -736,6 +749,7 @@ impl SavedStateCommand {
             CutOp {
                 id,
                 ids,
+                node,
                 nodes_offset,
                 tail,
             } => {
@@ -743,8 +757,10 @@ impl SavedStateCommand {
                     if let Some(node) = state.nodes.iter_mut().find(|node| node.id == *id) {
                         node.draft = true;
                         node.op.push_str(tail);
-                        state.move_nodes(ids, -*nodes_offset);
+                    } else if let Some(node) = node.take() {
+                        state.nodes.push(node);
                     }
+                    state.move_nodes(ids, -*nodes_offset);
                 }
             }
             ReplaceOp { id, op } => {
