@@ -5,7 +5,6 @@ use audio_vm::VM;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
-use rand::prelude::*;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use termion::cursor;
@@ -25,7 +24,7 @@ pub fn main(
     filename: &str,
     record_tx: &Sender<bool>,
 ) -> Result<()> {
-    let mut app = App::load(filename, vm, sample_rate);
+    let mut app = App::load(filename, vm, sample_rate)?;
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
@@ -214,84 +213,28 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 }
                 Key::Char('\\') => app.toggle_play(),
                 Key::Char('a') => {
-                    app.insert_mode();
-                    app.move_cursor(Position::x(1));
                     events.disable_exit_key();
+                    app.move_cursor(Position::x(1));
+                    app.insert_mode();
                 }
                 Key::Char('i') => {
-                    app.insert_mode();
                     events.disable_exit_key();
+                    app.insert_mode();
                 }
                 Key::Char('I') => {
-                    app.insert_mode();
                     events.disable_exit_key();
-                    if let Some(Node {
-                        op, position: p, ..
-                    }) = app.node_at_cursor()
-                    {
-                        let len = op.chars().count();
-                        let new_cursor_x = if p.x == app.cursor().x && len > 1 {
-                            p.x
-                        } else {
-                            p.x + len as i16 + 1
-                        };
-                        app.move_cursor(Position::x(new_cursor_x - app.cursor().x));
-                    };
-                    if app.node_at_cursor().is_some() {
-                        let p = app.cursor();
-                        app.move_nodes(
-                            app.nodes()
-                                .iter()
-                                .filter(|node| node.position.y == p.y && node.position.x >= p.x)
-                                .map(|node| node.id)
-                                .collect(),
-                            Position::x(1),
-                        );
-                    }
+                    app.splash();
+                    app.insert_mode();
                 }
                 Key::Char('o') => {
-                    app.insert_mode();
                     events.disable_exit_key();
-                    let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y > p.y)
-                            .map(|node| node.id)
-                            .collect(),
-                        Position::y(1),
-                    );
-                    app.move_cursor(Position {
-                        x: app
-                            .nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y)
-                            .min_by_key(|node| node.position.x)
-                            .map(|node| node.position.x)
-                            .unwrap_or(MIN_X)
-                            - app.cursor().x,
-                        y: 1,
-                    });
+                    app.insert_line();
+                    app.insert_mode();
                 }
                 Key::Char('c') => {
-                    app.insert_mode();
                     events.disable_exit_key();
-                    if let Some(node) = app.node_at_cursor() {
-                        let push_left = node.position.x + node.op.len() as i16 - app.cursor().x;
-                        // TODO command
-                        // node.op
-                        // .truncate((app.cursor().x - node.position.x) as usize);
-                        // node.draft = true;
-                        let p = app.cursor();
-                        app.move_nodes(
-                            app.nodes()
-                                .iter()
-                                .filter(|node| node.position.y == p.y && node.position.x > p.x)
-                                .map(|node| node.id)
-                                .collect(),
-                            Position::x(-push_left),
-                        );
-                    }
+                    app.insert_mode();
+                    app.cut_op();
                 }
                 Key::Char('h') | Key::Left | Key::Backspace => {
                     app.move_cursor(Position::x(-1));
@@ -307,148 +250,134 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 }
                 Key::Alt('h') => {
                     let offset = Position::x(-1);
+                    let mut ids = Vec::new();
                     if let Some(id) = app.node_at_cursor().map(|node| node.id) {
-                        app.move_nodes(vec![id], offset);
+                        ids.push(id);
                     }
-                    app.move_cursor(offset);
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Alt('j') => {
                     let offset = Position::y(1);
+                    let mut ids = Vec::new();
                     if let Some(id) = app.node_at_cursor().map(|node| node.id) {
-                        app.move_nodes(vec![id], offset);
+                        ids.push(id);
                     }
-                    app.move_cursor(offset);
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Alt('k') => {
                     let offset = Position::y(-1);
+                    let mut ids = Vec::new();
                     if let Some(id) = app.node_at_cursor().map(|node| node.id) {
-                        app.move_nodes(vec![id], offset);
+                        ids.push(id);
                     }
-                    app.move_cursor(offset);
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Alt('l') => {
                     let offset = Position::x(1);
+                    let mut ids = Vec::new();
                     if let Some(id) = app.node_at_cursor().map(|node| node.id) {
-                        app.move_nodes(vec![id], offset);
+                        ids.push(id);
                     }
-                    app.move_cursor(offset);
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('J') => {
                     let offset = Position::y(1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| {
-                                node.position.y > p.y
-                                    || node.position.y == p.y
-                                        && p.x < node.position.x + node.op.len() as i16
-                            })
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| {
+                            node.position.y > p.y
+                                || node.position.y == p.y
+                                    && p.x < node.position.x + node.op.len() as i16
+                        })
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('K') => {
                     let offset = Position::y(-1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| {
-                                node.position.y < p.y
-                                    || node.position.y == p.y && node.position.x <= p.x
-                            })
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| {
+                            node.position.y < p.y
+                                || node.position.y == p.y && node.position.x <= p.x
+                        })
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('H') => {
                     let offset = Position::y(-1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y)
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| node.position.y == p.y)
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('L') => {
                     let offset = Position::y(1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y)
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| node.position.y == p.y)
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char(',') => {
                     let offset = Position::x(-1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| {
-                                node.position.y == p.y
-                                    && p.x < node.position.x + node.op.len() as i16
-                            })
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| {
+                            node.position.y == p.y && p.x < node.position.x + node.op.len() as i16
+                        })
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('.') => {
                     let offset = Position::x(1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| {
-                                node.position.y == p.y
-                                    && p.x < node.position.x + node.op.len() as i16
-                            })
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| {
+                            node.position.y == p.y && p.x < node.position.x + node.op.len() as i16
+                        })
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('<') => {
                     let offset = Position::x(-1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y && node.position.x <= p.x)
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('>') => {
                     let offset = Position::x(1);
                     let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y && node.position.x <= p.x)
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    let ids = app
+                        .nodes()
+                        .iter()
+                        .filter(|node| node.position.y == p.y && node.position.x <= p.x)
+                        .map(|node| node.id)
+                        .collect();
+                    app.move_nodes_and_cursor(ids, offset, offset);
                 }
                 Key::Char('d') => {
                     if let Some(id) = app.node_at_cursor().map(|node| node.id) {
@@ -476,15 +405,16 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                         if let Some(d) = node.op.get(i..(i + 1)).and_then(|c| c.parse::<u8>().ok())
                         {
                             let d = (d + 1) % 10;
-                            // TODO make a command
-                            // node.op.replace_range(i..(i + 1), &d.to_string());
-
+                            let mut op = node.op.to_owned();
+                            op.replace_range(i..(i + 1), &d.to_string());
+                            let id = node.id;
+                            app.replace_op(id, op);
                             app.commit();
                         } else {
-                            for cycle in &app.cycles {
+                            for cycle in &app.cycles.to_owned() {
                                 if let Some(ops) = cycle.windows(2).find(|ops| ops[0] == node.op) {
-                                    // TODO make a command
-                                    // node.op = ops[1].to_owned();
+                                    let id = node.id;
+                                    app.replace_op(id, ops[1].to_owned());
                                     app.commit();
                                     break;
                                 }
@@ -498,14 +428,16 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                         if let Some(d) = node.op.get(i..(i + 1)).and_then(|c| c.parse::<u8>().ok())
                         {
                             let d = (d + 9) % 10;
-                            // TODO make a command
-                            // node.op.replace_range(i..(i + 1), &d.to_string());
+                            let mut op = node.op.to_owned();
+                            op.replace_range(i..(i + 1), &d.to_string());
+                            let id = node.id;
+                            app.replace_op(id, op);
                             app.commit();
                         } else {
-                            for cycle in &app.cycles {
+                            for cycle in &app.cycles.to_owned() {
                                 if let Some(ops) = cycle.windows(2).find(|ops| ops[1] == node.op) {
-                                    // TODO make a command
-                                    // node.op = ops[0].to_owned();
+                                    let id = node.id;
+                                    app.replace_op(id, ops[0].to_owned());
                                     app.commit();
                                     break;
                                 }
@@ -532,86 +464,29 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                 Key::Up => app.move_cursor(Position::y(-1)),
                 Key::Right => app.move_cursor(Position::x(1)),
                 Key::Char(' ') => {
-                    let offset = Position::x(1);
-                    let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| {
-                                node.position.y == p.y
-                                    && p.x < node.position.x + node.op.len() as i16
-                            })
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
+                    app.insert_space();
                 }
                 Key::Char('\n') => {
-                    app.normal_mode();
                     events.enable_exit_key();
+                    app.normal_mode();
                 }
                 Key::Char(c) => {
-                    let p = app.cursor();
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y && p.x < node.position.x)
-                            .map(|node| node.id)
-                            .collect(),
-                        Position::x(1),
-                    );
-                    if let Some(node) = app.node_at_cursor() {
-                        let id = node.id;
-                        let position = node.position;
-                        let ix = app.cursor().x - position.x;
-                        app.insert_char(id, ix as _, c)
-                    } else {
-                        let node = Node {
-                            id: random(),
-                            draft: true,
-                            op: c.to_string(),
-                            position: app.cursor(),
-                        };
-                        app.insert_node(node);
-                    };
-                    app.move_cursor(Position::x(1));
+                    app.insert_char(c);
                 }
                 Key::Backspace => {
-                    let node_prev_x = app
-                        .node_at_cursor()
-                        .map(|node| node.position.x)
-                        .unwrap_or_default();
-                    let p = app.cursor();
-                    let offset = Position::x(-1);
-                    app.move_nodes(
-                        app.nodes()
-                            .iter()
-                            .filter(|node| node.position.y == p.y && p.x <= node.position.x)
-                            .map(|node| node.id)
-                            .collect(),
-                        offset,
-                    );
-                    app.move_cursor(offset);
-                    if let Some(node) = app.node_at_cursor() {
-                        let id = node.id;
-                        let position = node.position;
-                        let len = node.op.len();
-                        if node_prev_x == position.x && app.cursor().x < position.x + len as i16 {
-                            let ix = position.x - app.cursor().x;
-                            app.delete_char(id, ix as _);
-                        }
-                    }
+                    app.delete_char();
                 }
                 Key::Esc => {
-                    app.normal_mode();
                     events.enable_exit_key();
+                    app.normal_mode();
                 }
                 _ => {}
             },
         },
         _ => {}
     }
+    // TODO Update on undo/redo Signal instead?
+    app.update();
     Ok(())
 }
 
