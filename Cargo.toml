@@ -17,8 +17,6 @@ members = [
     "thread_worker"
 ]
 
-[dependencies]
-
 # [profile.release]
 # lto = true
 # panic = "abort"
