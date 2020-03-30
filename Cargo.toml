@@ -17,6 +17,6 @@ members = [
     "thread_worker"
 ]
 
-# [profile.release]
-# lto = true
-# panic = "abort"
+[profile.release]
+lto = true
+panic = "abort"

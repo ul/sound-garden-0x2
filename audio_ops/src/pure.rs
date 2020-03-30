@@ -70,17 +70,17 @@ pub fn quantize(x: Sample, step: Sample) -> Sample {
 
 #[inline]
 pub fn sin(x: Sample) -> Sample {
-    x.sin()
+    micromath::F32Ext::sin(x as f32) as _
 }
 
 #[inline]
 pub fn cos(x: Sample) -> Sample {
-    x.cos()
+    micromath::F32Ext::cos(x as f32) as _
 }
 
 #[inline]
 pub fn tan(x: Sample) -> Sample {
-    x.tan()
+    micromath::F32Ext::tan(x as f32) as _
 }
 
 #[inline]
@@ -135,7 +135,7 @@ pub fn sine(phase: Sample) -> Sample {
 /// Connect Phasor to Fn1(cosine) to generate cosine wave
 #[inline]
 pub fn cosine(phase: Sample) -> Sample {
-    cos(2.0 * std::f64::consts::PI * phase)
+    cos(2.0 * PI * phase)
 }
 
 /// Connect Phasor to Fn1(triangle) to generate symmetric triangle wave
@@ -281,10 +281,12 @@ pub fn exp(x: Sample) -> Sample {
     x.exp()
 }
 
+#[inline]
 pub fn linear_curve(a: Sample, dx: Sample) -> Sample {
     a * dx
 }
 
+#[inline]
 pub fn quadratic_curve(a: Sample, dx: Sample) -> Sample {
     a.powi(4) * dx
 }
