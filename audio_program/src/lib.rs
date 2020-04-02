@@ -1,5 +1,5 @@
 use audio_ops::*;
-use audio_vm::{Frame, Op, Program, Sample, Statement, CHANNELS};
+use audio_vm::{AtomicFrame, Frame, Op, Program, Sample, Statement, CHANNELS};
 use fasthash::sea::Hash64;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use regex::Regex;
@@ -11,7 +11,7 @@ pub const HELP: &str = include_str!("help.adoc");
 
 pub struct Context {
     pub tables: HashMap<String, Arc<Mutex<Vec<Frame>>>, Hash64>,
-    pub variables: HashMap<String, Arc<Mutex<Frame>>, Hash64>,
+    pub variables: HashMap<String, Arc<AtomicFrame>, Hash64>,
 }
 
 impl Context {

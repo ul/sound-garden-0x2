@@ -10,3 +10,6 @@ pub type Sample = f64;
 
 /// Snapshot of multi-channel signal output at specific point of time.
 pub type Frame = [Sample; CHANNELS];
+
+pub type AtomicSample = std::sync::atomic::AtomicU64;
+pub type AtomicFrame = [AtomicSample; CHANNELS];

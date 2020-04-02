@@ -5,7 +5,7 @@ pub mod vm;
 
 pub use self::{
     op::Op,
-    sample::{Frame, Sample, CHANNELS},
+    sample::{AtomicFrame, AtomicSample, Frame, Sample, CHANNELS},
     stack::Stack,
     vm::{Program, Statement, VM},
 };
