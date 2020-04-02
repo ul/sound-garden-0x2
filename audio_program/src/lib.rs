@@ -1,16 +1,16 @@
 use audio_ops::*;
-use audio_vm::{AtomicFrame, Frame, Op, Program, Sample, Statement, CHANNELS};
+use audio_vm::{AtomicFrame, Frame, Op, Program, Sample, Statement};
 use fasthash::sea::Hash64;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use regex::Regex;
 use smallvec::SmallVec;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::Ordering, Arc};
 
 pub const HELP: &str = include_str!("help.adoc");
 
 pub struct Context {
-    pub tables: HashMap<String, Arc<Mutex<Vec<Frame>>>, Hash64>,
+    pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, Hash64>,
     pub variables: HashMap<String, Arc<AtomicFrame>, Hash64>,
 }
 
@@ -233,11 +233,16 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                             Some(path) => {
                                 if !ctx.tables.contains_key(*path) {
                                     if let Ok(mut r) = audrey::read::open(path) {
-                                        let table: Vec<Frame> = r
-                                            .frames::<Frame>()
-                                            .map(|frame| frame.unwrap_or_default())
-                                            .collect();
-                                        let table = Arc::new(Mutex::new(table));
+                                        let mut table: Vec<AtomicFrame> = Vec::new();
+                                        for frame in r.frames() {
+                                            let frame: Frame = frame.unwrap_or_default();
+                                            let mut f: AtomicFrame = Default::default();
+                                            for (a, &x) in f.iter_mut().zip(&frame) {
+                                                a.store(x.to_bits(), Ordering::Relaxed);
+                                            }
+                                            table.push(f);
+                                        }
+                                        let table = Arc::new(table);
                                         ctx.tables.insert(path.to_string(), table);
                                     }
                                 }
@@ -262,12 +267,13 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                         "wt" | "wtab" | "writetable" => match tokens.get(2) {
                             Some(x) => match x.parse::<Sample>() {
                                 Ok(size) => {
+                                    let len = (size * (sample_rate as Sample)) as usize;
+                                    let mut table = Vec::with_capacity(len);
+                                    for i in 0..len {
+                                        table[i] = Default::default();
+                                    }
+                                    let table = Arc::new(table);
                                     let table_name = String::from(tokens[1]);
-                                    let table = Arc::new(Mutex::new(vec![
-                                        [0.0; CHANNELS];
-                                        (size * (sample_rate as Sample))
-                                            as _
-                                    ]));
                                     ctx.tables.insert(table_name, Arc::clone(&table));
                                     push_args!(id, TableWriter, table);
                                 }
