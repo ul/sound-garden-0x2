@@ -269,8 +269,8 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                 Ok(size) => {
                                     let len = (size * (sample_rate as Sample)) as usize;
                                     let mut table = Vec::with_capacity(len);
-                                    for i in 0..len {
-                                        table[i] = Default::default();
+                                    for _ in 0..len {
+                                        table.push(Default::default());
                                     }
                                     let table = Arc::new(table);
                                     let table_name = String::from(tokens[1]);
