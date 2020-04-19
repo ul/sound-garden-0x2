@@ -89,7 +89,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "h" | "bqhpf" => push_args!(id, BiQuad, sample_rate, make_hpf_coefficients),
             "hpf" => push_args!(id, HPF, sample_rate),
             "impulse" => push_args!(id, Impulse, sample_rate),
-            "input" => push_args!(id, Input, Arc::clone(&ctx.input)),
+            "in" | "input" => push_args!(id, Input, Arc::clone(&ctx.input)),
             "l" | "bqlpf" => push_args!(id, BiQuad, sample_rate, make_lpf_coefficients),
             "linlin" | "project" => push_args!(id, Fn5, pure::linlin),
             "lpf" => push_args!(id, LPF, sample_rate),

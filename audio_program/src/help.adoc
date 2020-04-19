@@ -133,4 +133,4 @@ filetable:<FILE>, ftab:<FILE>, ft:<FILE>:: (indexer) -> read from the table load
 
 [horizontal]
 param:<N>:: () -> put Nth plugin parameter value on the stack
-input:: () -> put input on the stack
+in, input:: () -> put input on the stack
