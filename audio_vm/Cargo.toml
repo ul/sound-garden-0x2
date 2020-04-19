@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 smallvec = "1.2.0"
 downcast-rs = "1.1.1"
+alloc_counter = "0.0.4"

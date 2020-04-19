@@ -12,8 +12,8 @@ members = [
     "audio_vm",
     "play_program",
     "render_program",
-    "sound_garden",
     "sound_garden_terminal",
+    "sound_garden_vst",
     "thread_worker"
 ]
 

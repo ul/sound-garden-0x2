@@ -1,19 +1,17 @@
 use anyhow::Result;
-use audio_program::{compile_program, get_help, get_op_groups, Context, TextOp};
-use audio_vm::VM;
+use audio_program::{get_help, get_op_groups, TextOp};
+use crossbeam_channel::Sender;
 use rand::prelude::*;
 use redo::{Command, Record};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 pub const MIN_X: i16 = 2;
 pub const MIN_Y: i16 = 2;
 
 // TODO make less pub
 pub struct App {
-    pub ctx: Context,
     pub cycles: Vec<Vec<String>>,
     pub help_scroll: u16,
     pub input_mode: InputMode,
@@ -24,9 +22,8 @@ pub struct App {
     pub status: String,
     filename: String,
     play: bool,
-    sample_rate: u32,
     saved_state: Record<SavedStateCommand>,
-    vm: Arc<Mutex<VM>>,
+    tx_ops: Sender<Vec<TextOp>>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -66,9 +63,8 @@ pub struct Position {
 }
 
 impl App {
-    pub fn new(filename: String, vm: Arc<Mutex<VM>>, sample_rate: u32) -> Self {
+    pub fn new(filename: String, tx_ops: Sender<Vec<TextOp>>) -> Self {
         let mut app = App {
-            ctx: Default::default(),
             cycles: default_cycles(),
             filename,
             help_scroll: 0,
@@ -77,11 +73,10 @@ impl App {
             op_help: get_help(),
             play: Default::default(),
             recording: Default::default(),
-            sample_rate,
             saved_state: redo::record::Builder::new().limit(10000).default(),
             screen: Default::default(),
             status: Default::default(),
-            vm,
+            tx_ops,
         };
         let target = app.saved_state.target_mut();
         target.cursor = Position { x: MIN_X, y: MIN_Y };
@@ -96,8 +91,8 @@ impl App {
         Ok(())
     }
 
-    pub fn load(path: &str, vm: Arc<Mutex<VM>>, sample_rate: u32) -> Result<Self> {
-        let mut app = Self::new(path.to_owned(), vm, sample_rate);
+    pub fn load(path: &str, tx_ops: Sender<Vec<TextOp>>) -> Result<Self> {
+        let mut app = Self::new(path.to_owned(), tx_ops);
         // If path doesn't exist then we just provide default value...
         if let Ok(f) = std::fs::File::open(path) {
             // ...but if data is malformed we fail. Consumer is then responsible
@@ -124,11 +119,6 @@ impl App {
 
     pub fn toggle_play(&mut self) {
         self.play = !self.play;
-        if self.play {
-            self.vm.lock().unwrap().play();
-        } else {
-            self.vm.lock().unwrap().pause();
-        }
     }
 
     pub fn play(&self) -> bool {
@@ -293,13 +283,7 @@ impl App {
         let target = self.saved_state.target_mut();
         target.nodes.iter_mut().for_each(|node| node.draft = false);
         target.program = draft_program;
-
-        let program = compile_program(&self.ops(), self.sample_rate, &mut self.ctx);
-        // Ensure the smallest possible scope to limit locking time.
-        let garbage = {
-            self.vm.lock().unwrap().load_program(program);
-        };
-        drop(garbage);
+        self.tx_ops.send(self.ops()).ok();
     }
 
     fn draft_program(&mut self) -> String {

@@ -1,6 +1,7 @@
 use crate::op::Op;
 use crate::sample::{Frame, Sample};
 use crate::stack::Stack;
+use alloc_counter::no_alloc;
 use smallvec::SmallVec;
 
 // Totally unscientific attempt to improve performance of small programs by using SmallVec.
@@ -27,6 +28,12 @@ pub struct VM {
     pause_countdown: Sample,
     /// |> / ||
     status: Status,
+}
+
+impl Default for VM {
+    fn default() -> Self {
+        VM::new()
+    }
 }
 
 impl VM {
@@ -88,6 +95,7 @@ impl VM {
         garbage
     }
 
+    #[no_alloc]
     pub fn next_frame(&mut self) -> Frame {
         match self.status {
             Status::Play => {

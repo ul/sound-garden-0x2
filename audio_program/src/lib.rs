@@ -1,15 +1,19 @@
 use audio_ops::*;
-use audio_vm::{AtomicFrame, Frame, Op, Program, Sample, Statement};
+use audio_vm::{AtomicFrame, AtomicSample, Frame, Op, Program, Sample, Statement};
 use fasthash::sea::Hash64;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::sync::{atomic::Ordering, Arc};
 
 pub const HELP: &str = include_str!("help.adoc");
+pub const PARAMETERS: usize = 16;
 
 pub struct Context {
+    pub input: Arc<AtomicFrame>,
+    pub params: [Arc<AtomicSample>; PARAMETERS],
     pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, Hash64>,
     pub variables: HashMap<String, Arc<AtomicFrame>, Hash64>,
 }
@@ -17,6 +21,8 @@ pub struct Context {
 impl Context {
     pub fn new() -> Self {
         Context {
+            input: Default::default(),
+            params: Default::default(),
             tables: HashMap::with_hasher(Hash64),
             variables: HashMap::with_hasher(Hash64),
         }
@@ -29,7 +35,7 @@ impl Default for Context {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextOp {
     pub id: u64,
     pub op: String,
@@ -83,6 +89,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "h" | "bqhpf" => push_args!(id, BiQuad, sample_rate, make_hpf_coefficients),
             "hpf" => push_args!(id, HPF, sample_rate),
             "impulse" => push_args!(id, Impulse, sample_rate),
+            "input" => push_args!(id, Input, Arc::clone(&ctx.input)),
             "l" | "bqlpf" => push_args!(id, BiQuad, sample_rate, make_lpf_coefficients),
             "linlin" | "project" => push_args!(id, Fn5, pure::linlin),
             "lpf" => push_args!(id, LPF, sample_rate),
@@ -305,6 +312,17 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                             },
                             None => {
                                 log::warn!("Missing kernel length parameter.");
+                            }
+                        },
+                        "param" => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(n) => push_args!(id, Param, Arc::clone(&ctx.params[n])),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as param number", x);
+                                }
+                            },
+                            None => {
+                                log::warn!("Missing param number parameter.");
                             }
                         },
                         _ => {

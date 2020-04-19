@@ -1,12 +1,11 @@
 use crate::app::{App, InputMode, Node, Position, Screen, MIN_X, MIN_Y};
 use crate::event::{Event, Events};
 use anyhow::{anyhow, Result};
-use audio_vm::VM;
+use audio_program::TextOp;
 use chrono::prelude::*;
 use crossbeam_channel::Sender;
 use itertools::Itertools;
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
 use termion::cursor;
 use termion::event::Key;
 use termion::input::MouseTerminal;
@@ -19,12 +18,13 @@ use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
 use tui::Terminal;
 
 pub fn main(
-    vm: Arc<Mutex<VM>>,
+    tx_ops: Sender<Vec<TextOp>>,
+    tx_play: Sender<bool>,
     sample_rate: u32,
     filename: &str,
     record_tx: &Sender<bool>,
 ) -> Result<()> {
-    let mut app = App::load(filename, vm, sample_rate)?;
+    let mut app = App::load(filename, tx_ops)?;
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
@@ -39,7 +39,7 @@ pub fn main(
         };
 
         match app.screen {
-            Screen::Editor => handle_editor(&mut app, &mut events, record_tx)?,
+            Screen::Editor => handle_editor(&mut app, &mut events, record_tx, &tx_play)?,
             Screen::Help => handle_help(&mut app, &mut events)?,
             Screen::Ops => handle_ops(&mut app, &mut events)?,
         };
@@ -200,7 +200,12 @@ fn render_ops(
     Ok(())
 }
 
-fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -> Result<()> {
+fn handle_editor(
+    app: &mut App,
+    events: &mut Events,
+    record_tx: &Sender<bool>,
+    tx_play: &Sender<bool>,
+) -> Result<()> {
     match events.next()? {
         Event::Input(input) => match app.input_mode() {
             InputMode::Normal => match input {
@@ -211,7 +216,10 @@ fn handle_editor(app: &mut App, events: &mut Events, record_tx: &Sender<bool>) -
                     app.randomize_node_ids();
                     app.commit();
                 }
-                Key::Char('\\') => app.toggle_play(),
+                Key::Char('\\') => {
+                    app.toggle_play();
+                    tx_play.send(app.play()).ok();
+                }
                 Key::Char('a') => {
                     events.disable_exit_key();
                     app.move_cursor(Position::x(1));
