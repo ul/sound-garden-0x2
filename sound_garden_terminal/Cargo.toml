@@ -7,18 +7,18 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.26"
+anyhow = "1.0.28"
 chrono = "0.4.11"
 clap = "2.33.0"
-crossbeam-channel = "0.4.0"
-itertools = "0.8.2"
+crossbeam-channel = "0.4.2"
+itertools = "0.9.0"
 rand = "0.7.3"
-serde_json = "1.0.45"
+serde_json = "1.0.51"
 termion = "1.5.5"
-tui = "0.8.0"
+tui = "0.9.1"
 
 [dependencies.serde]
-version = "1.0.104"
+version = "1.0.106"
 features = ["derive"]
 
 [dependencies.audio_program]
