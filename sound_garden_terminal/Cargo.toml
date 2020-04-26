@@ -8,13 +8,11 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.26"
-chrono = "0.4.10"
-cpal = "0.11.0"
+chrono = "0.4.11"
+clap = "2.33.0"
 crossbeam-channel = "0.4.0"
-hound = "3.4.0"
 itertools = "0.8.2"
 rand = "0.7.3"
-ringbuf = "0.2.1"
 serde_json = "1.0.45"
 termion = "1.5.5"
 tui = "0.8.0"
@@ -23,14 +21,11 @@ tui = "0.8.0"
 version = "1.0.104"
 features = ["derive"]
 
-[dependencies.audio_ops]
-path = "../audio_ops"
-
 [dependencies.audio_program]
 path = "../audio_program"
 
-[dependencies.audio_vm]
-path = "../audio_vm"
+[dependencies.audio_server]
+path = "../audio_server"
 
 [dependencies.thread_worker]
 path = "../thread_worker"

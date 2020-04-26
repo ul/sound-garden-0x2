@@ -2,7 +2,8 @@
 extern crate vst;
 
 use alloc_counter::no_alloc;
-use audio_program::{compile_program, Context, TextOp, PARAMETERS};
+use audio_program::{compile_program, Context, PARAMETERS};
+use audio_server::Message;
 use audio_vm::{AtomicFrame, AtomicSample, Program, Sample, CHANNELS, VM};
 use crossbeam_channel::Sender;
 use std::sync::{
@@ -67,14 +68,24 @@ impl Default for SoundGarden {
             }
 
             std::thread::spawn(move || {
-                for ops in listener.incoming().filter_map(|stream| {
+                for msg in listener.incoming().filter_map(|stream| {
                     stream
                         .ok()
-                        .and_then(|stream| serde_json::from_reader::<_, Vec<TextOp>>(stream).ok())
+                        .and_then(|stream| serde_json::from_reader::<_, Message>(stream).ok())
                 }) {
-                    let program =
-                        compile_program(&ops, sample_rate.load(Ordering::Relaxed), &mut ctx);
-                    tx.send(ServerOutput::Program(program)).ok();
+                    use Message::{LoadProgram, Play, Record};
+                    match msg {
+                        Play(_x) => {}
+                        Record(_x) => {}
+                        LoadProgram(ops) => {
+                            let program = compile_program(
+                                &ops,
+                                sample_rate.load(Ordering::Relaxed),
+                                &mut ctx,
+                            );
+                            tx.send(ServerOutput::Program(program)).ok();
+                        }
+                    }
                 }
             });
         });

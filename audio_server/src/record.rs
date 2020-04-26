@@ -5,8 +5,9 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use hound::{SampleFormat, WavSpec, WavWriter};
 use ringbuf::Consumer;
 
+const POLL_INTERVAL_MS: u64 = 10;
+
 pub fn main(
-    base_filename: &str,
     sample_rate: u32,
     mut consumer: Consumer<Sample>,
     rx: Receiver<bool>,
@@ -25,7 +26,7 @@ pub fn main(
                 writer.take().and_then(|w| w.finalize().ok());
                 consumer.pop_each(|_| true, None);
                 if on {
-                    let filename = format!("{}-{}.wav", base_filename, Local::now().to_rfc3339());
+                    let filename = format!("{}.wav", Local::now().to_rfc3339());
                     writer = Some(WavWriter::create(filename, spec)?);
                 }
             }
@@ -40,6 +41,6 @@ pub fn main(
             true
         };
         consumer.pop_each(write, None);
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS));
     }
 }

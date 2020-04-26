@@ -1,16 +1,25 @@
 [package]
-name = "sound_garden_vst"
+name = "audio_server"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "audio_server"
+path = "./src/lib.rs"
+
 [dependencies]
-vst = "0.2.0"
 alloc_counter = "0.0.4"
+anyhow = "1.0.26"
+chrono = "0.4.10"
+cpal = "0.11.0"
+clap = "2.33.0"
+crossbeam-channel = "0.4.0"
+hound = "3.4.0"
+ringbuf = "0.2.1"
 serde_json = "1.0.45"
-crossbeam-channel = "0.4.2"
 
 [dependencies.serde]
 version = "1.0.104"
@@ -22,15 +31,8 @@ path = "../audio_ops"
 [dependencies.audio_program]
 path = "../audio_program"
 
-[dependencies.audio_server]
-path = "../audio_server"
-
 [dependencies.audio_vm]
 path = "../audio_vm"
 
 [dependencies.thread_worker]
 path = "../thread_worker"
-
-[lib]
-name = "soundgarden"
-crate-type = ["cdylib"]

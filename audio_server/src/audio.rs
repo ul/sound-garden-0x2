@@ -2,16 +2,11 @@ use anyhow::Result;
 use audio_ops::pure::clip;
 use audio_vm::{Sample, CHANNELS, VM};
 use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_channel::Sender;
 use ringbuf::Producer;
 use std::sync::{Arc, Mutex};
 
-pub fn main(
-    vm: Arc<Mutex<VM>>,
-    mut producer: Producer<Sample>,
-    rx: Receiver<()>,
-    tx: Sender<u32>,
-) -> Result<()> {
+pub fn main(vm: Arc<Mutex<VM>>, mut producer: Producer<Sample>, tx: Sender<u32>) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -40,15 +35,6 @@ pub fn main(
         .map_err(|_| anyhow::anyhow!("Failed to play output stream."))?;
 
     event_loop.run(move |id, result| {
-        match rx.try_recv() {
-            Ok(_) => {}
-            Err(TryRecvError::Disconnected) => {
-                // cpal doesn't provide a civilized way to stop event loop.
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                std::process::exit(0);
-            }
-            Err(TryRecvError::Empty) => {}
-        }
         let data = match result {
             Ok(data) => data,
             Err(err) => {

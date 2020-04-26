@@ -9,6 +9,7 @@ edition = "2018"
 members = [
     "audio_ops",
     "audio_program",
+    "audio_server",
     "audio_vm",
     "play_program",
     "render_program",
