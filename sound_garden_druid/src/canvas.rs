@@ -10,8 +10,23 @@ use std::sync::Arc;
 const FONT_NAME: &str = "IBM Plex Mono";
 const FONT_SIZE: f64 = 20.0;
 const BACKGROUND_COLOR: Color = Color::WHITE;
-const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x33, 0x33, 0x33);
+const CURSOR_ALPHA: f64 = 0.33;
+const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x20, 0x20, 0x20);
 const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
+// TODO Calculate from the font settings automatically.
+// Current values are obtained with
+// ```
+// let layout = ctx
+//     .text()
+//     .new_text_layout(&font, "Q", f64::INFINITY)
+//     .build()
+//     .unwrap();
+// println!(
+//     "{}x{}",
+//     layout.width(),
+//     layout.line_metric(0).unwrap().height
+// );
+// ```
 const GRID_UNIT: Size = Size::new(12.0, 26.0);
 
 #[derive(Default)]
@@ -160,8 +175,8 @@ impl druid::Widget<Data> for Widget {
                         ),
                         GRID_UNIT,
                     )),
-                    2.0,
-                    &DEFAULT_NODE_COLOR,
+                    1.0,
+                    &DEFAULT_NODE_COLOR.with_alpha(CURSOR_ALPHA),
                 );
             }
             Mode::Insert => {
@@ -174,7 +189,7 @@ impl druid::Widget<Data> for Widget {
                         Size::new(GRID_UNIT.width, 2.0),
                     )),
                     1.0,
-                    &DEFAULT_NODE_COLOR,
+                    &DEFAULT_NODE_COLOR.with_alpha(CURSOR_ALPHA),
                 );
             }
         }
@@ -186,17 +201,6 @@ impl druid::Widget<Data> for Widget {
             .new_font_by_name(FONT_NAME, FONT_SIZE)
             .build()
             .unwrap();
-        // let layout = ctx
-        //     .text()
-        //     .new_text_layout(&font, "Q", f64::INFINITY)
-        //     .build()
-        //     .unwrap();
-        // println!(
-        //     "{}x{}",
-        //     layout.width(),
-        //     layout.line_metric(0).unwrap().height
-        // );
-        let node_under_cursor = self.node_under_cursor(data);
         for node in data.nodes.iter() {
             let layout = ctx
                 .text()
@@ -206,13 +210,7 @@ impl druid::Widget<Data> for Widget {
             let color = if node.draft {
                 DRAFT_NODE_COLOR
             } else {
-                if node_under_cursor.is_some()
-                    && node.id == node_under_cursor.as_ref().unwrap().0.id
-                {
-                    BACKGROUND_COLOR
-                } else {
-                    DEFAULT_NODE_COLOR
-                }
+                DEFAULT_NODE_COLOR
             };
             ctx.draw_text(
                 &layout,
