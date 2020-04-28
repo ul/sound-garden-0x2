@@ -1547,6 +1547,7 @@ dependencies = [
  "anyhow 1.0.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "druid 0.6.0 (git+https://github.com/xi-editor/druid.git)",
+ "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "xi-rope 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

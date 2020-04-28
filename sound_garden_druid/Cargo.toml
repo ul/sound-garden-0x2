@@ -11,3 +11,4 @@ druid = { git = "https://github.com/xi-editor/druid.git", version = "0.6" }
 xi-rope = "0.3.0"
 anyhow = "1.0.28"
 clap = "2.33.0"
+rand = "0.7.3"
