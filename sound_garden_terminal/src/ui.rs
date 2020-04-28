@@ -14,7 +14,7 @@ use termion::screen::AlternateScreen;
 use tui::backend::TermionBackend;
 use tui::layout::Rect;
 use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Paragraph, Text, Widget};
+use tui::widgets::{Block, Borders, Paragraph, Text};
 use tui::Terminal;
 
 pub fn main(
@@ -62,12 +62,14 @@ fn render_editor(
         } in app.nodes()
         {
             let text = [Text::raw(op.to_owned())];
-            Paragraph::new(text.iter())
-                .style(Style::default().fg(if *draft { Color::Red } else { Color::White }))
-                .render(
-                    &mut f,
-                    Rect::new((p.x - 1) as _, (p.y - 1) as _, op.len() as _, 1),
-                );
+            f.render_widget(
+                Paragraph::new(text.iter()).style(Style::default().fg(if *draft {
+                    Color::Red
+                } else {
+                    Color::White
+                })),
+                Rect::new((p.x - 1) as _, (p.y - 1) as _, op.len() as _, 1),
+            )
         }
 
         let color = if !app.play() {
@@ -77,25 +79,27 @@ fn render_editor(
         } else {
             Color::White
         };
-        Block::default()
-            .title(&format!(
-                "Sound Garden────{}────{}────{}",
-                if app.play() { "|>" } else { "||" },
-                if app.recording {
-                    if Utc::now().second() % 2 == 0 {
-                        "•R"
+        f.render_widget(
+            Block::default()
+                .title(&format!(
+                    "Sound Garden────{}────{}────{}",
+                    if app.play() { "|>" } else { "||" },
+                    if app.recording {
+                        if Utc::now().second() % 2 == 0 {
+                            "•R"
+                        } else {
+                            " R"
+                        }
                     } else {
-                        " R"
-                    }
-                } else {
-                    ""
-                },
-                app.status
-            ))
-            .title_style(Style::default().fg(color))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(color))
-            .render(&mut f, size);
+                        ""
+                    },
+                    app.status
+                ))
+                .title_style(Style::default().fg(color))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(color)),
+            size,
+        );
     })?;
     write!(
         terminal.backend_mut(),
@@ -121,12 +125,14 @@ fn render_help(
 ) -> Result<()> {
     terminal.draw(|mut f| {
         let mut size = f.size();
-        Block::default()
-            .title("Sound Garden────Help")
-            .title_style(Style::default().fg(Color::Green))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Green))
-            .render(&mut f, size);
+        f.render_widget(
+            Block::default()
+                .title("Sound Garden────Help")
+                .title_style(Style::default().fg(Color::Green))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+            size,
+        );
         let text = [
             Text::raw(format!("Path: {}\n", filename)),
             Text::raw(format!("Sample rate: {}\n", sample_rate)),
@@ -142,10 +148,12 @@ fn render_help(
         size.y = MIN_Y as u16;
         size.width -= 3;
         size.height -= 3;
-        Paragraph::new(text.iter())
-            .scroll(app.help_scroll)
-            .wrap(true)
-            .render(&mut f, size);
+        f.render_widget(
+            Paragraph::new(text.iter())
+                .scroll(app.help_scroll)
+                .wrap(true),
+            size,
+        );
     })?;
     write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
     io::stdout().flush()?;
@@ -162,12 +170,14 @@ fn render_ops(
 ) -> Result<()> {
     terminal.draw(|mut f| {
         let mut size = f.size();
-        Block::default()
-            .title("Sound Garden────Ops")
-            .title_style(Style::default().fg(Color::Green))
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Green))
-            .render(&mut f, size);
+        f.render_widget(
+            Block::default()
+                .title("Sound Garden────Ops")
+                .title_style(Style::default().fg(Color::Green))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+            size,
+        );
         let text = [
             Text::raw(format!("Path: {}\n", filename)),
             Text::raw(format!("Sample rate: {}\n", sample_rate)),
@@ -190,10 +200,12 @@ fn render_ops(
         size.y = 2;
         size.width -= 3;
         size.height -= 3;
-        Paragraph::new(text.iter())
-            .scroll(app.help_scroll)
-            .wrap(true)
-            .render(&mut f, size);
+        f.render_widget(
+            Paragraph::new(text.iter())
+                .scroll(app.help_scroll)
+                .wrap(true),
+            size,
+        );
     })?;
     write!(terminal.backend_mut(), "{}", cursor::Hide,)?;
     io::stdout().flush()?;
