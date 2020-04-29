@@ -1,7 +1,7 @@
 use anyhow::Result;
 use audio_program::{compile_program, Context};
 use audio_vm::{Sample, VM};
-use clap::{crate_version, App, Arg};
+use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crossbeam_channel::Receiver;
 use ringbuf::RingBuffer;
 use std::sync::{Arc, Mutex};
@@ -16,10 +16,7 @@ const CHANNEL_CAPACITY: usize = 64;
 const RECORD_BUFFER_CAPACITY: usize = 48000;
 
 fn main() -> Result<()> {
-    let matches = App::new("kak-lsp")
-        .version(crate_version!())
-        .author("Ruslan Prokopchuk <fer.obbee@gmail.com>")
-        .about("Sound Garden Audio Synth Server")
+    let matches = app_from_crate!()
         .arg(
             Arg::with_name("port")
                 .short("p")

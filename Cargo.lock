@@ -1545,11 +1545,15 @@ name = "sound_garden_druid"
 version = "0.1.0"
 dependencies = [
  "anyhow 1.0.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "audio_program 0.1.0",
+ "audio_server 0.1.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "crossbeam-channel 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "druid 0.6.0 (git+https://github.com/xi-editor/druid.git)",
  "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.106 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.51 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thread_worker 0.1.0",
  "xi-rope 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

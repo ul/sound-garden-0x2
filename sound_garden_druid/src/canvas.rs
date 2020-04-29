@@ -1,8 +1,8 @@
 use crate::{commands::*, types::*};
 use druid::{
     piet::{FontBuilder, Text, TextLayoutBuilder},
-    BoxConstraints, Color, Env, Event, EventCtx, KeyCode, LayoutCtx, LifeCycle, LifeCycleCtx,
-    PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx,
+    BoxConstraints, Color, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
+    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, UpdateCtx,
 };
 use std::sync::Arc;
 
@@ -38,12 +38,12 @@ pub struct Widget {
 #[derive(Clone, druid::Data, Default)]
 pub struct Data {
     pub nodes: Arc<Vec<Node>>,
+    pub draft_nodes: Arc<Vec<Id>>,
 }
 
 #[derive(Clone, druid::Data, Default)]
 pub struct Node {
     pub id: Id,
-    pub draft: bool,
     /// In grid units, not pixels.
     pub position: Point,
     pub text: String,
@@ -57,76 +57,91 @@ impl druid::Widget<Data> for Widget {
             }
             Event::KeyDown(event) => {
                 match self.mode {
-                    Mode::Normal => match event.text() {
-                        Some("h") => {
+                    Mode::Normal => match event {
+                        _ if HotKey::new(None, KeyCode::KeyH).matches(event) => {
                             self.cursor.position.x -= 1.0;
                         }
-                        Some("j") => {
+                        _ if HotKey::new(None, KeyCode::KeyJ).matches(event) => {
                             self.cursor.position.y += 1.0;
                         }
-                        Some("k") => {
+                        _ if HotKey::new(None, KeyCode::KeyK).matches(event) => {
                             self.cursor.position.y -= 1.0;
                         }
-                        Some("l") => {
+                        _ if HotKey::new(None, KeyCode::KeyL).matches(event) => {
                             self.cursor.position.x += 1.0;
                         }
-                        Some("i") => {
+                        _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
                             self.mode = Mode::Insert;
                             ctx.submit_command(new_undo_group(), None)
                         }
+                        _ if HotKey::new(None, KeyCode::Return).matches(event) => {
+                            ctx.submit_command(commit_program(), None)
+                        }
+                        _ if HotKey::new(None, KeyCode::Backslash).matches(event) => {
+                            ctx.submit_command(play_pause(), None)
+                        }
+                        _ if HotKey::new(None, KeyCode::KeyR).matches(event) => {
+                            ctx.submit_command(toggle_record(), None)
+                        }
                         _ => {}
                     },
-                    Mode::Insert => match event {
-                        _ if event.key_code == KeyCode::Escape
-                            || event.key_code == KeyCode::Return =>
-                        {
-                            self.mode = Mode::Normal;
+                    Mode::Insert => {
+                        if HotKey::new(None, KeyCode::Backspace).matches(event) {
+                            self.cursor.position.x -= 1.0;
                         }
-                        _ => {
-                            if event.key_code == KeyCode::Backspace {
+                        match event {
+                            _ if HotKey::new(None, KeyCode::Escape).matches(event)
+                                || HotKey::new(None, KeyCode::Return).matches(event) =>
+                            {
+                                self.mode = Mode::Normal;
+                            }
+                            _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
                                 self.cursor.position.x -= 1.0;
                             }
-
-                            if event.key_code == KeyCode::ArrowLeft {
-                                self.cursor.position.x -= 1.0;
-                            } else if event.key_code == KeyCode::ArrowDown {
+                            _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
                                 self.cursor.position.y += 1.0;
-                            } else if event.key_code == KeyCode::ArrowUp {
+                            }
+                            _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
                                 self.cursor.position.y -= 1.0;
-                            } else if event.key_code == KeyCode::ArrowRight
-                                || event.key_code == KeyCode::Space
+                            }
+                            _ if HotKey::new(None, KeyCode::ArrowRight).matches(event)
+                                || HotKey::new(None, KeyCode::Space).matches(event) =>
                             {
                                 self.cursor.position.x += 1.0;
-                            } else if let Some((node, index)) = self.node_under_cursor(data) {
-                                if event.key_code == KeyCode::Backspace {
+                            }
+                            _ => {
+                                if let Some((node, index)) = self.node_under_cursor(data) {
+                                    if event.key_code == KeyCode::Backspace {
+                                        ctx.submit_command(
+                                            node_delete_char(NodeDeleteChar { id: node.id, index }),
+                                            None,
+                                        );
+                                    } else if event.key_code.is_printable() {
+                                        let text = event.text().unwrap();
+                                        ctx.submit_command(
+                                            node_insert_text(NodeInsertText {
+                                                id: node.id,
+                                                text: text.to_string(),
+                                                index,
+                                            }),
+                                            None,
+                                        );
+                                        self.cursor.position.x += text.chars().count() as f64;
+                                    }
+                                } else if event.key_code.is_printable() {
+                                    let text = event.text().unwrap();
                                     ctx.submit_command(
-                                        node_delete_char(NodeDeleteChar { id: node.id, index }),
-                                        None,
-                                    );
-                                } else if let Some(text) = event.text() {
-                                    ctx.submit_command(
-                                        node_insert_text(NodeInsertText {
-                                            id: node.id,
+                                        create_node(CreateNode {
+                                            position: self.cursor.position,
                                             text: text.to_string(),
-                                            index,
                                         }),
                                         None,
                                     );
                                     self.cursor.position.x += text.chars().count() as f64;
                                 }
-                            } else if event.key_code == KeyCode::Backspace {
-                            } else if let Some(text) = event.text() {
-                                ctx.submit_command(
-                                    create_node(CreateNode {
-                                        position: self.cursor.position,
-                                        text: text.to_string(),
-                                    }),
-                                    None,
-                                );
-                                self.cursor.position.x += text.chars().count() as f64;
                             }
                         }
-                    },
+                    }
                 }
                 ctx.request_paint();
             }
@@ -207,11 +222,13 @@ impl druid::Widget<Data> for Widget {
                 .new_text_layout(&font, &node.text, f64::INFINITY)
                 .build()
                 .unwrap();
-            let color = if node.draft {
-                DRAFT_NODE_COLOR
-            } else {
-                DEFAULT_NODE_COLOR
-            };
+            // Draft check requires extra work to make it reliable when jamming.
+            // let color = if data.draft_nodes.contains(&node.id) {
+            //     DRAFT_NODE_COLOR
+            // } else {
+            //     DEFAULT_NODE_COLOR
+            // };
+            let color = DEFAULT_NODE_COLOR;
             ctx.draw_text(
                 &layout,
                 Point::new(

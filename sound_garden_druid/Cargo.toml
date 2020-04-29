@@ -3,6 +3,7 @@ name = "sound_garden_druid"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2018"
+description = "Sound Garden Druid"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,6 +11,7 @@ edition = "2018"
 druid = { git = "https://github.com/xi-editor/druid.git", version = "0.6" }
 anyhow = "1.0.28"
 clap = "2.33.0"
+crossbeam-channel = "0.4.2"
 rand = "0.7.3"
 serde_json = "1.0.51"
 
@@ -20,3 +22,12 @@ features = ["derive"]
 [dependencies.xi-rope]
 version = "0.3.0"
 features = ["serde"]
+
+[dependencies.audio_program]
+path = "../audio_program"
+
+[dependencies.audio_server]
+path = "../audio_server"
+
+[dependencies.thread_worker]
+path = "../thread_worker"

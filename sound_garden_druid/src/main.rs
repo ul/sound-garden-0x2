@@ -1,11 +1,16 @@
-use crate::commands::*;
-use crate::types::Id;
+use crate::{commands::*, types::Id};
 use anyhow::Result;
+use audio_program::TextOp;
+use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
+use crossbeam_channel::{Receiver, Sender};
 use druid::{
     AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, Point, Target, Widget, WidgetExt,
     WindowDesc,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use thread_worker::Worker;
+use types::{id_to_string, str_to_id};
 use xi_rope::{engine::Engine, DeltaBuilder, Rope};
 
 mod canvas;
@@ -66,22 +71,76 @@ mod types;
  * [ ] Profit!
  */
 
-struct App {
-    master_engine: Engine,
+#[derive(Serialize, Deserialize)]
+struct Editor {
+    engine: Engine,
     undo_group: usize,
 }
 
-#[derive(Clone, druid::Data)]
+struct App {
+    editor: Editor,
+    filename: String,
+    audio_tx: Sender<audio_server::Message>,
+    play: bool,
+    record: bool,
+}
+
+#[derive(Clone, druid::Data, Default)]
 struct Data {
     nodes: Arc<Vec<canvas::Node>>,
+    draft_nodes: Arc<Vec<Id>>,
 }
 
 fn main() -> Result<()> {
+    let matches = app_from_crate!()
+        .arg(
+            Arg::with_name("FILENAME")
+                .required(true)
+                .index(1)
+                .help("Path to the tree"),
+        )
+        .arg(
+            Arg::with_name("audio_port")
+                .short("p")
+                .long("audio_port")
+                .value_name("PORT")
+                .default_value("31337")
+                .help("Port to send programs to"),
+        )
+        .get_matches();
+
+    let filename = matches.value_of("FILENAME").unwrap();
+    let audio_port = matches.value_of("audio_port").unwrap();
+    let audio_address = format!("127.0.0.1:{}", audio_port);
+
+    let audio_control = Worker::spawn(
+        "Audio",
+        1,
+        move |rx: Receiver<audio_server::Message>, _: Sender<()>| {
+            for msg in rx {
+                if let Ok(stream) = std::net::TcpStream::connect(&audio_address) {
+                    serde_json::to_writer(stream, &msg).ok();
+                }
+            }
+        },
+    );
+
+    let editor = Editor::load(filename);
+
+    let app = App {
+        editor,
+        filename: String::from(filename),
+        audio_tx: audio_control.sender().clone(),
+        play: false, // REVIEW it assumes server starts in pause mode
+        record: false,
+    };
+    let mut data: Data = Default::default();
+    data.nodes = Arc::new(app.generate_nodes());
+
     AppLauncher::with_window(WindowDesc::new(build_ui))
-        .delegate(App::new())
-        .launch(Data {
-            nodes: Default::default(),
-        })?;
+        .delegate(app)
+        .launch(data)?;
+
     Ok(())
 }
 
@@ -89,27 +148,45 @@ fn build_ui() -> impl Widget<Data> {
     canvas::Widget::default().lens(CanvasLens {})
 }
 
-impl App {
+impl Editor {
     fn new() -> Self {
-        let mut master_engine = Engine::empty();
-        master_engine.set_session_id((rand::random(), rand::random()));
-        App {
-            master_engine,
+        let mut engine = Engine::empty();
+        engine.set_session_id((rand::random(), rand::random()));
+        Editor {
+            engine,
             undo_group: 0,
         }
     }
 
+    // TODO Atomic write.
+    fn save(&self, filename: &str) {
+        serde_json::to_writer(std::fs::File::create(filename).unwrap(), self).ok();
+    }
+
+    fn load(filename: &str) -> Self {
+        std::fs::File::open(filename)
+            .ok()
+            .and_then(|f| serde_json::from_reader::<_, Self>(f).ok())
+            .unwrap_or_else(|| Self::new())
+    }
+}
+
+impl App {
+    fn save(&self) {
+        self.editor.save(&self.filename);
+    }
+
     fn generate_nodes(&self) -> Vec<canvas::Node> {
-        self.master_engine
+        self.editor
+            .engine
             .get_head()
             .lines(..)
             .filter_map(|line| {
                 if let [id, x, y, text] = line.split('\t').collect::<Vec<_>>()[..] {
                     Some(canvas::Node {
-                        id: Id::from_str_radix(id, 16).unwrap(),
+                        id: str_to_id(id),
                         position: Point::new(x.parse().unwrap(), y.parse().unwrap()),
                         text: text.to_string(),
-                        draft: true,
                     })
                 } else {
                     None
@@ -131,9 +208,9 @@ impl AppDelegate<Data> for App {
         let result = match cmd.selector {
             NODE_INSERT_TEXT => {
                 let NodeInsertText { id, index, text } = cmd.get_object().unwrap();
-                let code = &self.master_engine.get_head();
-                let base_rev = self.master_engine.get_head_rev_id().token();
-                let id_prefix = format!("{:016x}\t", id);
+                let code = &self.editor.engine.get_head();
+                let base_rev = self.editor.engine.get_head_rev_id().token();
+                let id_prefix = id_to_string(*id) + "\t";
                 if let Some(offset) = code
                     .lines(..)
                     .enumerate()
@@ -151,16 +228,20 @@ impl AppDelegate<Data> for App {
                     let mut delta = DeltaBuilder::new(code.len());
                     delta.replace(offset..offset, Rope::from(text));
                     // REVIEW What should I put as a priority argument?
-                    self.master_engine
-                        .edit_rev(0, self.undo_group, base_rev, delta.build());
+                    self.editor
+                        .engine
+                        .edit_rev(0, self.editor.undo_group, base_rev, delta.build());
+                    data.draft_nodes =
+                        Arc::new(data.draft_nodes.iter().chain(Some(id)).copied().collect());
+                    self.save();
                 }
                 false
             }
             NODE_DELETE_CHAR => {
                 let NodeDeleteChar { id, index } = cmd.get_object().unwrap();
-                let code = &self.master_engine.get_head();
-                let base_rev = self.master_engine.get_head_rev_id().token();
-                let id_prefix = format!("{:016x}\t", id);
+                let code = &self.editor.engine.get_head();
+                let base_rev = self.editor.engine.get_head_rev_id().token();
+                let id_prefix = id_to_string(*id) + "\t";
                 if let Some((start, end)) = code
                     .lines(..)
                     .enumerate()
@@ -178,34 +259,83 @@ impl AppDelegate<Data> for App {
                     let mut delta = DeltaBuilder::new(code.len());
                     delta.delete(start..end);
                     // REVIEW What should I put as a priority argument?
-                    self.master_engine
-                        .edit_rev(0, self.undo_group, base_rev, delta.build());
+                    self.editor
+                        .engine
+                        .edit_rev(0, self.editor.undo_group, base_rev, delta.build());
+                    data.draft_nodes =
+                        Arc::new(data.draft_nodes.iter().chain(Some(id)).copied().collect());
+                    self.save();
                 }
                 false
             }
             CREATE_NODE => {
                 let CreateNode { text, position } = cmd.get_object().unwrap();
-                let code = &self.master_engine.get_head();
-                let base_rev = self.master_engine.get_head_rev_id().token();
+                let id = rand::random::<Id>();
+                let code = &self.editor.engine.get_head();
+                let base_rev = self.editor.engine.get_head_rev_id().token();
                 let offset = code.len();
                 let mut delta = DeltaBuilder::new(code.len());
                 delta.replace(
                     offset..offset,
                     Rope::from(format!(
-                        "{:016x}\t{}\t{}\t{}\n",
-                        rand::random::<Id>(),
+                        "{}\t{}\t{}\t{}\n",
+                        id_to_string(id),
                         position.x,
                         position.y,
                         text
                     )),
                 );
                 // REVIEW What should I put as a priority argument?
-                self.master_engine
-                    .edit_rev(0, self.undo_group, base_rev, delta.build());
+                self.editor
+                    .engine
+                    .edit_rev(0, self.editor.undo_group, base_rev, delta.build());
+                data.draft_nodes =
+                    Arc::new(data.draft_nodes.iter().copied().chain(Some(id)).collect());
+                self.save();
                 false
             }
             NEW_UNDO_GROUP => {
-                self.undo_group += 1;
+                self.editor.undo_group += 1;
+                false
+            }
+            COMMIT_PROGRAM => {
+                let ops = self
+                    .editor
+                    .engine
+                    .get_head()
+                    .lines(..)
+                    .filter_map(|line| {
+                        if let [id, _, _, text] = line.split('\t').collect::<Vec<_>>()[..] {
+                            if !text.is_empty() {
+                                Some(TextOp {
+                                    id: str_to_id(id),
+                                    op: text.to_string(),
+                                })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                self.audio_tx
+                    .send(audio_server::Message::LoadProgram(ops))
+                    .ok();
+                false
+            }
+            PLAY_PAUSE => {
+                self.play = !self.play;
+                self.audio_tx
+                    .send(audio_server::Message::Play(self.play))
+                    .ok();
+                false
+            }
+            TOGGLE_RECORD => {
+                self.record = !self.record;
+                self.audio_tx
+                    .send(audio_server::Message::Record(self.record))
+                    .ok();
                 false
             }
             _ => true,
@@ -222,6 +352,7 @@ impl Lens<Data, canvas::Data> for CanvasLens {
     fn with<V, F: FnOnce(&canvas::Data) -> V>(&self, data: &Data, f: F) -> V {
         let x = canvas::Data {
             nodes: Arc::clone(&data.nodes),
+            draft_nodes: Arc::clone(&data.draft_nodes),
         };
         f(&x)
     }
@@ -229,6 +360,7 @@ impl Lens<Data, canvas::Data> for CanvasLens {
     fn with_mut<V, F: FnOnce(&mut canvas::Data) -> V>(&self, data: &mut Data, f: F) -> V {
         let mut x = canvas::Data {
             nodes: Arc::clone(&data.nodes),
+            draft_nodes: Arc::clone(&data.draft_nodes),
         };
         f(&mut x)
     }

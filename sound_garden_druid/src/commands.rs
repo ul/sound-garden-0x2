@@ -44,3 +44,21 @@ pub const NEW_UNDO_GROUP: Selector = Selector::new("sound_garden_druid.NEW_UNDO_
 pub fn new_undo_group() -> Command {
     Command::from(NEW_UNDO_GROUP)
 }
+
+pub const COMMIT_PROGRAM: Selector = Selector::new("sound_garden_druid.COMMIT_PROGRAM");
+
+pub fn commit_program() -> Command {
+    Command::from(COMMIT_PROGRAM)
+}
+
+pub const PLAY_PAUSE: Selector = Selector::new("sound_garden_druid.PLAY_PAUSE");
+
+pub fn play_pause() -> Command {
+    Command::from(PLAY_PAUSE)
+}
+
+pub const TOGGLE_RECORD: Selector = Selector::new("sound_garden_druid.TOGGLE_RECORD");
+
+pub fn toggle_record() -> Command {
+    Command::from(TOGGLE_RECORD)
+}

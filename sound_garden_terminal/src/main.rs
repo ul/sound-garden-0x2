@@ -5,15 +5,12 @@ mod ui;
 use anyhow::Result;
 use audio_program::TextOp;
 use audio_server::Message;
-use clap::{crate_version, App, Arg};
+use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crossbeam_channel::{Receiver, Sender};
 use thread_worker::Worker;
 
 pub fn main() -> Result<()> {
-    let matches = App::new("kak-lsp")
-        .version(crate_version!())
-        .author("Ruslan Prokopchuk <fer.obbee@gmail.com>")
-        .about("Sound Garden Terminal")
+    let matches = app_from_crate!()
         .arg(
             Arg::with_name("FILENAME")
                 .required(true)
