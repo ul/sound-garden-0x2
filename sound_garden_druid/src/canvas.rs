@@ -2,9 +2,9 @@ use crate::{commands::*, types::*};
 use druid::{
     piet::{FontBuilder, Text, TextLayoutBuilder},
     BoxConstraints, Color, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, SysMods, TimerToken, UpdateCtx,
+    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, SysMods, UpdateCtx,
 };
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 // TODO Move those constants to Data or Env.
 const FONT_NAME: &str = "IBM Plex Mono";
@@ -13,7 +13,6 @@ const BACKGROUND_COLOR: Color = Color::WHITE;
 const CURSOR_ALPHA: f64 = 0.33;
 const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x20, 0x20, 0x20);
 // const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
-const POLL_NODES_INTERVAL: Duration = Duration::from_millis(10);
 // TODO Calculate from the font settings automatically.
 // Current values are obtained with
 // ```
@@ -33,7 +32,6 @@ const GRID_UNIT: Size = Size::new(12.0, 26.0);
 pub struct Widget {
     cursor: Cursor,
     mode: Mode,
-    poll_nodes_timer: TimerToken,
 }
 
 #[derive(Clone, druid::Data, Default)]
@@ -55,7 +53,6 @@ impl Default for Widget {
         Widget {
             cursor: Default::default(),
             mode: Default::default(),
-            poll_nodes_timer: TimerToken::INVALID,
         }
     }
 }
@@ -65,7 +62,6 @@ impl druid::Widget<Data> for Widget {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
-                self.poll_nodes_timer = ctx.request_timer(POLL_NODES_INTERVAL);
             }
             Event::KeyDown(event) => {
                 match self.mode {
@@ -167,12 +163,6 @@ impl druid::Widget<Data> for Widget {
                 self.cursor.position.x = (event.pos.x / GRID_UNIT.width).round();
                 self.cursor.position.y = (event.pos.y / GRID_UNIT.height).round();
                 ctx.request_paint();
-            }
-            Event::Timer(id) => {
-                if *id == self.poll_nodes_timer {
-                    ctx.submit_command(poll_nodes(), None);
-                    self.poll_nodes_timer = ctx.request_timer(POLL_NODES_INTERVAL);
-                }
             }
             _ => {}
         }

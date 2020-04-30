@@ -139,6 +139,8 @@ fn main() -> Result<()> {
     let audio_address = format!("127.0.0.1:{}", audio_port);
 
     let editor = Arc::new(Mutex::new(Editor::load(filename)));
+    let launcher = AppLauncher::with_window(WindowDesc::new(build_ui));
+    let event_sink = launcher.get_external_handle();
 
     // We are sending entire Engine at the moment because of the difficulties with sync of peer revisions.
     // In future we want to improve it by sending (SessionId, Delta) only.
@@ -156,6 +158,7 @@ fn main() -> Result<()> {
                         .and_then(|stream| serde_json::from_reader::<_, Engine>(stream).ok())
                 }) {
                     editor.lock().unwrap().engine.merge(&msg);
+                    event_sink.submit_command(GENERATE_NODES, (), None).ok();
                 }
             });
         }
@@ -206,9 +209,7 @@ fn main() -> Result<()> {
     let mut data: Data = Default::default();
     data.nodes = Arc::new(app.generate_nodes());
 
-    AppLauncher::with_window(WindowDesc::new(build_ui))
-        .delegate(app)
-        .launch(data)?;
+    launcher.delegate(app).launch(data)?;
 
     Ok(())
 }

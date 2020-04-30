@@ -74,8 +74,5 @@ pub const REDO: Selector = Selector::new("sound_garden_druid.REDO");
 pub fn redo() -> Command {
     Command::from(REDO)
 }
-pub const POLL_NODES: Selector = Selector::new("sound_garden_druid.POLL_NODES");
 
-pub fn poll_nodes() -> Command {
-    Command::from(POLL_NODES)
-}
+pub const GENERATE_NODES: Selector = Selector::new("sound_garden_druid.GENERATE_NODES");
