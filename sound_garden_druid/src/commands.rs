@@ -62,3 +62,20 @@ pub const TOGGLE_RECORD: Selector = Selector::new("sound_garden_druid.TOGGLE_REC
 pub fn toggle_record() -> Command {
     Command::from(TOGGLE_RECORD)
 }
+
+pub const UNDO: Selector = Selector::new("sound_garden_druid.UNDO");
+
+pub fn undo() -> Command {
+    Command::from(UNDO)
+}
+
+pub const REDO: Selector = Selector::new("sound_garden_druid.REDO");
+
+pub fn redo() -> Command {
+    Command::from(REDO)
+}
+pub const POLL_NODES: Selector = Selector::new("sound_garden_druid.POLL_NODES");
+
+pub fn poll_nodes() -> Command {
+    Command::from(POLL_NODES)
+}
