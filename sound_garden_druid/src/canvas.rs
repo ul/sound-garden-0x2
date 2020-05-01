@@ -131,27 +131,29 @@ impl druid::Widget<Data> for Widget {
                                             None,
                                         );
                                     } else if event.key_code.is_printable() {
-                                        let text = event.text().unwrap();
+                                        if let Some(text) = event.text() {
+                                            ctx.submit_command(
+                                                node_insert_text(NodeInsertText {
+                                                    id: node.id,
+                                                    text: text.to_string(),
+                                                    index,
+                                                }),
+                                                None,
+                                            );
+                                            self.cursor.position.x += text.chars().count() as f64;
+                                        }
+                                    }
+                                } else if event.key_code.is_printable() {
+                                    if let Some(text) = event.text() {
                                         ctx.submit_command(
-                                            node_insert_text(NodeInsertText {
-                                                id: node.id,
+                                            create_node(CreateNode {
+                                                position: self.cursor.position,
                                                 text: text.to_string(),
-                                                index,
                                             }),
                                             None,
                                         );
                                         self.cursor.position.x += text.chars().count() as f64;
                                     }
-                                } else if event.key_code.is_printable() {
-                                    let text = event.text().unwrap();
-                                    ctx.submit_command(
-                                        create_node(CreateNode {
-                                            position: self.cursor.position,
-                                            text: text.to_string(),
-                                        }),
-                                        None,
-                                    );
-                                    self.cursor.position.x += text.chars().count() as f64;
                                 }
                             }
                         }
