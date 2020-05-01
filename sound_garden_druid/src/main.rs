@@ -261,7 +261,8 @@ impl App {
     }
 
     fn generate_nodes(&self) -> Vec<canvas::Node> {
-        self.editor
+        let mut nodes = self
+            .editor
             .lock()
             .unwrap()
             .engine
@@ -278,7 +279,9 @@ impl App {
                     None
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        nodes.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
+        nodes
     }
 }
 
@@ -385,26 +388,12 @@ impl AppDelegate<Data> for App {
                 false
             }
             COMMIT_PROGRAM => {
-                let ops = self
-                    .editor
-                    .lock()
-                    .unwrap()
-                    .engine
-                    .get_head()
-                    .lines(..)
-                    .filter_map(|line| {
-                        if let [id, _, _, text] = line.split('\t').collect::<Vec<_>>()[..] {
-                            if !text.is_empty() {
-                                Some(TextOp {
-                                    id: str_to_id(id),
-                                    op: text.to_string(),
-                                })
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
+                let ops = data
+                    .nodes
+                    .iter()
+                    .map(|node| TextOp {
+                        id: node.id,
+                        op: node.text.to_owned(),
                     })
                     .collect();
                 self.audio_tx
