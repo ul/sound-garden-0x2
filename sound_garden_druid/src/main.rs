@@ -34,6 +34,7 @@ mod types;
  * -- Let's ser/de engine state with serde (see below).
  * - Connectivity module to send programs and commands to synth server (standalone or VST plugin).
  * -- Regular std::net::TCPStream + serde should be enough.
+ * -- ...or not. Let's consider something like NNG via nng or runng.
  * - Connectivity module to exchange programs edits with peers.
  * -- Ideally we want some robust fully decentralised P2P protocol but having "LAN-oriented"
  *    naive code paired with TailScale should be enough for the start.
@@ -232,14 +233,14 @@ impl Editor {
     fn save(&self, filename: &str) {
         let f = std::fs::File::create(filename).unwrap();
         let f = snap::write::FrameEncoder::new(f);
-        serde_json::to_writer(f, self).ok();
+        serde_cbor::to_writer(f, self).ok();
     }
 
     fn load(filename: &str) -> Self {
         std::fs::File::open(filename)
             .ok()
             .map(|f| snap::read::FrameDecoder::new(f))
-            .and_then(|f| serde_json::from_reader::<_, Self>(f).ok())
+            .and_then(|f| serde_cbor::from_reader::<Self, _>(f).ok())
             .unwrap_or_else(|| Self::new())
     }
 }
