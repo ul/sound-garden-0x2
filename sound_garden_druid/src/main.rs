@@ -143,9 +143,6 @@ fn main() -> Result<()> {
     let launcher = AppLauncher::with_window(WindowDesc::new(build_ui));
     let event_sink = launcher.get_external_handle();
 
-    // We are sending entire Engine at the moment because of the difficulties with sync of peer revisions.
-    // In future we want to improve it by sending (SessionId, Delta) only.
-
     {
         let editor = Arc::clone(&editor);
         if let Some(jam_port) = matches.value_of("jam-local-port") {
@@ -156,7 +153,7 @@ fn main() -> Result<()> {
                     stream
                         .ok()
                         .map(|stream| snap::read::FrameDecoder::new(stream))
-                        .and_then(|stream| serde_json::from_reader::<_, Engine>(stream).ok())
+                        .and_then(|stream| serde_cbor::from_reader::<Engine, _>(stream).ok())
                 }) {
                     editor.lock().unwrap().engine.merge(&msg);
                     event_sink.submit_command(GENERATE_NODES, (), None).ok();
@@ -176,7 +173,7 @@ fn main() -> Result<()> {
                     for _ in rx {
                         if let Ok(stream) = std::net::TcpStream::connect(&address) {
                             let stream = snap::write::FrameEncoder::new(stream);
-                            serde_json::to_writer(stream, &editor.lock().unwrap().engine).ok();
+                            serde_cbor::to_writer(stream, &editor.lock().unwrap().engine).ok();
                         }
                     }
                 },
