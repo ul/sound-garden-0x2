@@ -1,16 +1,16 @@
 use crate::{commands::*, types::Id};
 use anyhow::Result;
 use audio_program::TextOp;
+use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crossbeam_channel::{Receiver, Sender};
-use druid::{
-    AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, Point, Target, Widget, WidgetExt,
-    WindowDesc,
-};
+use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Point, Target, WindowDesc};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::{
+    convert::TryFrom,
+    sync::{Arc, Mutex},
+};
 use thread_worker::Worker;
-use types::{id_to_string, str_to_id};
 use xi_rope::{
     engine::{Engine, RevToken},
     Delta, DeltaBuilder, Rope, RopeInfo,
@@ -34,8 +34,9 @@ mod types;
  * -- Let's ser/de engine state with serde (see below).
  * - Connectivity module to send programs and commands to synth server (standalone or VST plugin).
  * -- Regular std::net::TCPStream + serde should be enough.
- * -- ...or not. Let's consider something like NNG via nng or runng.
+ * -- Until we emphasize remote audio servers.
  * - Connectivity module to exchange programs edits with peers.
+ * -- Let's consider something like NNG.
  * -- Ideally we want some robust fully decentralised P2P protocol but having "LAN-oriented"
  *    naive code paired with TailScale should be enough for the start.
  * - Editing engine to support edits exchange with undo/redo.
@@ -46,6 +47,10 @@ mod types;
  *    which is sent to other peers. When peer receives delta it applies it to the corresponding
  *    peer engine and them merges it to master engine.
  *    Undo history is local and based on master engine.
+ *    Okay, deltas don't work, we need to send the entire editor.
+ *    Potential improvements:
+ * --- First of all, set undo limit. The main source of payload size is unbounded undos.
+ * --- Fork Engine to allow sending only a subset of revisions and send only new revisions since last sync.
  * - Persistent undo/redo.
  * -- Should come for free when persisting engine state.
  *
@@ -67,21 +72,24 @@ mod types;
  * This is a bit of a hack but should be safe and it would allow us to not invent own CRDT solution.
  */
 
-/* Plan of Attack
- *
- * [ ] First, let's implement basic canvas to render nodes.
- * [ ] Then we can have some basic editing with a master engine only.
- * [ ] ???
- * [ ] Profit!
- */
-
+/// Application business logic is associated with this structure,
+/// we implement druid's AppDelegate for it.
 struct App {
+    /// Local editor state.
+    /// Maintains Sound Garden Tree representation in the form friendly to collaborative editing.
+    /// Manages editing history.
     editor: Arc<Mutex<Editor>>,
+    /// Persistence location for the Tree.
     filename: String,
+    /// Channel to control audio server.
     audio_tx: Sender<audio_server::Message>,
+    /// Did we ask audio server to play?
     play: bool,
+    /// Did we ask audio server to record?
     record: bool,
-    peer: Option<JamPeer>,
+    /// Channel to communicate to peer.
+    peer_tx: Option<Sender<()>>,
+    /// The most recent revision converted to nodes.
     last_rendered_rev: RevToken,
 }
 
@@ -91,24 +99,10 @@ struct Editor {
     undo_group: usize,
 }
 
-struct JamPeer {
-    worker: Worker<(), ()>,
-}
-
-#[derive(Clone, druid::Data, Default)]
-struct Data {
-    nodes: Arc<Vec<canvas::Node>>,
-    draft_nodes: Arc<Vec<Id>>,
-}
-
 fn main() -> Result<()> {
+    // CLI interface.
     let matches = app_from_crate!()
-        .arg(
-            Arg::with_name("FILENAME")
-                .required(true)
-                .index(1)
-                .help("Path to the tree"),
-        )
+        .arg(Arg::with_name("FILENAME").index(1).help("Path to the tree"))
         .arg(
             Arg::with_name("audio-port")
                 .short("p")
@@ -135,86 +129,88 @@ fn main() -> Result<()> {
         )
         .get_matches();
 
-    let filename = matches.value_of("FILENAME").unwrap();
-    let audio_port = matches.value_of("audio-port").unwrap();
-    let audio_address = format!("127.0.0.1:{}", audio_port);
+    // Load or create Tree and start building the app.
+    let filename = matches
+        .value_of("FILENAME")
+        .map(|s| s.to_owned())
+        .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
+    let editor = Arc::new(Mutex::new(Editor::load(&filename)));
+    let launcher = AppLauncher::with_window(WindowDesc::new(canvas::Widget::default));
 
-    let editor = Arc::new(Mutex::new(Editor::load(filename)));
-    let launcher = AppLauncher::with_window(WindowDesc::new(build_ui));
-    let event_sink = launcher.get_external_handle();
-
-    {
+    // Jam mode.
+    // Start a thread to listen to the peer updates.
+    if let Some(jam_port) = matches.value_of("jam-local-port") {
+        let socket = nng::Socket::new(nng::Protocol::Bus0)?;
+        let url = format!("tcp://:{}", jam_port);
+        socket.listen(&url)?;
+        let event_sink = launcher.get_external_handle();
         let editor = Arc::clone(&editor);
-        if let Some(jam_port) = matches.value_of("jam-local-port") {
-            let url = format!("tcp://:{}", jam_port);
-            let socket = nng::Socket::new(nng::Protocol::Bus0)?;
-            socket.listen(&url)?;
-            std::thread::spawn(move || {
-                while let Ok(msg) = socket.recv() {
-                    let msg = snap::read::FrameDecoder::new(&msg[..]);
-                    if let Ok(msg) = serde_cbor::from_reader::<Engine, _>(msg) {
-                        editor.lock().unwrap().engine.merge(&msg);
-                        event_sink.submit_command(REGENERATE_NODES, (), None).ok();
-                    }
-                }
-            });
-        }
-    }
-
-    let peer = matches.value_of("jam-remote-address").map(|address| {
-        let editor = Arc::clone(&editor);
-        let url = format!("tcp://{}", address);
-        let worker = {
-            Worker::spawn(
-                "Send to peer",
-                1024,
-                move |rx: Receiver<()>, _: Sender<()>| {
-                    let socket = nng::Socket::new(nng::Protocol::Bus0).unwrap();
-                    socket.dial_async(&url).unwrap();
-                    for _ in rx {
-                        let mut msg = nng::Message::new();
-                        let stream = snap::write::FrameEncoder::new(&mut msg);
-                        serde_cbor::to_writer(stream, &editor.lock().unwrap().engine).ok();
-                        socket.send(msg).ok();
-                    }
-                },
-            )
-        };
-        JamPeer { worker }
-    });
-
-    let audio_control = Worker::spawn(
-        "Audio",
-        1,
-        move |rx: Receiver<audio_server::Message>, _: Sender<()>| {
-            for msg in rx {
-                if let Ok(stream) = std::net::TcpStream::connect(&audio_address) {
-                    serde_json::to_writer(stream, &msg).ok();
+        std::thread::spawn(move || {
+            while let Ok(msg) = socket.recv() {
+                if let Ok(engine) =
+                    serde_cbor::from_reader::<Engine, _>(snap::read::FrameDecoder::new(&msg[..]))
+                {
+                    editor.lock().unwrap().engine.merge(&engine);
+                    event_sink.submit_command(REGENERATE_NODES, (), None).ok();
                 }
             }
-        },
-    );
+        });
+    }
 
+    // Start a worker to send updates to the peer.
+    let peer = matches.value_of("jam-remote-address").map(|address| {
+        let socket = nng::Socket::new(nng::Protocol::Bus0).unwrap();
+        let url = format!("tcp://{}", address);
+        socket.dial_async(&url).unwrap();
+        let editor = Arc::clone(&editor);
+        Worker::spawn(
+            "Send to peer",
+            1024,
+            move |rx: Receiver<()>, _: Sender<()>| {
+                for _ in rx {
+                    let mut msg = nng::Message::new();
+                    let stream = snap::write::FrameEncoder::new(&mut msg);
+                    serde_cbor::to_writer(stream, &editor.lock().unwrap().engine).ok();
+                    socket.send(msg).ok();
+                }
+            },
+        )
+    });
+
+    // Start a worker to send messages to the audio server.
+    let audio_control = {
+        let port = matches.value_of("audio-port").unwrap();
+        let address = format!("127.0.0.1:{}", port);
+        Worker::spawn(
+            "Audio",
+            1,
+            move |rx: Receiver<audio_server::Message>, _: Sender<()>| {
+                for msg in rx {
+                    if let Ok(stream) = std::net::TcpStream::connect(&address) {
+                        serde_json::to_writer(stream, &msg).ok();
+                    }
+                }
+            },
+        )
+    };
+
+    // Finish building app and launch it.
     let app = App {
         editor: Arc::clone(&editor),
         filename: String::from(filename),
         audio_tx: audio_control.sender().clone(),
         play: false, // REVIEW it assumes server starts in pause mode
         record: false,
-        peer,
+        peer_tx: peer.map(|x| x.sender().clone()),
         last_rendered_rev: Engine::empty().get_head_rev_id().token(),
     };
 
-    let mut data: Data = Default::default();
+    let mut data: canvas::Data = Default::default();
     data.nodes = Arc::new(app.generate_nodes());
 
     launcher.delegate(app).launch(data)?;
 
     Ok(())
-}
-
-fn build_ui() -> impl Widget<Data> {
-    canvas::Widget::default().lens(CanvasLens {})
 }
 
 impl Editor {
@@ -227,13 +223,6 @@ impl Editor {
         }
     }
 
-    // TODO Atomic write.
-    fn save(&self, filename: &str) {
-        let f = std::fs::File::create(filename).unwrap();
-        let f = snap::write::FrameEncoder::new(f);
-        serde_cbor::to_writer(f, self).ok();
-    }
-
     fn load(filename: &str) -> Self {
         std::fs::File::open(filename)
             .ok()
@@ -241,23 +230,27 @@ impl Editor {
             .and_then(|f| serde_cbor::from_reader::<Self, _>(f).ok())
             .unwrap_or_else(|| Self::new())
     }
+
+    // TODO Atomic write.
+    fn save(&self, filename: &str) -> Result<()> {
+        let f = std::fs::File::create(filename)?;
+        serde_cbor::to_writer(snap::write::FrameEncoder::new(f), self)?;
+        Ok(())
+    }
 }
 
 impl App {
     fn save(&self) {
-        self.editor.lock().unwrap().save(&self.filename);
+        self.editor.lock().unwrap().save(&self.filename).ok();
     }
 
     fn edit(&mut self, delta: Delta<RopeInfo>) {
         let mut editor = self.editor.lock().unwrap();
-        let base_rev = editor.engine.get_head_rev_id();
+        let base_rev = editor.engine.get_head_rev_id().token();
         let undo_group = editor.undo_group;
-        // REVIEW What should I put as a priority argument?
-        editor
-            .engine
-            .edit_rev(0, undo_group, base_rev.token(), delta);
-        if let Some(peer) = self.peer.as_ref() {
-            peer.worker.sender().send(()).ok();
+        editor.engine.edit_rev(0, undo_group, base_rev, delta);
+        if let Some(tx) = self.peer_tx.as_ref() {
+            tx.send(()).ok();
         }
     }
 
@@ -272,7 +265,7 @@ impl App {
             .filter_map(|line| {
                 if let [id, x, y, text] = line.split('\t').collect::<Vec<_>>()[..] {
                     Some(canvas::Node {
-                        id: str_to_id(id),
+                        id: Id::try_from(id).unwrap(),
                         position: Point::new(x.parse().unwrap(), y.parse().unwrap()),
                         text: text.to_string(),
                     })
@@ -286,13 +279,13 @@ impl App {
     }
 }
 
-impl AppDelegate<Data> for App {
+impl AppDelegate<canvas::Data> for App {
     fn command(
         &mut self,
         _ctx: &mut DelegateCtx,
         _target: &Target,
         cmd: &Command,
-        data: &mut Data,
+        data: &mut canvas::Data,
         _env: &Env,
     ) -> bool {
         let result = match cmd.selector {
@@ -301,7 +294,7 @@ impl AppDelegate<Data> for App {
                 if let Some(delta) = {
                     let editor = self.editor.lock().unwrap();
                     let code = editor.engine.get_head();
-                    let id_prefix = id_to_string(*id) + "\t";
+                    let id_prefix = String::from(*id) + "\t";
                     code.lines(..)
                         .enumerate()
                         .find(|(_, line)| line.starts_with(&id_prefix))
@@ -332,7 +325,7 @@ impl AppDelegate<Data> for App {
                 if let Some(delta) = {
                     let editor = self.editor.lock().unwrap();
                     let code = editor.engine.get_head();
-                    let id_prefix = id_to_string(*id) + "\t";
+                    let id_prefix = String::from(*id) + "\t";
                     code.lines(..)
                         .enumerate()
                         .find(|(_, line)| line.starts_with(&id_prefix))
@@ -360,7 +353,7 @@ impl AppDelegate<Data> for App {
             }
             CREATE_NODE => {
                 let CreateNode { text, position } = cmd.get_object().unwrap();
-                let id = rand::random::<Id>();
+                let id = Id::random();
                 let delta = {
                     let editor = self.editor.lock().unwrap();
                     let code = editor.engine.get_head();
@@ -370,7 +363,7 @@ impl AppDelegate<Data> for App {
                         offset..offset,
                         Rope::from(format!(
                             "{}\t{}\t{}\t{}\n",
-                            id_to_string(id),
+                            String::from(id),
                             position.x,
                             position.y,
                             text
@@ -393,13 +386,14 @@ impl AppDelegate<Data> for App {
                     .nodes
                     .iter()
                     .map(|node| TextOp {
-                        id: node.id,
+                        id: u64::from(node.id),
                         op: node.text.to_owned(),
                     })
                     .collect();
                 self.audio_tx
                     .send(audio_server::Message::LoadProgram(ops))
                     .ok();
+                data.draft_nodes = Arc::new(Vec::new());
                 false
             }
             PLAY_PAUSE => {
@@ -418,32 +412,12 @@ impl AppDelegate<Data> for App {
             }
             _ => true,
         };
+        // Regenerate nodes if necessary.
         let base_rev = self.editor.lock().unwrap().engine.get_head_rev_id().token();
         if self.last_rendered_rev != base_rev {
             self.last_rendered_rev = base_rev;
             data.nodes = Arc::new(self.generate_nodes());
         }
         result
-    }
-}
-
-struct CanvasLens {}
-
-// REVIEW If it would stay that simple consider replacing with a derived lens.
-impl Lens<Data, canvas::Data> for CanvasLens {
-    fn with<V, F: FnOnce(&canvas::Data) -> V>(&self, data: &Data, f: F) -> V {
-        let x = canvas::Data {
-            nodes: Arc::clone(&data.nodes),
-            draft_nodes: Arc::clone(&data.draft_nodes),
-        };
-        f(&x)
-    }
-
-    fn with_mut<V, F: FnOnce(&mut canvas::Data) -> V>(&self, data: &mut Data, f: F) -> V {
-        let mut x = canvas::Data {
-            nodes: Arc::clone(&data.nodes),
-            draft_nodes: Arc::clone(&data.draft_nodes),
-        };
-        f(&mut x)
     }
 }
