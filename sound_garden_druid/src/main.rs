@@ -146,17 +146,16 @@ fn main() -> Result<()> {
     {
         let editor = Arc::clone(&editor);
         if let Some(jam_port) = matches.value_of("jam-local-port") {
-            let address = format!("0.0.0.0:{}", jam_port);
+            let url = format!("tcp://:{}", jam_port);
+            let socket = nng::Socket::new(nng::Protocol::Bus0)?;
+            socket.listen(&url)?;
             std::thread::spawn(move || {
-                let listener = std::net::TcpListener::bind(address).unwrap();
-                for msg in listener.incoming().filter_map(|stream| {
-                    stream
-                        .ok()
-                        .map(|stream| snap::read::FrameDecoder::new(stream))
-                        .and_then(|stream| serde_cbor::from_reader::<Engine, _>(stream).ok())
-                }) {
-                    editor.lock().unwrap().engine.merge(&msg);
-                    event_sink.submit_command(GENERATE_NODES, (), None).ok();
+                while let Ok(msg) = socket.recv() {
+                    let msg = snap::read::FrameDecoder::new(&msg[..]);
+                    if let Ok(msg) = serde_cbor::from_reader::<Engine, _>(msg) {
+                        editor.lock().unwrap().engine.merge(&msg);
+                        event_sink.submit_command(REGENERATE_NODES, (), None).ok();
+                    }
                 }
             });
         }
@@ -164,17 +163,19 @@ fn main() -> Result<()> {
 
     let peer = matches.value_of("jam-remote-address").map(|address| {
         let editor = Arc::clone(&editor);
-        let address = address.to_owned();
+        let url = format!("tcp://{}", address);
         let worker = {
             Worker::spawn(
                 "Send to peer",
                 1024,
                 move |rx: Receiver<()>, _: Sender<()>| {
+                    let socket = nng::Socket::new(nng::Protocol::Bus0).unwrap();
+                    socket.dial_async(&url).unwrap();
                     for _ in rx {
-                        if let Ok(stream) = std::net::TcpStream::connect(&address) {
-                            let stream = snap::write::FrameEncoder::new(stream);
-                            serde_cbor::to_writer(stream, &editor.lock().unwrap().engine).ok();
-                        }
+                        let mut msg = nng::Message::new();
+                        let stream = snap::write::FrameEncoder::new(&mut msg);
+                        serde_cbor::to_writer(stream, &editor.lock().unwrap().engine).ok();
+                        socket.send(msg).ok();
                     }
                 },
             )

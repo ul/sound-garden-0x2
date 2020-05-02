@@ -75,4 +75,4 @@ pub fn redo() -> Command {
     Command::from(REDO)
 }
 
-pub const GENERATE_NODES: Selector = Selector::new("sound_garden_druid.GENERATE_NODES");
+pub const REGENERATE_NODES: Selector = Selector::new("sound_garden_druid.GENERATE_NODES");
