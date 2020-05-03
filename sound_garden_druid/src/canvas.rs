@@ -124,6 +124,7 @@ impl druid::Widget<Data> for Widget {
                                 self.cursor.position.x += 1.0;
                             }
                             _ => {
+                                // TODO Move node_under_cursor and insert/create choice out to AppDelegate.
                                 if let Some((node, index)) = self.node_under_cursor(data) {
                                     if event.key_code == KeyCode::Backspace {
                                         ctx.submit_command(

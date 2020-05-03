@@ -23,15 +23,14 @@ chrono = "0.4.11"
 version = "1.0.106"
 features = ["derive"]
 
-[dependencies.xi-rope]
-version = "0.3.0"
-features = ["serde"]
-
 [dependencies.audio_program]
 path = "../audio_program"
 
 [dependencies.audio_server]
 path = "../audio_server"
+
+[dependencies.crdt_engine]
+path = "../crdt_engine"
 
 [dependencies.thread_worker]
 path = "../thread_worker"
