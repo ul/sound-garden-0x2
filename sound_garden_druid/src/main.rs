@@ -147,7 +147,7 @@ fn main() -> Result<()> {
                             engine.apply(patch);
                         }
                     }
-                    event_sink.submit_command(REGENERATE_NODES, (), None).ok();
+                    event_sink.submit_command(SAVE, (), None).ok();
                 }
             }
         });
@@ -158,28 +158,17 @@ fn main() -> Result<()> {
         let socket = nng::Socket::new(nng::Protocol::Bus0).unwrap();
         let url = format!("tcp://{}", address);
         socket.dial_async(&url).unwrap();
-        let engine = Arc::clone(&engine);
         Worker::spawn(
             "Send to peer",
             1024,
             move |rx: Receiver<Patch>, _: Sender<()>| {
-                let mut initial_sync_done = false;
                 for patch in rx {
                     let mut msg = nng::Message::new();
                     let stream = snap::write::FrameEncoder::new(&mut msg);
-                    if initial_sync_done {
-                        serde_cbor::to_writer(stream, &JamMessage::Sync(patch))
-                    } else {
-                        initial_sync_done = true;
-                        let engine = engine.lock().unwrap();
-                        serde_cbor::to_writer(stream, &JamMessage::Hello(engine.clone()))
-                    }
-                    .ok()
-                    .and_then(|_| socket.send(msg).ok())
-                    .or_else(|| {
-                        initial_sync_done = false;
-                        None
-                    });
+                    serde_cbor::to_writer(stream, &JamMessage::Sync(patch))
+                        .ok()
+                        .and_then(|_| socket.send(msg).ok())
+                        .or_else(|| None);
                 }
             },
         )
@@ -411,12 +400,18 @@ impl AppDelegate<canvas::Data> for App {
                 if let Some(patch) = self.engine.lock().unwrap().undo() {
                     self.sync(patch);
                 }
+                self.save();
                 false
             }
             REDO => {
                 if let Some(patch) = self.engine.lock().unwrap().redo() {
                     self.sync(patch);
                 }
+                self.save();
+                false
+            }
+            SAVE => {
+                self.save();
                 false
             }
             _ => true,
