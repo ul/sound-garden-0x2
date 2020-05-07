@@ -96,7 +96,6 @@ fn main() -> Result<()> {
                 .short("p")
                 .long("audio-port")
                 .value_name("PORT")
-                .default_value("31337")
                 .help("Port to send programs to"),
         )
         .arg(
@@ -176,19 +175,22 @@ fn main() -> Result<()> {
 
     // Start a worker to send messages to the audio server.
     let audio_control = {
-        let port = matches.value_of("audio-port").unwrap();
-        let address = format!("127.0.0.1:{}", port);
-        Worker::spawn(
-            "Audio",
-            1,
-            move |rx: Receiver<audio_server::Message>, _: Sender<()>| {
-                for msg in rx {
-                    if let Ok(stream) = std::net::TcpStream::connect(&address) {
-                        serde_json::to_writer(stream, &msg).ok();
+        if let Some(port) = matches.value_of("audio-port") {
+            let address = format!("127.0.0.1:{}", port);
+            Worker::spawn(
+                "Audio",
+                1,
+                move |rx: Receiver<audio_server::Message>, _: Sender<()>| {
+                    for msg in rx {
+                        if let Ok(stream) = std::net::TcpStream::connect(&address) {
+                            serde_json::to_writer(stream, &msg).ok();
+                        }
                     }
-                }
-            },
-        )
+                },
+            )
+        } else {
+            Worker::spawn("Audio", 1, audio_server::run)
+        }
     };
 
     // Finish building app and launch it.
