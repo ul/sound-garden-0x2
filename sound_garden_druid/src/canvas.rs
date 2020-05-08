@@ -1,6 +1,6 @@
 use crate::{commands::*, types::*};
 use druid::{
-    piet::{FontBuilder, Text, TextLayoutBuilder},
+    piet::{CairoFont, FontBuilder, PietText, Text, TextLayout, TextLayoutBuilder},
     BoxConstraints, Color, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, SysMods, UpdateCtx,
 };
@@ -13,25 +13,12 @@ const BACKGROUND_COLOR: Color = Color::WHITE;
 const CURSOR_ALPHA: f64 = 0.33;
 const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x20, 0x20, 0x20);
 // const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
-// TODO Calculate from the font settings automatically.
-// Current values are obtained with
-// ```
-// let layout = ctx
-//     .text()
-//     .new_text_layout(&font, "Q", f64::INFINITY)
-//     .build()
-//     .unwrap();
-// println!(
-//     "{}x{}",
-//     layout.width(),
-//     layout.line_metric(0).unwrap().height
-// );
-// ```
-const GRID_UNIT: Size = Size::new(12.0, 26.0);
 
 pub struct Widget {
     cursor: Cursor,
     mode: Mode,
+    grid_unit: Option<Size>,
+    font: Option<CairoFont>,
 }
 
 #[derive(Clone, druid::Data, Default)]
@@ -53,6 +40,8 @@ impl Default for Widget {
         Widget {
             cursor: Default::default(),
             mode: Default::default(),
+            grid_unit: Default::default(),
+            font: Default::default(),
         }
     }
 }
@@ -163,8 +152,10 @@ impl druid::Widget<Data> for Widget {
                 ctx.request_paint();
             }
             Event::MouseDown(event) => {
-                self.cursor.position.x = (event.pos.x / GRID_UNIT.width).round();
-                self.cursor.position.y = (event.pos.y / GRID_UNIT.height).round();
+                if let Some(grid_unit) = self.grid_unit {
+                    self.cursor.position.x = (event.pos.x / grid_unit.width).round();
+                    self.cursor.position.y = (event.pos.y / grid_unit.height).round();
+                }
                 ctx.request_paint();
             }
             _ => {}
@@ -190,6 +181,8 @@ impl druid::Widget<Data> for Widget {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &Data, _env: &Env) {
+        let grid_unit = self.get_grid_unit(ctx.text());
+
         let size = ctx.size();
 
         // Clean.
@@ -202,10 +195,10 @@ impl druid::Widget<Data> for Widget {
                 ctx.blurred_rect(
                     Rect::from((
                         Point::new(
-                            self.cursor.position.x * GRID_UNIT.width,
-                            (self.cursor.position.y + 0.25) * GRID_UNIT.height,
+                            self.cursor.position.x * grid_unit.width,
+                            (self.cursor.position.y + 0.25) * grid_unit.height,
                         ),
-                        GRID_UNIT,
+                        grid_unit,
                     )),
                     1.0,
                     &DEFAULT_NODE_COLOR.with_alpha(CURSOR_ALPHA),
@@ -215,10 +208,10 @@ impl druid::Widget<Data> for Widget {
                 ctx.blurred_rect(
                     Rect::from((
                         Point::new(
-                            self.cursor.position.x * GRID_UNIT.width,
-                            (self.cursor.position.y + 1.1) * GRID_UNIT.height,
+                            self.cursor.position.x * grid_unit.width,
+                            (self.cursor.position.y + 1.1) * grid_unit.height,
                         ),
-                        Size::new(GRID_UNIT.width, 2.0),
+                        Size::new(grid_unit.width, 2.0),
                     )),
                     1.0,
                     &DEFAULT_NODE_COLOR.with_alpha(CURSOR_ALPHA),
@@ -227,16 +220,11 @@ impl druid::Widget<Data> for Widget {
         }
 
         // Draw nodes.
-        // REVIEW Is it cached?
-        let font = ctx
-            .text()
-            .new_font_by_name(FONT_NAME, FONT_SIZE)
-            .build()
-            .unwrap();
         for node in data.nodes.iter() {
+            let font = self.get_font(ctx.text());
             let layout = ctx
                 .text()
-                .new_text_layout(&font, &node.text, f64::INFINITY)
+                .new_text_layout(font, &node.text, f64::INFINITY)
                 .build()
                 .unwrap();
             // Draft check requires extra work to make it reliable when jamming.
@@ -249,8 +237,8 @@ impl druid::Widget<Data> for Widget {
             ctx.draw_text(
                 &layout,
                 Point::new(
-                    node.position.x * GRID_UNIT.width,
-                    (node.position.y + 1.0) * GRID_UNIT.height,
+                    node.position.x * grid_unit.width,
+                    (node.position.y + 1.0) * grid_unit.height,
                 ),
                 &color,
             );
@@ -259,6 +247,28 @@ impl druid::Widget<Data> for Widget {
 }
 
 impl Widget {
+    fn get_grid_unit(&mut self, text: &mut PietText) -> Size {
+        if self.grid_unit.is_none() {
+            let font = self.get_font(text);
+            let layout = text
+                .new_text_layout(font, "Q", f64::INFINITY)
+                .build()
+                .unwrap();
+            self.grid_unit = Some(Size::new(
+                layout.width(),
+                layout.line_metric(0).unwrap().height,
+            ));
+        }
+        self.grid_unit.unwrap()
+    }
+
+    fn get_font(&mut self, text: &mut PietText) -> &CairoFont {
+        if self.font.is_none() {
+            self.font = Some(text.new_font_by_name(FONT_NAME, FONT_SIZE).build().unwrap());
+        }
+        self.font.as_ref().unwrap()
+    }
+
     fn node_under_cursor(&self, data: &Data) -> Option<(Node, usize)> {
         let cursor = &self.cursor.position;
         data.nodes.iter().find_map(|node| {
