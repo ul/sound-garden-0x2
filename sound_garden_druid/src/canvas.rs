@@ -78,22 +78,22 @@ impl druid::Widget<Data> for Widget {
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
                             self.mode = Mode::Insert;
-                            ctx.submit_command(new_undo_group(), None)
+                            ctx.submit_command(new_undo_group(), None);
                         }
                         _ if HotKey::new(None, KeyCode::Return).matches(event) => {
-                            ctx.submit_command(commit_program(), None)
+                            ctx.submit_command(commit_program(), None);
                         }
                         _ if HotKey::new(None, KeyCode::Backslash).matches(event) => {
-                            ctx.submit_command(play_pause(), None)
+                            ctx.submit_command(play_pause(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyR).matches(event) => {
-                            ctx.submit_command(toggle_record(), None)
+                            ctx.submit_command(toggle_record(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyU).matches(event) => {
-                            ctx.submit_command(undo(), None)
+                            ctx.submit_command(undo(), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyU).matches(event) => {
-                            ctx.submit_command(redo(), None)
+                            ctx.submit_command(redo(), None);
                         }
                         _ => {}
                     },
