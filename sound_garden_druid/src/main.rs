@@ -8,6 +8,7 @@ use crossbeam_channel::{Receiver, Sender};
 use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Point, Target, WindowDesc};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     convert::TryFrom,
     sync::{Arc, Mutex},
 };
@@ -274,8 +275,8 @@ impl AppDelegate<canvas::Data> for App {
     ) -> bool {
         let result = match cmd.selector {
             NODE_INSERT_TEXT => {
-                let NodeInsertText { cursor, text } = cmd.get_object().unwrap();
-                data.node_under_cursor(*cursor)
+                let NodeInsertText { text } = cmd.get_object().unwrap();
+                data.node_at_cursor()
                     .and_then(|(canvas::Node { id, .. }, index)| {
                         let id_prefix = String::from(id) + "\t";
                         let engine = self.engine.lock().unwrap();
@@ -315,8 +316,8 @@ impl AppDelegate<canvas::Data> for App {
                                 new_text: format!(
                                     "{}\t{}\t{}\t{}\n",
                                     String::from(id),
-                                    cursor.x,
-                                    cursor.y,
+                                    data.cursor.position.x,
+                                    data.cursor.position.y,
                                     text
                                 ),
                                 color: self.undo_group,
@@ -329,11 +330,11 @@ impl AppDelegate<canvas::Data> for App {
                             Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
                         self.save();
                     });
+                data.cursor.position.x += text.chars().count() as f64;
                 false
             }
             NODE_DELETE_CHAR => {
-                let NodeDeleteChar { cursor } = cmd.get_object().unwrap();
-                data.node_under_cursor(*cursor)
+                data.node_at_cursor()
                     .and_then(|(canvas::Node { id, .. }, index)| {
                         let engine = self.engine.lock().unwrap();
                         let code = engine.text();
@@ -401,6 +402,7 @@ impl AppDelegate<canvas::Data> for App {
                     .ok();
                 false
             }
+            // TODO cursor undo/redo tracking
             NEW_UNDO_GROUP => {
                 self.undo_group += 1;
                 false
@@ -420,6 +422,64 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             SAVE => {
+                self.save();
+                false
+            }
+            SPLASH => {
+                if let Some((node, _)) = data.node_at_cursor() {
+                    let len = node.text.chars().count();
+                    data.cursor.position.x = if node.position.x == data.cursor.position.x && len > 1
+                    {
+                        node.position.x
+                    } else {
+                        node.position.x + ((len + 1) as f64)
+                    };
+                    if data.node_at_cursor().is_some() {
+                        let cursor = data.cursor.position;
+                        let ids = data
+                            .nodes
+                            .iter()
+                            .filter_map(|node| {
+                                if node.position.y == cursor.y && node.position.x >= cursor.x {
+                                    Some((String::from(node.id), node.position.x + 1.0))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<HashMap<_, _>>();
+                        let deltas = {
+                            let engine = self.engine.lock().unwrap();
+                            let code = engine.text();
+                            code.lines()
+                                .map(String::from)
+                                .enumerate()
+                                .filter_map(|(line, record)| {
+                                    record.split('\t').next().and_then(|id| ids.get(id)).map(
+                                        |new_x| {
+                                            println!("{}", new_x);
+                                            let line_offset = code.line_to_char(line);
+                                            let mut x_field_offset = record
+                                                .chars()
+                                                .enumerate()
+                                                .filter_map(
+                                                    |(i, c)| if c == '\t' { Some(i) } else { None },
+                                                );
+                                            // TODO Oh boi, I need a proper abstraction here.
+                                            let start = x_field_offset.next().unwrap() + 1;
+                                            let end = x_field_offset.next().unwrap();
+                                            return Delta {
+                                                range: (line_offset + start, line_offset + end),
+                                                new_text: format!("{}", new_x),
+                                                color: self.undo_group,
+                                            };
+                                        },
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        };
+                        self.edit(&deltas);
+                    }
+                }
                 self.save();
                 false
             }

@@ -1,4 +1,4 @@
-use druid::{Command, Point, Selector};
+use druid::{Command, Selector};
 
 // NOTE Do not construct commands from selectors directly in other modules.
 // Provide and use command creator functions instead.
@@ -7,7 +7,6 @@ use druid::{Command, Point, Selector};
 pub const NODE_INSERT_TEXT: Selector = Selector::new("sound_garden_druid.NODE_INSERT_TEXT");
 
 pub struct NodeInsertText {
-    pub cursor: Point,
     pub text: String,
 }
 
@@ -17,12 +16,8 @@ pub fn node_insert_text(payload: NodeInsertText) -> Command {
 
 pub const NODE_DELETE_CHAR: Selector = Selector::new("sound_garden_druid.NODE_DELETE_CHAR");
 
-pub struct NodeDeleteChar {
-    pub cursor: Point,
-}
-
-pub fn node_delete_char(payload: NodeDeleteChar) -> Command {
-    Command::new(NODE_DELETE_CHAR, payload)
+pub fn node_delete_char() -> Command {
+    Command::from(NODE_DELETE_CHAR)
 }
 
 pub const NEW_UNDO_GROUP: Selector = Selector::new("sound_garden_druid.NEW_UNDO_GROUP");
@@ -62,3 +57,9 @@ pub fn redo() -> Command {
 }
 
 pub const SAVE: Selector = Selector::new("sound_garden_druid.GENERATE_NODES");
+
+pub const SPLASH: Selector = Selector::new("sound_garden_druid.SPLASH");
+
+pub fn splash() -> Command {
+    Command::from(SPLASH)
+}

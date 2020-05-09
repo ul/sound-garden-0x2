@@ -15,7 +15,6 @@ const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x20, 0x20, 0x20);
 // const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
 
 pub struct Widget {
-    cursor: Cursor,
     mode: Mode,
     grid_unit: Option<Size>,
     font: Option<CairoFont>,
@@ -23,6 +22,7 @@ pub struct Widget {
 
 #[derive(Clone, druid::Data, Default)]
 pub struct Data {
+    pub cursor: Cursor,
     pub nodes: Arc<Vec<Node>>,
     pub draft_nodes: Arc<Vec<Id>>,
 }
@@ -35,10 +35,14 @@ pub struct Node {
     pub text: String,
 }
 
+#[derive(Clone, druid::Data, Default)]
+pub struct Cursor {
+    pub position: Point,
+}
+
 impl Default for Widget {
     fn default() -> Self {
         Widget {
-            cursor: Default::default(),
             mode: Default::default(),
             grid_unit: Default::default(),
             font: Default::default(),
@@ -47,7 +51,7 @@ impl Default for Widget {
 }
 
 impl druid::Widget<Data> for Widget {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut Data, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut Data, _env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
@@ -59,26 +63,31 @@ impl druid::Widget<Data> for Widget {
                             || HotKey::new(None, KeyCode::ArrowLeft).matches(event)
                             || HotKey::new(None, KeyCode::Backspace).matches(event) =>
                         {
-                            self.cursor.position.x -= 1.0;
+                            data.cursor.position.x -= 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyJ).matches(event)
                             || HotKey::new(None, KeyCode::ArrowDown).matches(event) =>
                         {
-                            self.cursor.position.y += 1.0;
+                            data.cursor.position.y += 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyK).matches(event)
                             || HotKey::new(None, KeyCode::ArrowUp).matches(event) =>
                         {
-                            self.cursor.position.y -= 1.0;
+                            data.cursor.position.y -= 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyL).matches(event)
                             || HotKey::new(None, KeyCode::ArrowRight).matches(event) =>
                         {
-                            self.cursor.position.x += 1.0;
+                            data.cursor.position.x += 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
                             self.mode = Mode::Insert;
                             ctx.submit_command(new_undo_group(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyI).matches(event) => {
+                            self.mode = Mode::Insert;
+                            ctx.submit_command(new_undo_group(), None);
+                            ctx.submit_command(splash(), None);
                         }
                         _ if HotKey::new(None, KeyCode::Return).matches(event) => {
                             ctx.submit_command(commit_program(), None);
@@ -104,38 +113,31 @@ impl druid::Widget<Data> for Widget {
                             self.mode = Mode::Normal;
                         }
                         _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
-                            self.cursor.position.x -= 1.0;
+                            data.cursor.position.x -= 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
-                            self.cursor.position.y += 1.0;
+                            data.cursor.position.y += 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
-                            self.cursor.position.y -= 1.0;
+                            data.cursor.position.y -= 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::ArrowRight).matches(event)
                             || HotKey::new(None, KeyCode::Space).matches(event) =>
                         {
-                            self.cursor.position.x += 1.0;
+                            data.cursor.position.x += 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::Backspace).matches(event) => {
-                            self.cursor.position.x -= 1.0;
-                            ctx.submit_command(
-                                node_delete_char(NodeDeleteChar {
-                                    cursor: self.cursor.position,
-                                }),
-                                None,
-                            );
+                            data.cursor.position.x -= 1.0;
+                            ctx.submit_command(node_delete_char(), None);
                         }
                         _ if event.key_code.is_printable() => {
                             if let Some(text) = event.text() {
                                 ctx.submit_command(
                                     node_insert_text(NodeInsertText {
-                                        cursor: self.cursor.position,
                                         text: text.to_string(),
                                     }),
                                     None,
                                 );
-                                self.cursor.position.x += text.chars().count() as f64;
                             }
                         }
                         _ => {}
@@ -145,8 +147,8 @@ impl druid::Widget<Data> for Widget {
             }
             Event::MouseDown(event) => {
                 if let Some(grid_unit) = self.grid_unit {
-                    self.cursor.position.x = (event.pos.x / grid_unit.width).round();
-                    self.cursor.position.y = (event.pos.y / grid_unit.height).round();
+                    data.cursor.position.x = (event.pos.x / grid_unit.width).round();
+                    data.cursor.position.y = (event.pos.y / grid_unit.height).round();
                 }
                 ctx.request_paint();
             }
@@ -187,8 +189,8 @@ impl druid::Widget<Data> for Widget {
                 ctx.blurred_rect(
                     Rect::from((
                         Point::new(
-                            self.cursor.position.x * grid_unit.width,
-                            (self.cursor.position.y + 0.25) * grid_unit.height,
+                            data.cursor.position.x * grid_unit.width,
+                            (data.cursor.position.y + 0.25) * grid_unit.height,
                         ),
                         grid_unit,
                     )),
@@ -200,8 +202,8 @@ impl druid::Widget<Data> for Widget {
                 ctx.blurred_rect(
                     Rect::from((
                         Point::new(
-                            self.cursor.position.x * grid_unit.width,
-                            (self.cursor.position.y + 1.1) * grid_unit.height,
+                            data.cursor.position.x * grid_unit.width,
+                            (data.cursor.position.y + 1.1) * grid_unit.height,
                         ),
                         Size::new(grid_unit.width, 2.0),
                     )),
@@ -263,7 +265,8 @@ impl Widget {
 }
 
 impl Data {
-    pub fn node_under_cursor(&self, cursor: Point) -> Option<(Node, usize)> {
+    pub fn node_at_cursor(&self) -> Option<(Node, usize)> {
+        let cursor = self.cursor.position;
         self.nodes.iter().find_map(|node| {
             let len = node.text.chars().count() as isize;
             let index = (cursor.x - node.position.x) as isize;
@@ -275,11 +278,6 @@ impl Data {
             }
         })
     }
-}
-
-#[derive(Default)]
-struct Cursor {
-    position: Point,
 }
 
 #[derive(Clone, Copy)]
