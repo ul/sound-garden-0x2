@@ -87,9 +87,9 @@ impl Engine {
         &self.text
     }
 
-    // Deltas must be sorted by increasing range start
-    // and not have overlapping ranges.
-    pub fn edit(&mut self, deltas: &[Delta]) -> Patch {
+    // Deltas must not have overlapping ranges.
+    pub fn edit(&mut self, mut deltas: Vec<Delta>) -> Patch {
+        deltas.sort_unstable_by_key(|delta| delta.range.0);
         self.redo_groups.clear();
         let mut chars = Vec::new();
         let mut edges = Vec::new();
@@ -103,6 +103,7 @@ impl Engine {
             inserts: Default::default(),
             deletes: Default::default(),
         };
+        let mut shift: isize = 0;
         for delta in deltas {
             // Start a new undo group if color changed.
             if delta.color != self.last_color {
@@ -122,7 +123,10 @@ impl Engine {
                     deletes: Default::default(),
                 };
             }
-            let range = delta.range.0..delta.range.1;
+            let range = ((delta.range.0 as isize + shift) as usize)
+                ..((delta.range.1 as isize + shift) as usize);
+
+            shift += delta.new_text.chars().count() as isize - range.len() as isize;
 
             self.text.remove(range.clone());
             self.text.insert(range.start, &delta.new_text);

@@ -227,7 +227,7 @@ impl App {
         });
     }
 
-    fn edit(&mut self, deltas: &[Delta]) {
+    fn edit(&mut self, deltas: Vec<Delta>) {
         let patch = self.engine.lock().unwrap().edit(deltas);
         self.sync(patch);
     }
@@ -261,6 +261,39 @@ impl App {
             .collect::<Vec<_>>();
         nodes.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
         nodes
+    }
+
+    fn move_nodes_x(&mut self, ids: HashMap<String, f64>) -> Vec<Delta> {
+        let engine = self.engine.lock().unwrap();
+        let code = engine.text();
+        code.lines()
+            .map(String::from)
+            .enumerate()
+            .filter_map(|(line, record)| {
+                record
+                    .split('\t')
+                    .next()
+                    .and_then(|id| ids.get(id))
+                    .map(|new_x| {
+                        let line_offset = code.line_to_char(line);
+                        let mut x_field_offset = record.chars().enumerate().filter_map(|(i, c)| {
+                            if c == '\t' {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        });
+                        // TODO Oh boi, I need a proper abstraction here.
+                        let start = x_field_offset.next().unwrap() + 1;
+                        let end = x_field_offset.next().unwrap();
+                        return Delta {
+                            range: (line_offset + start, line_offset + end),
+                            new_text: format!("{}", new_x),
+                            color: self.undo_group,
+                        };
+                    })
+            })
+            .collect::<Vec<_>>()
     }
 }
 
@@ -325,7 +358,21 @@ impl AppDelegate<canvas::Data> for App {
                         ))
                     })
                     .map(|(id, delta)| {
-                        self.edit(&[delta]);
+                        let cursor = data.cursor.position;
+                        let ids = data
+                            .nodes
+                            .iter()
+                            .filter_map(|node| {
+                                if node.position.y == cursor.y && node.position.x > cursor.x {
+                                    Some((String::from(node.id), node.position.x + 1.0))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<HashMap<_, _>>();
+                        let mut deltas = self.move_nodes_x(ids);
+                        deltas.push(delta);
+                        self.edit(deltas);
                         data.draft_nodes =
                             Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
                         self.save();
@@ -335,7 +382,10 @@ impl AppDelegate<canvas::Data> for App {
             }
             NODE_DELETE_CHAR => {
                 data.node_at_cursor()
-                    .and_then(|(canvas::Node { id, .. }, index)| {
+                    .and_then(|(canvas::Node { id, text, .. }, index)| {
+                        if index >= text.chars().count() {
+                            return None;
+                        }
                         let engine = self.engine.lock().unwrap();
                         let code = engine.text();
                         let id_prefix = String::from(id) + "\t";
@@ -366,7 +416,21 @@ impl AppDelegate<canvas::Data> for App {
                             })
                     })
                     .map(|(id, delta)| {
-                        self.edit(&[delta]);
+                        let cursor = data.cursor.position;
+                        let ids = data
+                            .nodes
+                            .iter()
+                            .filter_map(|node| {
+                                if node.position.y == cursor.y && node.position.x > cursor.x {
+                                    Some((String::from(node.id), node.position.x - 1.0))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<HashMap<_, _>>();
+                        let mut deltas = self.move_nodes_x(ids);
+                        deltas.push(delta);
+                        self.edit(deltas);
                         data.draft_nodes =
                             Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
                         self.save();
@@ -447,37 +511,8 @@ impl AppDelegate<canvas::Data> for App {
                                 }
                             })
                             .collect::<HashMap<_, _>>();
-                        let deltas = {
-                            let engine = self.engine.lock().unwrap();
-                            let code = engine.text();
-                            code.lines()
-                                .map(String::from)
-                                .enumerate()
-                                .filter_map(|(line, record)| {
-                                    record.split('\t').next().and_then(|id| ids.get(id)).map(
-                                        |new_x| {
-                                            println!("{}", new_x);
-                                            let line_offset = code.line_to_char(line);
-                                            let mut x_field_offset = record
-                                                .chars()
-                                                .enumerate()
-                                                .filter_map(
-                                                    |(i, c)| if c == '\t' { Some(i) } else { None },
-                                                );
-                                            // TODO Oh boi, I need a proper abstraction here.
-                                            let start = x_field_offset.next().unwrap() + 1;
-                                            let end = x_field_offset.next().unwrap();
-                                            return Delta {
-                                                range: (line_offset + start, line_offset + end),
-                                                new_text: format!("{}", new_x),
-                                                color: self.undo_group,
-                                            };
-                                        },
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                        };
-                        self.edit(&deltas);
+                        let deltas = self.move_nodes_x(ids);
+                        self.edit(deltas);
                     }
                 }
                 self.save();
