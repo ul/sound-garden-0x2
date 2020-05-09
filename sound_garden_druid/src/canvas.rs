@@ -42,6 +42,35 @@ impl Default for Widget {
     }
 }
 
+/*
+
+TODO commands in normal mode:
+
+/--------------------------------------\
+| '      | Commit without migration.   |
+| c      | Cut & insert.               |
+| d      | Delete node.                |
+| D      | Delete line.                |
+| Alt+h  | Move node left.             |
+| Alt+j  | Move node down.             |
+| Alt+k  | Move node up.               |
+| Alt+l  | Move node right.            |
+| J      | Move node and after down.   |
+| K      | Move node and before up.    |
+| H      | Move line up.               |
+| L      | Move line down.             |
+| ,      | Move right of line left.    |
+| .      | Move right of line right.   |
+| <      | Move left of line left.     |
+| >      | Move left of line right.    |
+| =      | Cycle up / Increase by 1.   |
+| -      | Cycle down / Decrease by 1. |
+| /      | List ops.                   |
+| ?      | Help (this screen).         |
+\--------------------------------------/
+
+*/
+
 impl druid::Widget<Data> for Widget {
     fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut Data, _env: &Env) {
         match event {

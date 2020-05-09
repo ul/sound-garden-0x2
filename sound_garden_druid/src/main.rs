@@ -234,7 +234,7 @@ impl AppDelegate<canvas::Data> for App {
                             .iter()
                             .filter_map(|node| {
                                 if node.position.y == cursor.y && node.position.x > cursor.x {
-                                    Some((id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                                    Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
                                 } else {
                                     None
                                 }
