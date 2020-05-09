@@ -1,73 +1,29 @@
-use crate::{commands::*, types::Id};
+use crate::{commands::*, repository::NodeRepository, types::*};
 use anyhow::Result;
 use audio_program::TextOp;
 use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
-use crdt_engine::{Delta, Engine, Patch};
+use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
-use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Point, Target, WindowDesc};
+use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Target, WindowDesc};
+use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     sync::{Arc, Mutex},
 };
 use thread_worker::Worker;
 
 mod canvas;
 mod commands;
+mod repository;
 mod types;
-
-/* Sound Garden Druid
- *
- * SGD is a collaborative interface for Sound Garden's Audio Synth Server and VST plugin.
- * It features modal editing of SG programs suitable for livecoding and supports P2P jams.
- * Eventually it could incorporate visual feedback like oscilloscope.
- *
- * Let's talk about design. SGD consists of
- * - UI, initially mimicking basic terminal, grid of monospace characters.
- * -- This is going to be implemented using druid. We benefit from its widget paint flexibility
- *    and beautiful font rendering. It's widget library and layout engine is less of use for now.
- * - Persistence layer which allows to save and load programs.
- * -- Let's ser/de engine state with serde (see below).
- * - Connectivity module to send programs and commands to synth server (standalone or VST plugin).
- * -- Regular std::net::TCPStream + serde should be enough.
- * -- Until we emphasize remote audio servers.
- * - Connectivity module to exchange programs edits with peers.
- * -- Let's consider something like NNG.
- * -- Ideally we want some robust fully decentralised P2P protocol but having "LAN-oriented"
- *    naive code paired with TailScale should be enough for the start.
- * - Editing engine to support edits exchange with undo/redo.
- * -- We have to build own engine for that.
- *    Based on Xi work but implemented for P2P from the ground up.
- * - Persistent undo/redo.
- * -- Should come for free when persisting engine state.
- *
- * Physically editing screen could look like:
- *
- * /--------------\
- * |  440 s       |
- * |              |
- * |   .2 *       |
- * |              |
- * \--------------/
- *
- * While for editing engine it could be represented as
- * `123:0:1:440 124:0:5:s 125:2:2:.2 126:2:5:*`
- * (other separators or even format as a whole should be considered)
- * (for now `:` → `\t` and ` ` → `\n`, id is formatted as hex)
- * and treated as if was edited as such.
- *
- * This is a bit of a hack but should be safe and it would allow us to not invent own CRDT solution.
- */
 
 /// Application business logic is associated with this structure,
 /// we implement druid's AppDelegate for it.
 struct App {
-    /// Local editor state.
-    /// Maintains Sound Garden Tree representation in the form friendly to collaborative editing.
-    /// Manages editing history.
-    engine: Arc<Mutex<Engine>>,
+    /// Distributed state.
+    node_repo: Arc<Mutex<NodeRepository>>,
     /// Persistence location for the Tree.
     filename: String,
     /// Channel to control audio server.
@@ -84,8 +40,7 @@ struct App {
 
 #[derive(Serialize, Deserialize)]
 enum JamMessage {
-    Hello(Engine),
-    Sync(Patch),
+    SyncNodes(Patch),
 }
 
 fn main() -> Result<()> {
@@ -122,7 +77,7 @@ fn main() -> Result<()> {
         .value_of("FILENAME")
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
-    let engine = Arc::new(Mutex::new(load_engine(&filename)));
+    let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
     let launcher = AppLauncher::with_window(WindowDesc::new(canvas::Widget::default));
 
     // Jam mode.
@@ -132,19 +87,16 @@ fn main() -> Result<()> {
         let url = format!("tcp://:{}", jam_port);
         socket.listen(&url)?;
         let event_sink = launcher.get_external_handle();
-        let engine = Arc::clone(&engine);
+        let node_repo = Arc::clone(&node_repo);
         std::thread::spawn(move || {
             while let Ok(msg) = socket.recv() {
                 if let Ok(msg) = serde_cbor::from_reader::<JamMessage, _>(
                     snap::read::FrameDecoder::new(&msg[..]),
                 ) {
-                    let mut engine = engine.lock().unwrap();
+                    let mut node_repo = node_repo.lock().unwrap();
                     match msg {
-                        JamMessage::Hello(other) => {
-                            engine.merge(other);
-                        }
-                        JamMessage::Sync(patch) => {
-                            engine.apply(patch);
+                        JamMessage::SyncNodes(patch) => {
+                            node_repo.apply(patch);
                         }
                     }
                     event_sink.submit_command(SAVE, (), None).ok();
@@ -165,7 +117,7 @@ fn main() -> Result<()> {
                 for patch in rx {
                     let mut msg = nng::Message::new();
                     let stream = snap::write::FrameEncoder::new(&mut msg);
-                    serde_cbor::to_writer(stream, &JamMessage::Sync(patch))
+                    serde_cbor::to_writer(stream, &JamMessage::SyncNodes(patch))
                         .ok()
                         .and_then(|_| socket.send(msg).ok())
                         .or_else(|| None);
@@ -196,7 +148,7 @@ fn main() -> Result<()> {
 
     // Finish building app and launch it.
     let app = App {
-        engine: Arc::clone(&engine),
+        node_repo: Arc::clone(&node_repo),
         filename: String::from(filename),
         audio_tx: audio_control.sender().clone(),
         play: false, // REVIEW it assumes server starts in pause mode
@@ -206,7 +158,7 @@ fn main() -> Result<()> {
     };
 
     let mut data: canvas::Data = Default::default();
-    data.nodes = Arc::new(app.generate_nodes());
+    data.nodes = Arc::new(node_repo.lock().unwrap().nodes());
 
     launcher.delegate(app).launch(data)?;
 
@@ -216,19 +168,16 @@ fn main() -> Result<()> {
 }
 
 impl App {
-    // TODO Atomic write.
     fn save(&self) {
-        std::fs::File::create(&self.filename).ok().and_then(|f| {
-            serde_cbor::to_writer(
-                snap::write::FrameEncoder::new(f),
-                &self.engine.lock().unwrap().clone(),
-            )
-            .ok()
-        });
+        self.node_repo.lock().unwrap().save(&self.filename);
     }
 
-    fn edit(&mut self, deltas: Vec<Delta>) {
-        let patch = self.engine.lock().unwrap().edit(deltas);
+    fn edit(&mut self, edits: HashMap<Id, Vec<NodeEdit>>) {
+        let patch = self
+            .node_repo
+            .lock()
+            .unwrap()
+            .edit_nodes(edits, self.undo_group);
         self.sync(patch);
     }
 
@@ -236,64 +185,6 @@ impl App {
         if let Some(tx) = self.peer_tx.as_ref() {
             tx.send(patch).ok();
         }
-    }
-
-    fn generate_nodes(&self) -> Vec<canvas::Node> {
-        let mut nodes = self
-            .engine
-            .lock()
-            .unwrap()
-            .text()
-            .lines()
-            .filter_map(|line| {
-                if let [id, x, y, text] =
-                    String::from(line).trim().split('\t').collect::<Vec<_>>()[..]
-                {
-                    Some(canvas::Node {
-                        id: Id::try_from(id).unwrap(),
-                        position: Point::new(x.parse().unwrap(), y.parse().unwrap()),
-                        text: text.to_string(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-        nodes.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
-        nodes
-    }
-
-    fn move_nodes_x(&mut self, ids: HashMap<String, f64>) -> Vec<Delta> {
-        let engine = self.engine.lock().unwrap();
-        let code = engine.text();
-        code.lines()
-            .map(String::from)
-            .enumerate()
-            .filter_map(|(line, record)| {
-                record
-                    .split('\t')
-                    .next()
-                    .and_then(|id| ids.get(id))
-                    .map(|new_x| {
-                        let line_offset = code.line_to_char(line);
-                        let mut x_field_offset = record.chars().enumerate().filter_map(|(i, c)| {
-                            if c == '\t' {
-                                Some(i)
-                            } else {
-                                None
-                            }
-                        });
-                        // TODO Oh boi, I need a proper abstraction here.
-                        let start = x_field_offset.next().unwrap() + 1;
-                        let end = x_field_offset.next().unwrap();
-                        return Delta {
-                            range: (line_offset + start, line_offset + end),
-                            new_text: format!("{}", new_x),
-                            color: self.undo_group,
-                        };
-                    })
-            })
-            .collect::<Vec<_>>()
     }
 }
 
@@ -310,69 +201,46 @@ impl AppDelegate<canvas::Data> for App {
             NODE_INSERT_TEXT => {
                 let NodeInsertText { text } = cmd.get_object().unwrap();
                 data.node_at_cursor()
-                    .and_then(|(canvas::Node { id, .. }, index)| {
-                        let id_prefix = String::from(id) + "\t";
-                        let engine = self.engine.lock().unwrap();
-                        let code = engine.text();
-                        code.lines()
-                            .map(String::from)
-                            .enumerate()
-                            .find(|(_, record)| record.starts_with(&id_prefix))
-                            .map(|(line, record)| {
-                                let line_offset = code.line_to_char(line);
-                                let text_field_offset = record
-                                    .chars()
-                                    .enumerate()
-                                    .filter_map(|(i, c)| if c == '\t' { Some(i) } else { None })
-                                    .last()
-                                    .unwrap()
-                                    + 1;
-                                let offset = line_offset + text_field_offset + index;
-                                (
-                                    id,
-                                    Delta {
-                                        range: (offset, offset),
-                                        new_text: text.to_owned(),
-                                        color: self.undo_group,
-                                    },
-                                )
-                            })
+                    .map(|(Node { id, .. }, index)| {
+                        let mut edits = HashMap::new();
+                        edits.insert(
+                            id,
+                            vec![NodeEdit::Edit {
+                                start: index,
+                                end: index,
+                                text: text.to_owned(),
+                            }],
+                        );
+                        self.edit(edits);
+                        id
                     })
                     .or_else(|| {
                         let id = Id::random();
-                        let engine = self.engine.lock().unwrap();
-                        let offset = engine.text().len_chars();
-                        Some((
-                            id,
-                            Delta {
-                                range: (offset, offset),
-                                new_text: format!(
-                                    "{}\t{}\t{}\t{}\n",
-                                    String::from(id),
-                                    data.cursor.position.x,
-                                    data.cursor.position.y,
-                                    text
-                                ),
-                                color: self.undo_group,
+                        let patch = self.node_repo.lock().unwrap().add_node(
+                            Node {
+                                id,
+                                position: data.cursor.position,
+                                text: text.to_owned(),
                             },
-                        ))
+                            self.undo_group,
+                        );
+                        self.sync(patch);
+                        Some(id)
                     })
-                    .map(|(id, delta)| {
+                    .map(|id| {
                         let cursor = data.cursor.position;
-                        let ids = data
+                        let edits = data
                             .nodes
                             .iter()
                             .filter_map(|node| {
                                 if node.position.y == cursor.y && node.position.x > cursor.x {
-                                    Some((String::from(node.id), node.position.x + 1.0))
+                                    Some((id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
                                 } else {
                                     None
                                 }
                             })
                             .collect::<HashMap<_, _>>();
-                        let mut deltas = self.move_nodes_x(ids);
-                        deltas.push(delta);
-                        self.edit(deltas);
+                        self.edit(edits);
                         data.draft_nodes =
                             Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
                         self.save();
@@ -381,60 +249,35 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             NODE_DELETE_CHAR => {
-                data.node_at_cursor()
-                    .and_then(|(canvas::Node { id, text, .. }, index)| {
-                        if index >= text.chars().count() {
-                            return None;
-                        }
-                        let engine = self.engine.lock().unwrap();
-                        let code = engine.text();
-                        let id_prefix = String::from(id) + "\t";
-                        code.lines()
-                            .map(String::from)
-                            .enumerate()
-                            .find(|(_, record)| record.starts_with(&id_prefix))
-                            .map(|(line, record)| {
-                                let line_offset = code.line_to_char(line);
-                                let text_field_offset = record
-                                    .chars()
-                                    .enumerate()
-                                    .filter_map(|(i, c)| if c == '\t' { Some(i) } else { None })
-                                    .last()
-                                    .unwrap()
-                                    + 1;
-                                line_offset + text_field_offset + index
-                            })
-                            .map(|offset| {
-                                (
-                                    id,
-                                    Delta {
-                                        range: (offset, offset + 1),
-                                        new_text: String::new(),
-                                        color: self.undo_group,
-                                    },
-                                )
-                            })
-                    })
-                    .map(|(id, delta)| {
-                        let cursor = data.cursor.position;
-                        let ids = data
-                            .nodes
-                            .iter()
-                            .filter_map(|node| {
-                                if node.position.y == cursor.y && node.position.x > cursor.x {
-                                    Some((String::from(node.id), node.position.x - 1.0))
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<HashMap<_, _>>();
-                        let mut deltas = self.move_nodes_x(ids);
-                        deltas.push(delta);
-                        self.edit(deltas);
-                        data.draft_nodes =
-                            Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
-                        self.save();
+                data.node_at_cursor().map(|(Node { id, text, .. }, index)| {
+                    if index >= text.chars().count() {
+                        return;
+                    }
+
+                    let cursor = data.cursor.position;
+                    let mut edits = data
+                        .nodes
+                        .iter()
+                        .filter_map(|node| {
+                            if node.position.y == cursor.y && node.position.x > cursor.x {
+                                Some((node.id, vec![NodeEdit::MoveX(node.position.x - 1.0)]))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<HashMap<_, _>>();
+
+                    edits.entry(id).or_default().push(NodeEdit::Edit {
+                        start: index,
+                        end: index + 1,
+                        text: String::new(),
                     });
+
+                    self.edit(edits);
+                    data.draft_nodes =
+                        Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
+                    self.save();
+                });
                 false
             }
             COMMIT_PROGRAM => {
@@ -472,14 +315,14 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             UNDO => {
-                if let Some(patch) = self.engine.lock().unwrap().undo() {
+                if let Some(patch) = self.node_repo.lock().unwrap().undo() {
                     self.sync(patch);
                 }
                 self.save();
                 false
             }
             REDO => {
-                if let Some(patch) = self.engine.lock().unwrap().redo() {
+                if let Some(patch) = self.node_repo.lock().unwrap().redo() {
                     self.sync(patch);
                 }
                 self.save();
@@ -500,19 +343,19 @@ impl AppDelegate<canvas::Data> for App {
                     };
                     if data.node_at_cursor().is_some() {
                         let cursor = data.cursor.position;
-                        let ids = data
+
+                        let edits = data
                             .nodes
                             .iter()
                             .filter_map(|node| {
                                 if node.position.y == cursor.y && node.position.x >= cursor.x {
-                                    Some((String::from(node.id), node.position.x + 1.0))
+                                    Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
                                 } else {
                                     None
                                 }
                             })
                             .collect::<HashMap<_, _>>();
-                        let deltas = self.move_nodes_x(ids);
-                        self.edit(deltas);
+                        self.edit(edits);
                     }
                 }
                 self.save();
@@ -521,19 +364,7 @@ impl AppDelegate<canvas::Data> for App {
             _ => true,
         };
         // TODO Regenerate nodes only if necessary.
-        data.nodes = Arc::new(self.generate_nodes());
+        data.nodes = Arc::new(self.node_repo.lock().unwrap().nodes());
         result
     }
-}
-
-fn load_engine(filename: &str) -> Engine {
-    std::fs::File::open(filename)
-        .ok()
-        .map(|f| snap::read::FrameDecoder::new(f))
-        .and_then(|f| serde_cbor::from_reader::<Engine, _>(f).ok())
-        .map(|mut engine| {
-            engine.rebuild();
-            engine
-        })
-        .unwrap_or_else(|| Engine::new())
 }

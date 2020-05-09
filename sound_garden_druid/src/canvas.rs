@@ -28,14 +28,6 @@ pub struct Data {
 }
 
 #[derive(Clone, druid::Data, Default)]
-pub struct Node {
-    pub id: Id,
-    /// In grid units, not pixels.
-    pub position: Point,
-    pub text: String,
-}
-
-#[derive(Clone, druid::Data, Default)]
 pub struct Cursor {
     pub position: Point,
 }

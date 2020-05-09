@@ -1,6 +1,7 @@
+use druid::{Data, Point};
 use std::{convert::TryFrom, num::ParseIntError};
 
-#[derive(Clone, Copy, druid::Data, Default)]
+#[derive(Clone, Copy, Data, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Id(u64);
 
 impl TryFrom<&str> for Id {
@@ -33,4 +34,12 @@ impl Id {
     pub fn random() -> Self {
         Id(rand::random())
     }
+}
+
+#[derive(Clone, Data, Default)]
+pub struct Node {
+    pub id: Id,
+    /// In grid units, not pixels.
+    pub position: Point,
+    pub text: String,
 }
