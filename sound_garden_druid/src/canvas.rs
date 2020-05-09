@@ -47,7 +47,7 @@ impl Default for Widget {
 }
 
 impl druid::Widget<Data> for Widget {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut Data, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut Data, _env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
@@ -55,16 +55,25 @@ impl druid::Widget<Data> for Widget {
             Event::KeyDown(event) => {
                 match self.mode {
                     Mode::Normal => match event {
-                        _ if HotKey::new(None, KeyCode::KeyH).matches(event) => {
+                        _ if HotKey::new(None, KeyCode::KeyH).matches(event)
+                            || HotKey::new(None, KeyCode::ArrowLeft).matches(event)
+                            || HotKey::new(None, KeyCode::Backspace).matches(event) =>
+                        {
                             self.cursor.position.x -= 1.0;
                         }
-                        _ if HotKey::new(None, KeyCode::KeyJ).matches(event) => {
+                        _ if HotKey::new(None, KeyCode::KeyJ).matches(event)
+                            || HotKey::new(None, KeyCode::ArrowDown).matches(event) =>
+                        {
                             self.cursor.position.y += 1.0;
                         }
-                        _ if HotKey::new(None, KeyCode::KeyK).matches(event) => {
+                        _ if HotKey::new(None, KeyCode::KeyK).matches(event)
+                            || HotKey::new(None, KeyCode::ArrowUp).matches(event) =>
+                        {
                             self.cursor.position.y -= 1.0;
                         }
-                        _ if HotKey::new(None, KeyCode::KeyL).matches(event) => {
+                        _ if HotKey::new(None, KeyCode::KeyL).matches(event)
+                            || HotKey::new(None, KeyCode::ArrowRight).matches(event) =>
+                        {
                             self.cursor.position.x += 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
@@ -88,66 +97,49 @@ impl druid::Widget<Data> for Widget {
                         }
                         _ => {}
                     },
-                    Mode::Insert => {
-                        if HotKey::new(None, KeyCode::Backspace).matches(event) {
+                    Mode::Insert => match event {
+                        _ if HotKey::new(None, KeyCode::Escape).matches(event)
+                            || HotKey::new(None, KeyCode::Return).matches(event) =>
+                        {
+                            self.mode = Mode::Normal;
+                        }
+                        _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
                             self.cursor.position.x -= 1.0;
                         }
-                        match event {
-                            _ if HotKey::new(None, KeyCode::Escape).matches(event)
-                                || HotKey::new(None, KeyCode::Return).matches(event) =>
-                            {
-                                self.mode = Mode::Normal;
-                            }
-                            _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
-                                self.cursor.position.x -= 1.0;
-                            }
-                            _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
-                                self.cursor.position.y += 1.0;
-                            }
-                            _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
-                                self.cursor.position.y -= 1.0;
-                            }
-                            _ if HotKey::new(None, KeyCode::ArrowRight).matches(event)
-                                || HotKey::new(None, KeyCode::Space).matches(event) =>
-                            {
-                                self.cursor.position.x += 1.0;
-                            }
-                            _ => {
-                                // TODO Move node_under_cursor and insert/create choice out to AppDelegate.
-                                if let Some((node, index)) = self.node_under_cursor(data) {
-                                    if event.key_code == KeyCode::Backspace {
-                                        ctx.submit_command(
-                                            node_delete_char(NodeDeleteChar { id: node.id, index }),
-                                            None,
-                                        );
-                                    } else if event.key_code.is_printable() {
-                                        if let Some(text) = event.text() {
-                                            ctx.submit_command(
-                                                node_insert_text(NodeInsertText {
-                                                    id: node.id,
-                                                    text: text.to_string(),
-                                                    index,
-                                                }),
-                                                None,
-                                            );
-                                            self.cursor.position.x += text.chars().count() as f64;
-                                        }
-                                    }
-                                } else if event.key_code.is_printable() {
-                                    if let Some(text) = event.text() {
-                                        ctx.submit_command(
-                                            create_node(CreateNode {
-                                                position: self.cursor.position,
-                                                text: text.to_string(),
-                                            }),
-                                            None,
-                                        );
-                                        self.cursor.position.x += text.chars().count() as f64;
-                                    }
-                                }
+                        _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
+                            self.cursor.position.y += 1.0;
+                        }
+                        _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
+                            self.cursor.position.y -= 1.0;
+                        }
+                        _ if HotKey::new(None, KeyCode::ArrowRight).matches(event)
+                            || HotKey::new(None, KeyCode::Space).matches(event) =>
+                        {
+                            self.cursor.position.x += 1.0;
+                        }
+                        _ if HotKey::new(None, KeyCode::Backspace).matches(event) => {
+                            self.cursor.position.x -= 1.0;
+                            ctx.submit_command(
+                                node_delete_char(NodeDeleteChar {
+                                    cursor: self.cursor.position,
+                                }),
+                                None,
+                            );
+                        }
+                        _ if event.key_code.is_printable() => {
+                            if let Some(text) = event.text() {
+                                ctx.submit_command(
+                                    node_insert_text(NodeInsertText {
+                                        cursor: self.cursor.position,
+                                        text: text.to_string(),
+                                    }),
+                                    None,
+                                );
+                                self.cursor.position.x += text.chars().count() as f64;
                             }
                         }
-                    }
+                        _ => {}
+                    },
                 }
                 ctx.request_paint();
             }
@@ -268,10 +260,11 @@ impl Widget {
         }
         self.font.as_ref().unwrap()
     }
+}
 
-    fn node_under_cursor(&self, data: &Data) -> Option<(Node, usize)> {
-        let cursor = &self.cursor.position;
-        data.nodes.iter().find_map(|node| {
+impl Data {
+    pub fn node_under_cursor(&self, cursor: Point) -> Option<(Node, usize)> {
+        self.nodes.iter().find_map(|node| {
             let len = node.text.chars().count() as isize;
             let index = (cursor.x - node.position.x) as isize;
             // index <= len instead of strict inequality as we treat trailing space as a part of node.

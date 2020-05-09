@@ -274,95 +274,102 @@ impl AppDelegate<canvas::Data> for App {
     ) -> bool {
         let result = match cmd.selector {
             NODE_INSERT_TEXT => {
-                let NodeInsertText { id, index, text } = cmd.get_object().unwrap();
-                if let Some(delta) = {
-                    let engine = self.engine.lock().unwrap();
-                    let code = engine.text();
-                    let id_prefix = String::from(*id) + "\t";
-                    code.lines()
-                        .map(String::from)
-                        .enumerate()
-                        .find(|(_, record)| record.starts_with(&id_prefix))
-                        .map(|(line, record)| {
-                            let line_offset = code.line_to_char(line);
-                            let text_field_offset = record
-                                .chars()
-                                .enumerate()
-                                .filter_map(|(i, c)| if c == '\t' { Some(i) } else { None })
-                                .last()
-                                .unwrap()
-                                + 1;
-                            line_offset + text_field_offset + index
-                        })
-                        .map(|offset| Delta {
-                            range: (offset, offset),
-                            new_text: text.to_owned(),
-                            color: self.undo_group,
-                        })
-                } {
-                    self.edit(&[delta]);
-                    data.draft_nodes =
-                        Arc::new(data.draft_nodes.iter().chain(Some(id)).copied().collect());
-                    self.save();
-                }
+                let NodeInsertText { cursor, text } = cmd.get_object().unwrap();
+                data.node_under_cursor(*cursor)
+                    .and_then(|(canvas::Node { id, .. }, index)| {
+                        let id_prefix = String::from(id) + "\t";
+                        let engine = self.engine.lock().unwrap();
+                        let code = engine.text();
+                        code.lines()
+                            .map(String::from)
+                            .enumerate()
+                            .find(|(_, record)| record.starts_with(&id_prefix))
+                            .map(|(line, record)| {
+                                let line_offset = code.line_to_char(line);
+                                let text_field_offset = record
+                                    .chars()
+                                    .enumerate()
+                                    .filter_map(|(i, c)| if c == '\t' { Some(i) } else { None })
+                                    .last()
+                                    .unwrap()
+                                    + 1;
+                                let offset = line_offset + text_field_offset + index;
+                                (
+                                    id,
+                                    Delta {
+                                        range: (offset, offset),
+                                        new_text: text.to_owned(),
+                                        color: self.undo_group,
+                                    },
+                                )
+                            })
+                    })
+                    .or_else(|| {
+                        let id = Id::random();
+                        let engine = self.engine.lock().unwrap();
+                        let offset = engine.text().len_chars();
+                        Some((
+                            id,
+                            Delta {
+                                range: (offset, offset),
+                                new_text: format!(
+                                    "{}\t{}\t{}\t{}\n",
+                                    String::from(id),
+                                    cursor.x,
+                                    cursor.y,
+                                    text
+                                ),
+                                color: self.undo_group,
+                            },
+                        ))
+                    })
+                    .map(|(id, delta)| {
+                        self.edit(&[delta]);
+                        data.draft_nodes =
+                            Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
+                        self.save();
+                    });
                 false
             }
             NODE_DELETE_CHAR => {
-                let NodeDeleteChar { id, index } = cmd.get_object().unwrap();
-                if let Some(delta) = {
-                    let engine = self.engine.lock().unwrap();
-                    let code = engine.text();
-                    let id_prefix = String::from(*id) + "\t";
-                    code.lines()
-                        .map(String::from)
-                        .enumerate()
-                        .find(|(_, record)| record.starts_with(&id_prefix))
-                        .map(|(line, record)| {
-                            let line_offset = code.line_to_char(line);
-                            let text_field_offset = record
-                                .chars()
-                                .enumerate()
-                                .filter_map(|(i, c)| if c == '\t' { Some(i) } else { None })
-                                .last()
-                                .unwrap()
-                                + 1;
-                            line_offset + text_field_offset + index
-                        })
-                        .map(|offset| Delta {
-                            range: (offset, offset + 1),
-                            new_text: String::new(),
-                            color: self.undo_group,
-                        })
-                } {
-                    self.edit(&[delta]);
-                    data.draft_nodes =
-                        Arc::new(data.draft_nodes.iter().chain(Some(id)).copied().collect());
-                    self.save();
-                }
-                false
-            }
-            CREATE_NODE => {
-                let CreateNode { text, position } = cmd.get_object().unwrap();
-                let id = Id::random();
-                let delta = {
-                    let engine = self.engine.lock().unwrap();
-                    let offset = engine.text().len_chars();
-                    Delta {
-                        range: (offset, offset),
-                        new_text: format!(
-                            "{}\t{}\t{}\t{}\n",
-                            String::from(id),
-                            position.x,
-                            position.y,
-                            text
-                        ),
-                        color: self.undo_group,
-                    }
-                };
-                self.edit(&[delta]);
-                data.draft_nodes =
-                    Arc::new(data.draft_nodes.iter().copied().chain(Some(id)).collect());
-                self.save();
+                let NodeDeleteChar { cursor } = cmd.get_object().unwrap();
+                data.node_under_cursor(*cursor)
+                    .and_then(|(canvas::Node { id, .. }, index)| {
+                        let engine = self.engine.lock().unwrap();
+                        let code = engine.text();
+                        let id_prefix = String::from(id) + "\t";
+                        code.lines()
+                            .map(String::from)
+                            .enumerate()
+                            .find(|(_, record)| record.starts_with(&id_prefix))
+                            .map(|(line, record)| {
+                                let line_offset = code.line_to_char(line);
+                                let text_field_offset = record
+                                    .chars()
+                                    .enumerate()
+                                    .filter_map(|(i, c)| if c == '\t' { Some(i) } else { None })
+                                    .last()
+                                    .unwrap()
+                                    + 1;
+                                line_offset + text_field_offset + index
+                            })
+                            .map(|offset| {
+                                (
+                                    id,
+                                    Delta {
+                                        range: (offset, offset + 1),
+                                        new_text: String::new(),
+                                        color: self.undo_group,
+                                    },
+                                )
+                            })
+                    })
+                    .map(|(id, delta)| {
+                        self.edit(&[delta]);
+                        data.draft_nodes =
+                            Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
+                        self.save();
+                    });
                 false
             }
             COMMIT_PROGRAM => {
