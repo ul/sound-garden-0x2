@@ -361,6 +361,19 @@ impl AppDelegate<canvas::Data> for App {
                 self.save();
                 false
             }
+            DELETE_NODE => {
+                if let Some((node, _)) = data.node_at_cursor() {
+                    if let Some(patch) = self
+                        .node_repo
+                        .lock()
+                        .unwrap()
+                        .delete_node(node.id, self.undo_group)
+                    {
+                        self.sync(patch);
+                    }
+                }
+                false
+            }
             _ => true,
         };
         // TODO Regenerate nodes only if necessary.

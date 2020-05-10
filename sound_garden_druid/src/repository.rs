@@ -63,6 +63,28 @@ impl NodeRepository {
         }])
     }
 
+    pub fn delete_node(&mut self, id: Id, color: u64) -> Option<Patch> {
+        let id = String::from(id);
+        let code = self.engine.text();
+        code.lines()
+            .map(String::from)
+            .enumerate()
+            .find_map(|(line, record)| {
+                if record.starts_with(&id) {
+                    let start = code.line_to_char(line);
+                    let end = code.line_to_char(line + 1);
+                    Some(Delta {
+                        range: (start, end),
+                        new_text: String::new(),
+                        color,
+                    })
+                } else {
+                    None
+                }
+            })
+            .map(|delta| self.engine.edit(vec![delta]))
+    }
+
     pub fn edit_nodes(&mut self, edits: HashMap<Id, Vec<NodeEdit>>, color: u64) -> Patch {
         let code = self.engine.text();
         let deltas = code

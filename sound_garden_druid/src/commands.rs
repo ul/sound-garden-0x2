@@ -63,3 +63,9 @@ pub const SPLASH: Selector = Selector::new("sound_garden_druid.SPLASH");
 pub fn splash() -> Command {
     Command::from(SPLASH)
 }
+
+pub const DELETE_NODE: Selector = Selector::new("sound_garden_druid.DELETE_NODE");
+
+pub fn delete_node() -> Command {
+    Command::from(DELETE_NODE)
+}
