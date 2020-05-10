@@ -363,15 +363,34 @@ impl AppDelegate<canvas::Data> for App {
             }
             DELETE_NODE => {
                 if let Some((node, _)) = data.node_at_cursor() {
-                    if let Some(patch) = self
+                    let patch = self
                         .node_repo
                         .lock()
                         .unwrap()
-                        .delete_node(node.id, self.undo_group)
-                    {
-                        self.sync(patch);
-                    }
+                        .delete_nodes(&[node.id], self.undo_group);
+                    self.sync(patch);
                 }
+                false
+            }
+            DELETE_LINE => {
+                let cursor = data.cursor.position;
+                let ids = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y {
+                            Some(node.id)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let patch = self
+                    .node_repo
+                    .lock()
+                    .unwrap()
+                    .delete_nodes(&ids, self.undo_group);
+                self.sync(patch);
                 false
             }
             _ => true,

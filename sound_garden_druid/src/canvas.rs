@@ -49,7 +49,6 @@ TODO commands in normal mode:
 /--------------------------------------\
 | '      | Commit without migration.   |
 | c      | Cut & insert.               |
-| D      | Delete line.                |
 | Alt+h  | Move node left.             |
 | Alt+j  | Move node down.             |
 | Alt+k  | Move node up.               |
@@ -116,6 +115,9 @@ impl druid::Widget<Data> for Widget {
                         }
                         _ if HotKey::new(None, KeyCode::KeyD).matches(event) => {
                             ctx.submit_command(delete_node(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyD).matches(event) => {
+                            ctx.submit_command(delete_line(), None);
                         }
                         _ if HotKey::new(None, KeyCode::Return).matches(event) => {
                             ctx.submit_command(commit_program(), None);

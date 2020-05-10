@@ -18,6 +18,12 @@ impl From<Id> for String {
     }
 }
 
+impl From<&Id> for String {
+    fn from(id: &Id) -> Self {
+        format!("{:016x}", id.0)
+    }
+}
+
 impl From<Id> for u64 {
     fn from(id: Id) -> Self {
         id.0

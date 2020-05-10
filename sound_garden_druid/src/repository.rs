@@ -2,7 +2,10 @@ use crate::types::*;
 use crdt_engine::{Delta, Engine, Patch};
 use druid::Point;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+};
 
 /// Repository is a source of truth for a distributed state in SGD.
 /// We encode that state in a text form and then treat changes to it as text edits.
@@ -63,26 +66,30 @@ impl NodeRepository {
         }])
     }
 
-    pub fn delete_node(&mut self, id: Id, color: u64) -> Option<Patch> {
-        let id = String::from(id);
+    pub fn delete_nodes(&mut self, ids: &[Id], color: u64) -> Patch {
+        let ids = ids.into_iter().map(String::from).collect::<HashSet<_>>();
         let code = self.engine.text();
-        code.lines()
+        let deltas = code
+            .lines()
             .map(String::from)
             .enumerate()
-            .find_map(|(line, record)| {
-                if record.starts_with(&id) {
-                    let start = code.line_to_char(line);
-                    let end = code.line_to_char(line + 1);
-                    Some(Delta {
-                        range: (start, end),
-                        new_text: String::new(),
-                        color,
-                    })
-                } else {
-                    None
-                }
+            .filter_map(|(line, record)| {
+                record.split('\t').next().and_then(|id| {
+                    if ids.contains(id) {
+                        let start = code.line_to_char(line);
+                        let end = code.line_to_char(line + 1);
+                        Some(Delta {
+                            range: (start, end),
+                            new_text: String::new(),
+                            color,
+                        })
+                    } else {
+                        None
+                    }
+                })
             })
-            .map(|delta| self.engine.edit(vec![delta]))
+            .collect();
+        self.engine.edit(deltas)
     }
 
     pub fn edit_nodes(&mut self, edits: HashMap<Id, Vec<NodeEdit>>, color: u64) -> Patch {
