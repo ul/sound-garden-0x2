@@ -93,3 +93,27 @@ pub const CYCLE_DOWN: Selector = Selector::new("sound_garden_druid.CYCLE_DOWN");
 pub fn cycle_down() -> Command {
     Command::from(CYCLE_DOWN)
 }
+
+pub const MOVE_RIGHT_TO_RIGHT: Selector = Selector::new("sound_garden_druid.MOVE_RIGHT_TO_RIGHT");
+
+pub fn move_right_to_right() -> Command {
+    Command::from(MOVE_RIGHT_TO_RIGHT)
+}
+
+pub const MOVE_RIGHT_TO_LEFT: Selector = Selector::new("sound_garden_druid.MOVE_RIGHT_TO_LEFT");
+
+pub fn move_right_to_left() -> Command {
+    Command::from(MOVE_RIGHT_TO_LEFT)
+}
+
+pub const MOVE_LEFT_TO_RIGHT: Selector = Selector::new("sound_garden_druid.MOVE_LEFT_TO_RIGHT");
+
+pub fn move_left_to_right() -> Command {
+    Command::from(MOVE_LEFT_TO_RIGHT)
+}
+
+pub const MOVE_LEFT_TO_LEFT: Selector = Selector::new("sound_garden_druid.MOVE_LEFT_TO_LEFT");
+
+pub fn move_left_to_left() -> Command {
+    Command::from(MOVE_LEFT_TO_LEFT)
+}

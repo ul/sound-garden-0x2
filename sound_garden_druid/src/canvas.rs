@@ -56,10 +56,6 @@ TODO commands in normal mode:
 | K      | Move node and before up.    |
 | H      | Move line up.               |
 | L      | Move line down.             |
-| ,      | Move right of line left.    |
-| .      | Move right of line right.   |
-| <      | Move left of line left.     |
-| >      | Move left of line right.    |
 | /      | List ops.                   |
 | ?      | Help (this screen).         |
 \--------------------------------------/
@@ -137,6 +133,18 @@ impl druid::Widget<Data> for Widget {
                         }
                         _ if HotKey::new(None, KeyCode::Minus).matches(event) => {
                             ctx.submit_command(cycle_down(), None);
+                        }
+                        _ if HotKey::new(None, KeyCode::Comma).matches(event) => {
+                            ctx.submit_command(move_right_to_left(), None);
+                        }
+                        _ if HotKey::new(None, KeyCode::Period).matches(event) => {
+                            ctx.submit_command(move_right_to_right(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::Comma).matches(event) => {
+                            ctx.submit_command(move_left_to_left(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::Period).matches(event) => {
+                            ctx.submit_command(move_left_to_right(), None);
                         }
                         _ => {}
                     },

@@ -181,6 +181,7 @@ impl App {
             .unwrap()
             .edit_nodes(edits, self.undo_group);
         self.sync(patch);
+        self.save();
     }
 
     fn sync(&self, patch: Patch) {
@@ -245,7 +246,6 @@ impl AppDelegate<canvas::Data> for App {
                         self.edit(edits);
                         data.draft_nodes =
                             Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
-                        self.save();
                     });
                 data.cursor.position.x += text.chars().count() as f64;
                 false
@@ -278,7 +278,6 @@ impl AppDelegate<canvas::Data> for App {
                     self.edit(edits);
                     data.draft_nodes =
                         Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
-                    self.save();
                 });
                 false
             }
@@ -360,7 +359,6 @@ impl AppDelegate<canvas::Data> for App {
                         self.edit(edits);
                     }
                 }
-                self.save();
                 false
             }
             DELETE_NODE => {
@@ -371,6 +369,7 @@ impl AppDelegate<canvas::Data> for App {
                         .unwrap()
                         .delete_nodes(&[node.id], self.undo_group);
                     self.sync(patch);
+                    self.save();
                 }
                 false
             }
@@ -393,6 +392,7 @@ impl AppDelegate<canvas::Data> for App {
                     .unwrap()
                     .delete_nodes(&ids, self.undo_group);
                 self.sync(patch);
+                self.save();
                 false
             }
             CUT_NODE => {
@@ -486,6 +486,78 @@ impl AppDelegate<canvas::Data> for App {
                         }
                     }
                 }
+                false
+            }
+            MOVE_RIGHT_TO_LEFT => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y
+                            && node.position.x + node.text.chars().count() as f64 > cursor.x
+                        {
+                            Some((node.id, vec![NodeEdit::MoveX(node.position.x - 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.x -= 1.0;
+                false
+            }
+            MOVE_RIGHT_TO_RIGHT => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y
+                            && node.position.x + node.text.chars().count() as f64 > cursor.x
+                        {
+                            Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.x += 1.0;
+                false
+            }
+            MOVE_LEFT_TO_LEFT => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y && node.position.x <= cursor.x {
+                            Some((node.id, vec![NodeEdit::MoveX(node.position.x - 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.x -= 1.0;
+                false
+            }
+            MOVE_LEFT_TO_RIGHT => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y && node.position.x <= cursor.x {
+                            Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.x += 1.0;
                 false
             }
             ref selector => {
