@@ -560,6 +560,42 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x += 1.0;
                 false
             }
+            MOVE_NODE_LEFT => {
+                if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
+                    let mut edits = HashMap::new();
+                    edits.insert(id, vec![NodeEdit::MoveX(position.x - 1.0)]);
+                    self.edit(edits);
+                }
+                data.cursor.position.x -= 1.0;
+                false
+            }
+            MOVE_NODE_RIGHT => {
+                if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
+                    let mut edits = HashMap::new();
+                    edits.insert(id, vec![NodeEdit::MoveX(position.x + 1.0)]);
+                    self.edit(edits);
+                }
+                data.cursor.position.x += 1.0;
+                false
+            }
+            MOVE_NODE_UP => {
+                if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
+                    let mut edits = HashMap::new();
+                    edits.insert(id, vec![NodeEdit::MoveY(position.y - 1.0)]);
+                    self.edit(edits);
+                }
+                data.cursor.position.y -= 1.0;
+                false
+            }
+            MOVE_NODE_DOWN => {
+                if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
+                    let mut edits = HashMap::new();
+                    edits.insert(id, vec![NodeEdit::MoveY(position.y + 1.0)]);
+                    self.edit(edits);
+                }
+                data.cursor.position.y += 1.0;
+                false
+            }
             ref selector => {
                 log::debug!("Command {} is not handled in delegate.", selector);
                 true

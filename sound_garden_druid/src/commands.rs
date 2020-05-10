@@ -117,3 +117,27 @@ pub const MOVE_LEFT_TO_LEFT: Selector = Selector::new("sound_garden_druid.MOVE_L
 pub fn move_left_to_left() -> Command {
     Command::from(MOVE_LEFT_TO_LEFT)
 }
+
+pub const MOVE_NODE_LEFT: Selector = Selector::new("sound_garden_druid.MOVE_NODE_LEFT");
+
+pub fn move_node_left() -> Command {
+    Command::from(MOVE_NODE_LEFT)
+}
+
+pub const MOVE_NODE_RIGHT: Selector = Selector::new("sound_garden_druid.MOVE_NODE_RIGHT");
+
+pub fn move_node_right() -> Command {
+    Command::from(MOVE_NODE_RIGHT)
+}
+
+pub const MOVE_NODE_UP: Selector = Selector::new("sound_garden_druid.MOVE_NODE_UP");
+
+pub fn move_node_up() -> Command {
+    Command::from(MOVE_NODE_UP)
+}
+
+pub const MOVE_NODE_DOWN: Selector = Selector::new("sound_garden_druid.MOVE_NODE_DOWN");
+
+pub fn move_node_down() -> Command {
+    Command::from(MOVE_NODE_DOWN)
+}

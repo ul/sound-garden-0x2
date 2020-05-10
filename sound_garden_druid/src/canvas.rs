@@ -2,7 +2,7 @@ use crate::{commands::*, types::*};
 use druid::{
     piet::{CairoFont, FontBuilder, PietText, Text, TextLayout, TextLayoutBuilder},
     BoxConstraints, Color, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, Rect, RenderContext, Size, SysMods, UpdateCtx,
+    LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx,
 };
 use std::sync::Arc;
 
@@ -48,10 +48,6 @@ TODO commands in normal mode:
 
 /--------------------------------------\
 | '      | Commit without migration.   |
-| Alt+h  | Move node left.             |
-| Alt+j  | Move node down.             |
-| Alt+k  | Move node up.               |
-| Alt+l  | Move node right.            |
 | J      | Move node and after down.   |
 | K      | Move node and before up.    |
 | H      | Move line up.               |
@@ -91,6 +87,26 @@ impl druid::Widget<Data> for Widget {
                             || HotKey::new(None, KeyCode::ArrowRight).matches(event) =>
                         {
                             data.cursor.position.x += 1.0;
+                        }
+                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyH).matches(event)
+                            || HotKey::new(RawMods::Alt, KeyCode::ArrowLeft).matches(event) =>
+                        {
+                            ctx.submit_command(move_node_left(), None);
+                        }
+                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyJ).matches(event)
+                            || HotKey::new(RawMods::Alt, KeyCode::ArrowDown).matches(event) =>
+                        {
+                            ctx.submit_command(move_node_down(), None);
+                        }
+                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyK).matches(event)
+                            || HotKey::new(RawMods::Alt, KeyCode::ArrowUp).matches(event) =>
+                        {
+                            ctx.submit_command(move_node_up(), None);
+                        }
+                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyL).matches(event)
+                            || HotKey::new(RawMods::Alt, KeyCode::ArrowRight).matches(event) =>
+                        {
+                            ctx.submit_command(move_node_right(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
                             self.insert_mode(ctx);
