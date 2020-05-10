@@ -44,6 +44,8 @@ enum JamMessage {
 }
 
 fn main() -> Result<()> {
+    simple_logger::init().unwrap();
+
     // CLI interface.
     let matches = app_from_crate!()
         .arg(Arg::with_name("FILENAME").index(1).help("Path to the tree"))
@@ -408,7 +410,10 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
-            _ => true,
+            ref selector => {
+                log::debug!("Command {} is not handled in delegate.", selector);
+                true
+            }
         };
         // TODO Regenerate nodes only if necessary.
         data.nodes = Arc::new(self.node_repo.lock().unwrap().nodes());

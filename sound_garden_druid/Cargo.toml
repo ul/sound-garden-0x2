@@ -18,6 +18,8 @@ snap = "1.0.0"
 serde_cbor = "0.11.1"
 nng = "1.0.0-rc.2"
 chrono = "0.4.11"
+log = "0.4.8"
+simple_logger = "1.6.0"
 
 [dependencies.serde]
 version = "1.0.106"
