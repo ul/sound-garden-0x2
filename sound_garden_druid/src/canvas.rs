@@ -48,10 +48,6 @@ TODO commands in normal mode:
 
 /--------------------------------------\
 | '      | Commit without migration.   |
-| J      | Move node and after down.   |
-| K      | Move node and before up.    |
-| H      | Move line up.               |
-| L      | Move line down.             |
 | /      | List ops.                   |
 | ?      | Help (this screen).         |
 \--------------------------------------/
@@ -107,6 +103,26 @@ impl druid::Widget<Data> for Widget {
                             || HotKey::new(RawMods::Alt, KeyCode::ArrowRight).matches(event) =>
                         {
                             ctx.submit_command(move_node_right(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyH).matches(event)
+                            || HotKey::new(SysMods::Shift, KeyCode::ArrowLeft).matches(event) =>
+                        {
+                            ctx.submit_command(move_line_up(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyJ).matches(event)
+                            || HotKey::new(SysMods::Shift, KeyCode::ArrowDown).matches(event) =>
+                        {
+                            ctx.submit_command(move_right_down(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyK).matches(event)
+                            || HotKey::new(SysMods::Shift, KeyCode::ArrowUp).matches(event) =>
+                        {
+                            ctx.submit_command(move_left_up(), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyL).matches(event)
+                            || HotKey::new(SysMods::Shift, KeyCode::ArrowRight).matches(event) =>
+                        {
+                            ctx.submit_command(move_line_down(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
                             self.insert_mode(ctx);

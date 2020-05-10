@@ -596,6 +596,79 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
+            MOVE_LINE_UP => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y {
+                            Some((node.id, vec![NodeEdit::MoveY(node.position.y - 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y -= 1.0;
+                false
+            }
+            MOVE_LINE_DOWN => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y == cursor.y {
+                            Some((node.id, vec![NodeEdit::MoveY(node.position.y + 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y += 1.0;
+                false
+            }
+            MOVE_LEFT_UP => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y < cursor.y
+                            || node.position.y == cursor.y && node.position.x <= cursor.x
+                        {
+                            Some((node.id, vec![NodeEdit::MoveY(node.position.y - 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y -= 1.0;
+                false
+            }
+            MOVE_RIGHT_DOWN => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y > cursor.y
+                            || node.position.y == cursor.y
+                                && node.position.x + node.text.chars().count() as f64 > cursor.x
+                        {
+                            Some((node.id, vec![NodeEdit::MoveY(node.position.y + 1.0)]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y += 1.0;
+                false
+            }
             ref selector => {
                 log::debug!("Command {} is not handled in delegate.", selector);
                 true
