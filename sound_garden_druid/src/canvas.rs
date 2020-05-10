@@ -99,22 +99,18 @@ impl druid::Widget<Data> for Widget {
                             data.cursor.position.x += 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
-                            self.mode = Mode::Insert;
-                            ctx.submit_command(new_undo_group(), None);
+                            self.insert_mode(ctx);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyI).matches(event) => {
-                            self.mode = Mode::Insert;
-                            ctx.submit_command(new_undo_group(), None);
+                            self.insert_mode(ctx);
                             ctx.submit_command(splash(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyA).matches(event) => {
                             data.cursor.position.x += 1.0;
-                            self.mode = Mode::Insert;
-                            ctx.submit_command(new_undo_group(), None);
+                            self.insert_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::KeyC).matches(event) => {
-                            self.mode = Mode::Insert;
-                            ctx.submit_command(new_undo_group(), None);
+                            self.insert_mode(ctx);
                             ctx.submit_command(cut_node(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyD).matches(event) => {
@@ -144,7 +140,7 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(None, KeyCode::Escape).matches(event)
                             || HotKey::new(None, KeyCode::Return).matches(event) =>
                         {
-                            self.mode = Mode::Normal;
+                            self.normal_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
                             data.cursor.position.x -= 1.0;
@@ -295,6 +291,16 @@ impl Widget {
             self.font = Some(text.new_font_by_name(FONT_NAME, FONT_SIZE).build().unwrap());
         }
         self.font.as_ref().unwrap()
+    }
+
+    fn insert_mode(&mut self, ctx: &mut EventCtx) {
+        self.mode = Mode::Insert;
+        ctx.submit_command(new_undo_group(), None);
+    }
+
+    fn normal_mode(&mut self, ctx: &mut EventCtx) {
+        self.mode = Mode::Normal;
+        ctx.submit_command(new_undo_group(), None);
     }
 }
 
