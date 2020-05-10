@@ -75,3 +75,9 @@ pub const DELETE_LINE: Selector = Selector::new("sound_garden_druid.DELETE_LINE"
 pub fn delete_line() -> Command {
     Command::from(DELETE_LINE)
 }
+
+pub const CUT_NODE: Selector = Selector::new("sound_garden_druid.CUT_NODE");
+
+pub fn cut_node() -> Command {
+    Command::from(CUT_NODE)
+}

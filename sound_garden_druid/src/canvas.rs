@@ -48,7 +48,6 @@ TODO commands in normal mode:
 
 /--------------------------------------\
 | '      | Commit without migration.   |
-| c      | Cut & insert.               |
 | Alt+h  | Move node left.             |
 | Alt+j  | Move node down.             |
 | Alt+k  | Move node up.               |
@@ -112,6 +111,11 @@ impl druid::Widget<Data> for Widget {
                             data.cursor.position.x += 1.0;
                             self.mode = Mode::Insert;
                             ctx.submit_command(new_undo_group(), None);
+                        }
+                        _ if HotKey::new(None, KeyCode::KeyC).matches(event) => {
+                            self.mode = Mode::Insert;
+                            ctx.submit_command(new_undo_group(), None);
+                            ctx.submit_command(cut_node(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyD).matches(event) => {
                             ctx.submit_command(delete_node(), None);

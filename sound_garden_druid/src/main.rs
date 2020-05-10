@@ -393,6 +393,21 @@ impl AppDelegate<canvas::Data> for App {
                 self.sync(patch);
                 false
             }
+            CUT_NODE => {
+                if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
+                    let mut edits = HashMap::new();
+                    edits.insert(
+                        id,
+                        vec![NodeEdit::Edit {
+                            start: index,
+                            end: text.chars().count(),
+                            text: String::new(),
+                        }],
+                    );
+                    self.edit(edits);
+                }
+                false
+            }
             _ => true,
         };
         // TODO Regenerate nodes only if necessary.
