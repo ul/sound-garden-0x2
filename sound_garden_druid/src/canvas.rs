@@ -60,8 +60,6 @@ TODO commands in normal mode:
 | .      | Move right of line right.   |
 | <      | Move left of line left.     |
 | >      | Move left of line right.    |
-| =      | Cycle up / Increase by 1.   |
-| -      | Cycle down / Decrease by 1. |
 | /      | List ops.                   |
 | ?      | Help (this screen).         |
 \--------------------------------------/
@@ -133,6 +131,12 @@ impl druid::Widget<Data> for Widget {
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyU).matches(event) => {
                             ctx.submit_command(redo(), None);
+                        }
+                        _ if HotKey::new(None, KeyCode::Equals).matches(event) => {
+                            ctx.submit_command(cycle_up(), None);
+                        }
+                        _ if HotKey::new(None, KeyCode::Minus).matches(event) => {
+                            ctx.submit_command(cycle_down(), None);
                         }
                         _ => {}
                     },

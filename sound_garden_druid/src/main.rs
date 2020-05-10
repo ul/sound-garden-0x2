@@ -193,7 +193,7 @@ impl App {
 impl AppDelegate<canvas::Data> for App {
     fn command(
         &mut self,
-        _ctx: &mut DelegateCtx,
+        ctx: &mut DelegateCtx,
         _target: &Target,
         cmd: &Command,
         data: &mut canvas::Data,
@@ -410,6 +410,84 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
+            CYCLE_UP => {
+                if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
+                    if let Some(d) = text
+                        .get(index..(index + 1))
+                        .and_then(|c| c.parse::<u8>().ok())
+                    {
+                        let d = (d + 1) % 10;
+                        let mut edits = HashMap::new();
+                        edits.insert(
+                            id,
+                            vec![NodeEdit::Edit {
+                                start: index,
+                                end: index + 1,
+                                text: d.to_string(),
+                            }],
+                        );
+                        self.edit(edits);
+                        ctx.submit_command(commit_program(), None);
+                    } else {
+                        for cycle in default_cycles() {
+                            if let Some(ops) = cycle.windows(2).find(|ops| ops[0] == text) {
+                                let mut edits = HashMap::new();
+                                edits.insert(
+                                    id,
+                                    vec![NodeEdit::Edit {
+                                        start: index,
+                                        end: index + 1,
+                                        text: ops[1].to_owned(),
+                                    }],
+                                );
+                                self.edit(edits);
+                                ctx.submit_command(commit_program(), None);
+                                break;
+                            }
+                        }
+                    }
+                }
+                false
+            }
+            CYCLE_DOWN => {
+                if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
+                    if let Some(d) = text
+                        .get(index..(index + 1))
+                        .and_then(|c| c.parse::<u8>().ok())
+                    {
+                        let d = (d + 9) % 10;
+                        let mut edits = HashMap::new();
+                        edits.insert(
+                            id,
+                            vec![NodeEdit::Edit {
+                                start: index,
+                                end: index + 1,
+                                text: d.to_string(),
+                            }],
+                        );
+                        self.edit(edits);
+                        ctx.submit_command(commit_program(), None);
+                    } else {
+                        for cycle in default_cycles() {
+                            if let Some(ops) = cycle.windows(2).find(|ops| ops[1] == text) {
+                                let mut edits = HashMap::new();
+                                edits.insert(
+                                    id,
+                                    vec![NodeEdit::Edit {
+                                        start: index,
+                                        end: index + 1,
+                                        text: ops[0].to_owned(),
+                                    }],
+                                );
+                                self.edit(edits);
+                                ctx.submit_command(commit_program(), None);
+                                break;
+                            }
+                        }
+                    }
+                }
+                false
+            }
             ref selector => {
                 log::debug!("Command {} is not handled in delegate.", selector);
                 true
@@ -419,4 +497,12 @@ impl AppDelegate<canvas::Data> for App {
         data.nodes = Arc::new(self.node_repo.lock().unwrap().nodes());
         result
     }
+}
+
+fn default_cycles() -> Vec<Vec<String>> {
+    // NOTE Always repeat the first element at the end.
+    vec![vec!["s", "t", "w", "c", "s"]]
+        .iter()
+        .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
+        .collect()
 }

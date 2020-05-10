@@ -81,3 +81,15 @@ pub const CUT_NODE: Selector = Selector::new("sound_garden_druid.CUT_NODE");
 pub fn cut_node() -> Command {
     Command::from(CUT_NODE)
 }
+
+pub const CYCLE_UP: Selector = Selector::new("sound_garden_druid.CYCLE_UP");
+
+pub fn cycle_up() -> Command {
+    Command::from(CYCLE_UP)
+}
+
+pub const CYCLE_DOWN: Selector = Selector::new("sound_garden_druid.CYCLE_DOWN");
+
+pub fn cycle_down() -> Command {
+    Command::from(CYCLE_DOWN)
+}
