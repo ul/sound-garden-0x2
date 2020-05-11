@@ -1,7 +1,8 @@
 use druid::{Data, Point};
+use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, num::ParseIntError};
 
-#[derive(Clone, Copy, Data, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Data, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Id(u64);
 
 impl TryFrom<&str> for Id {
@@ -42,10 +43,41 @@ impl Id {
     }
 }
 
+impl std::fmt::Debug for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s: String = self.into();
+        f.write_str(&s)
+    }
+}
+
 #[derive(Clone, Data, Default)]
 pub struct Node {
     pub id: Id,
     /// In grid units, not pixels.
     pub position: Point,
     pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MetaKey {
+    Position(Id),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MetaValue {
+    Position(i64, i64),
+}
+
+// REVIEW Does it make any sense? Why exactly do we need default impl?
+impl Default for MetaKey {
+    fn default() -> Self {
+        MetaKey::Position(Default::default())
+    }
+}
+
+// REVIEW Does it make any sense? Why exactly do we need default impl?
+impl Default for MetaValue {
+    fn default() -> Self {
+        MetaValue::Position(0, 0)
+    }
 }

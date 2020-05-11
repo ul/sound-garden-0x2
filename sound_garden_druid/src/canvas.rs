@@ -178,6 +178,9 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(SysMods::Shift, KeyCode::Period).matches(event) => {
                             ctx.submit_command(move_left_to_right(), None);
                         }
+                        _ if HotKey::new(None, KeyCode::Backtick).matches(event) => {
+                            ctx.submit_command(debug(), None);
+                        }
                         _ => {}
                     },
                     Mode::Insert => match event {

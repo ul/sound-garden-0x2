@@ -5,7 +5,7 @@ use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
-use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Target, WindowDesc};
+use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Target, Vec2, WindowDesc};
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -33,14 +33,14 @@ struct App {
     /// Did we ask audio server to record?
     record: bool,
     /// Channel to communicate to peer.
-    peer_tx: Option<Sender<Patch>>,
+    peer_tx: Option<Sender<Patch<MetaKey, MetaValue>>>,
     /// Edits in the same undo group are undone in one go.
     undo_group: u64,
 }
 
 #[derive(Serialize, Deserialize)]
 enum JamMessage {
-    SyncNodes(Patch),
+    SyncNodes(Patch<MetaKey, MetaValue>),
 }
 
 fn main() -> Result<()> {
@@ -115,7 +115,7 @@ fn main() -> Result<()> {
         Worker::spawn(
             "Send to peer",
             1024,
-            move |rx: Receiver<Patch>, _: Sender<()>| {
+            move |rx: Receiver<Patch<MetaKey, MetaValue>>, _: Sender<()>| {
                 for patch in rx {
                     let mut msg = nng::Message::new();
                     let stream = snap::write::FrameEncoder::new(&mut msg);
@@ -184,7 +184,7 @@ impl App {
         self.save();
     }
 
-    fn sync(&self, patch: Patch) {
+    fn sync(&self, patch: Patch<MetaKey, MetaValue>) {
         if let Some(tx) = self.peer_tx.as_ref() {
             tx.send(patch).ok();
         }
@@ -237,7 +237,10 @@ impl AppDelegate<canvas::Data> for App {
                             .iter()
                             .filter_map(|node| {
                                 if node.position.y == cursor.y && node.position.x > cursor.x {
-                                    Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                                    Some((
+                                        node.id,
+                                        vec![NodeEdit::Move(node.position + Vec2::new(1.0, 0.0))],
+                                    ))
                                 } else {
                                     None
                                 }
@@ -262,7 +265,10 @@ impl AppDelegate<canvas::Data> for App {
                         .iter()
                         .filter_map(|node| {
                             if node.position.y == cursor.y && node.position.x > cursor.x {
-                                Some((node.id, vec![NodeEdit::MoveX(node.position.x - 1.0)]))
+                                Some((
+                                    node.id,
+                                    vec![NodeEdit::Move(node.position - Vec2::new(1.0, 0.0))],
+                                ))
                             } else {
                                 None
                             }
@@ -350,7 +356,10 @@ impl AppDelegate<canvas::Data> for App {
                             .iter()
                             .filter_map(|node| {
                                 if node.position.y == cursor.y && node.position.x >= cursor.x {
-                                    Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                                    Some((
+                                        node.id,
+                                        vec![NodeEdit::Move(node.position + Vec2::new(1.0, 0.0))],
+                                    ))
                                 } else {
                                     None
                                 }
@@ -497,7 +506,10 @@ impl AppDelegate<canvas::Data> for App {
                         if node.position.y == cursor.y
                             && node.position.x + node.text.chars().count() as f64 > cursor.x
                         {
-                            Some((node.id, vec![NodeEdit::MoveX(node.position.x - 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position - Vec2::new(1.0, 0.0))],
+                            ))
                         } else {
                             None
                         }
@@ -516,7 +528,10 @@ impl AppDelegate<canvas::Data> for App {
                         if node.position.y == cursor.y
                             && node.position.x + node.text.chars().count() as f64 > cursor.x
                         {
-                            Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(1.0, 0.0))],
+                            ))
                         } else {
                             None
                         }
@@ -533,7 +548,10 @@ impl AppDelegate<canvas::Data> for App {
                     .iter()
                     .filter_map(|node| {
                         if node.position.y == cursor.y && node.position.x <= cursor.x {
-                            Some((node.id, vec![NodeEdit::MoveX(node.position.x - 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position - Vec2::new(1.0, 0.0))],
+                            ))
                         } else {
                             None
                         }
@@ -550,7 +568,10 @@ impl AppDelegate<canvas::Data> for App {
                     .iter()
                     .filter_map(|node| {
                         if node.position.y == cursor.y && node.position.x <= cursor.x {
-                            Some((node.id, vec![NodeEdit::MoveX(node.position.x + 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(1.0, 0.0))],
+                            ))
                         } else {
                             None
                         }
@@ -563,7 +584,7 @@ impl AppDelegate<canvas::Data> for App {
             MOVE_NODE_LEFT => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
-                    edits.insert(id, vec![NodeEdit::MoveX(position.x - 1.0)]);
+                    edits.insert(id, vec![NodeEdit::Move(position - Vec2::new(1.0, 0.0))]);
                     self.edit(edits);
                 }
                 data.cursor.position.x -= 1.0;
@@ -572,7 +593,7 @@ impl AppDelegate<canvas::Data> for App {
             MOVE_NODE_RIGHT => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
-                    edits.insert(id, vec![NodeEdit::MoveX(position.x + 1.0)]);
+                    edits.insert(id, vec![NodeEdit::Move(position + Vec2::new(1.0, 0.0))]);
                     self.edit(edits);
                 }
                 data.cursor.position.x += 1.0;
@@ -581,7 +602,7 @@ impl AppDelegate<canvas::Data> for App {
             MOVE_NODE_UP => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
-                    edits.insert(id, vec![NodeEdit::MoveY(position.y - 1.0)]);
+                    edits.insert(id, vec![NodeEdit::Move(position - Vec2::new(0.0, 1.0))]);
                     self.edit(edits);
                 }
                 data.cursor.position.y -= 1.0;
@@ -590,7 +611,7 @@ impl AppDelegate<canvas::Data> for App {
             MOVE_NODE_DOWN => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
-                    edits.insert(id, vec![NodeEdit::MoveY(position.y + 1.0)]);
+                    edits.insert(id, vec![NodeEdit::Move(position + Vec2::new(0.0, 1.0))]);
                     self.edit(edits);
                 }
                 data.cursor.position.y += 1.0;
@@ -603,7 +624,10 @@ impl AppDelegate<canvas::Data> for App {
                     .iter()
                     .filter_map(|node| {
                         if node.position.y == cursor.y {
-                            Some((node.id, vec![NodeEdit::MoveY(node.position.y - 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position - Vec2::new(0.0, 1.0))],
+                            ))
                         } else {
                             None
                         }
@@ -620,7 +644,10 @@ impl AppDelegate<canvas::Data> for App {
                     .iter()
                     .filter_map(|node| {
                         if node.position.y == cursor.y {
-                            Some((node.id, vec![NodeEdit::MoveY(node.position.y + 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))],
+                            ))
                         } else {
                             None
                         }
@@ -639,7 +666,10 @@ impl AppDelegate<canvas::Data> for App {
                         if node.position.y < cursor.y
                             || node.position.y == cursor.y && node.position.x <= cursor.x
                         {
-                            Some((node.id, vec![NodeEdit::MoveY(node.position.y - 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position - Vec2::new(0.0, 1.0))],
+                            ))
                         } else {
                             None
                         }
@@ -659,7 +689,10 @@ impl AppDelegate<canvas::Data> for App {
                             || node.position.y == cursor.y
                                 && node.position.x + node.text.chars().count() as f64 > cursor.x
                         {
-                            Some((node.id, vec![NodeEdit::MoveY(node.position.y + 1.0)]))
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))],
+                            ))
                         } else {
                             None
                         }
@@ -667,6 +700,11 @@ impl AppDelegate<canvas::Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y += 1.0;
+                false
+            }
+            DEBUG => {
+                let repo = self.node_repo.lock().unwrap();
+                log::debug!("\nText:\n\n{}\n\nMeta:\n\n{:?}", repo.text(), repo.meta());
                 false
             }
             ref selector => {

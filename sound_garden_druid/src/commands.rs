@@ -165,3 +165,9 @@ pub const MOVE_RIGHT_DOWN: Selector = Selector::new("sound_garden_druid.MOVE_RIG
 pub fn move_right_down() -> Command {
     Command::from(MOVE_RIGHT_DOWN)
 }
+
+pub const DEBUG: Selector = Selector::new("sound_garden_druid.DEBUG");
+
+pub fn debug() -> Command {
+    Command::from(DEBUG)
+}

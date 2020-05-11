@@ -1,5 +1,5 @@
 use crate::types::*;
-use crdt_engine::{Delta, Engine, Patch};
+use crdt_engine::{Delta, Engine, Patch, Rope, ValueOp};
 use druid::Point;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,25 +8,33 @@ use std::{
 };
 
 /// Repository is a source of truth for a distributed state in SGD.
-/// We encode that state in a text form and then treat changes to it as text edits.
+/// We encode text part of that state in a tagged text form and then treat changes to it as text edits.
 /// Extra care should be taken to preserve structure during concurrent edits.
-/// Nodes format is
+///
+/// The rest of the state is represented as key-value storage as representing its change as text edits
+/// doesn't quite work for atomic values.
+/// Consider the following scenario:
+/// * User A moved node into position x=10.
+/// * User A moved node into position x=20.
+/// * User B moved node into position x=30.
+/// * User A called undo for his move.
+/// This would set x=1030 which is definitely not what we want.
+///
+/// Nodes text format is
 /// ```
 /// fs    <- field_separator  <- '\t'
 /// rs    <- record_separator <- '\n'
 /// id    <- [0-9a-f]{16}
-/// x, y  <- [0-9]+
-/// node  <- id fs x fs y fs text
+/// node  <- id fs text
 /// nodes <- (node rs)*
 /// ```
 #[derive(Serialize, Deserialize)]
 pub struct NodeRepository {
-    engine: Engine,
+    engine: Engine<MetaKey, MetaValue>,
 }
 
 pub enum NodeEdit {
-    MoveX(f64),
-    MoveY(f64),
+    Move(Point),
     Edit {
         start: usize,
         end: usize,
@@ -47,26 +55,29 @@ impl NodeRepository {
         self.engine.rebuild();
     }
 
-    pub fn apply(&mut self, patch: Patch) {
+    pub fn apply(&mut self, patch: Patch<MetaKey, MetaValue>) {
         self.engine.apply(patch);
     }
 
-    pub fn add_node(&mut self, node: Node, color: u64) -> Patch {
+    pub fn add_node(&mut self, node: Node, color: u64) -> Patch<MetaKey, MetaValue> {
         let offset = self.engine.text().len_chars();
-        self.engine.edit(vec![Delta {
-            range: (offset, offset),
-            new_text: format!(
-                "{}\t{}\t{}\t{}\n",
-                String::from(node.id),
-                node.position.x,
-                node.position.y,
-                node.text
-            ),
-            color,
-        }])
+        self.engine.edit(&vec![
+            Delta::Text {
+                range: (offset, offset),
+                new_text: format!("{}\t{}\n", String::from(node.id), node.text),
+                color,
+            },
+            Delta::Value {
+                op: ValueOp::Set(
+                    MetaKey::Position(node.id),
+                    MetaValue::Position(node.position.x as _, node.position.y as _),
+                ),
+                color,
+            },
+        ])
     }
 
-    pub fn delete_nodes(&mut self, ids: &[Id], color: u64) -> Patch {
+    pub fn delete_nodes(&mut self, ids: &[Id], color: u64) -> Patch<MetaKey, MetaValue> {
         let ids = ids.into_iter().map(String::from).collect::<HashSet<_>>();
         let code = self.engine.text();
         let deltas = code
@@ -78,7 +89,7 @@ impl NodeRepository {
                     if ids.contains(id) {
                         let start = code.line_to_char(line);
                         let end = code.line_to_char(line + 1);
-                        Some(Delta {
+                        Some(Delta::Text {
                             range: (start, end),
                             new_text: String::new(),
                             color,
@@ -88,11 +99,15 @@ impl NodeRepository {
                     }
                 })
             })
-            .collect();
-        self.engine.edit(deltas)
+            .collect::<Vec<_>>();
+        self.engine.edit(&deltas)
     }
 
-    pub fn edit_nodes(&mut self, edits: HashMap<Id, Vec<NodeEdit>>, color: u64) -> Patch {
+    pub fn edit_nodes(
+        &mut self,
+        edits: HashMap<Id, Vec<NodeEdit>>,
+        color: u64,
+    ) -> Patch<MetaKey, MetaValue> {
         let code = self.engine.text();
         let deltas = code
             .lines()
@@ -106,44 +121,26 @@ impl NodeRepository {
                     .and_then(|id| Id::try_from(id).ok())
                     .and_then(|id| {
                         edits.get(&id).map(|edits| {
-                            edits.into_iter().map(move |edit| {
-                                let mut field_pos =
-                                    record.chars().enumerate().filter_map(|(i, c)| {
-                                        if c == '\t' {
-                                            Some(i)
-                                        } else {
-                                            None
-                                        }
-                                    });
-                                match edit {
-                                    NodeEdit::MoveX(x) => {
-                                        let start = field_pos.next().unwrap() + 1;
-                                        let end = field_pos.next().unwrap();
-                                        Delta {
-                                            range: (line_offset + start, line_offset + end),
-                                            new_text: format!("{}", x),
-                                            color,
-                                        }
-                                    }
-                                    NodeEdit::MoveY(y) => {
-                                        field_pos.next();
-                                        let start = field_pos.next().unwrap() + 1;
-                                        let end = field_pos.next().unwrap();
-                                        Delta {
-                                            range: (line_offset + start, line_offset + end),
-                                            new_text: format!("{}", y),
-                                            color,
-                                        }
-                                    }
-                                    NodeEdit::Edit { start, end, text } => {
-                                        field_pos.next();
-                                        field_pos.next();
-                                        let offset = line_offset + field_pos.next().unwrap() + 1;
-                                        Delta {
-                                            range: (offset + start, offset + end),
-                                            new_text: text.to_owned(),
-                                            color,
-                                        }
+                            edits.into_iter().map(move |edit| match edit {
+                                NodeEdit::Move(p) => Delta::Value {
+                                    op: ValueOp::Set(
+                                        MetaKey::Position(id),
+                                        MetaValue::Position(p.x as _, p.y as _),
+                                    ),
+                                    color,
+                                },
+                                NodeEdit::Edit { start, end, text } => {
+                                    // REVIEW Optimization opportunity: id field has fixed width.
+                                    let text_offset = record
+                                        .chars()
+                                        .enumerate()
+                                        .find_map(|(i, c)| if c == '\t' { Some(i) } else { None })
+                                        .unwrap();
+                                    let offset = line_offset + text_offset + 1;
+                                    Delta::Text {
+                                        range: (offset + start, offset + end),
+                                        new_text: text.to_owned(),
+                                        color,
                                     }
                                 }
                             })
@@ -152,14 +149,14 @@ impl NodeRepository {
             })
             .flatten()
             .collect::<Vec<_>>();
-        self.engine.edit(deltas)
+        self.engine.edit(&deltas)
     }
 
-    pub fn undo(&mut self) -> Option<Patch> {
+    pub fn undo(&mut self) -> Option<Patch<MetaKey, MetaValue>> {
         self.engine.undo()
     }
 
-    pub fn redo(&mut self) -> Option<Patch> {
+    pub fn redo(&mut self) -> Option<Patch<MetaKey, MetaValue>> {
         self.engine.redo()
     }
 
@@ -183,19 +180,23 @@ impl NodeRepository {
     }
 
     pub fn nodes(&self) -> Vec<Node> {
+        let meta = self.engine.meta();
         let mut nodes = self
             .engine
             .text()
             .lines()
             .filter_map(|line| {
-                if let [id, x, y, text] =
-                    String::from(line).trim().split('\t').collect::<Vec<_>>()[..]
-                {
-                    Some(Node {
-                        id: Id::try_from(id).unwrap(),
-                        position: Point::new(x.parse().unwrap(), y.parse().unwrap()),
-                        text: text.to_string(),
-                    })
+                if let [id, text] = String::from(line).trim().split('\t').collect::<Vec<_>>()[..] {
+                    let id = Id::try_from(id).unwrap();
+                    if let Some(&MetaValue::Position(x, y)) = meta.get(&MetaKey::Position(id)) {
+                        Some(Node {
+                            id,
+                            position: Point::new(x as _, y as _),
+                            text: text.to_string(),
+                        })
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -203,5 +204,13 @@ impl NodeRepository {
             .collect::<Vec<_>>();
         nodes.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
         nodes
+    }
+
+    pub fn text(&self) -> &Rope {
+        self.engine.text()
+    }
+
+    pub fn meta(&self) -> &HashMap<MetaKey, MetaValue> {
+        self.engine.meta()
     }
 }
