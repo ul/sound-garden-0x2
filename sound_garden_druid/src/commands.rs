@@ -171,3 +171,17 @@ pub const DEBUG: Selector = Selector::new("sound_garden_druid.DEBUG");
 pub fn debug() -> Command {
     Command::from(DEBUG)
 }
+
+pub const INSERT_NEW_LINE_BELOW: Selector =
+    Selector::new("sound_garden_druid.INSERT_NEW_LINE_BELOW");
+
+pub fn insert_new_line_below() -> Command {
+    Command::from(INSERT_NEW_LINE_BELOW)
+}
+
+pub const INSERT_NEW_LINE_ABOVE: Selector =
+    Selector::new("sound_garden_druid.INSERT_NEW_LINE_ABOVE");
+
+pub fn insert_new_line_above() -> Command {
+    Command::from(INSERT_NEW_LINE_ABOVE)
+}

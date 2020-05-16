@@ -182,6 +182,14 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(None, KeyCode::Backtick).matches(event) => {
                             ctx.submit_command(debug(), None);
                         }
+                        _ if HotKey::new(None, KeyCode::KeyO).matches(event) => {
+                            ctx.submit_command(insert_new_line_below(), None);
+                            self.insert_mode(ctx);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyO).matches(event) => {
+                            ctx.submit_command(insert_new_line_above(), None);
+                            self.insert_mode(ctx);
+                        }
                         _ => {}
                     },
                     Mode::Insert => match event {

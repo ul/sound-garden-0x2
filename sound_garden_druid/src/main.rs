@@ -702,6 +702,56 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
+            INSERT_NEW_LINE_BELOW => {
+                let cursor = data.cursor.position;
+                let x = data
+                    .nodes
+                    .iter()
+                    .fold(cursor.x, |acc, node| acc.min(node.position.x));
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y > cursor.y {
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.x = x;
+                data.cursor.position.y += 1.0;
+                false
+            }
+            INSERT_NEW_LINE_ABOVE => {
+                let cursor = data.cursor.position;
+                let x = data
+                    .nodes
+                    .iter()
+                    .fold(cursor.x, |acc, node| acc.min(node.position.x));
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y < cursor.y {
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(0.0, -1.0))],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.x = x;
+                data.cursor.position.y -= 1.0;
+                false
+            }
             DEBUG => {
                 let repo = self.node_repo.lock().unwrap();
                 log::debug!("\nText:\n\n{}\n\nMeta:\n\n{:?}", repo.text(), repo.meta());
