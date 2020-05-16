@@ -78,28 +78,35 @@ impl NodeRepository {
     }
 
     pub fn delete_nodes(&mut self, ids: &[Id], color: u64) -> Patch<MetaKey, MetaValue> {
-        let ids = ids.into_iter().map(String::from).collect::<HashSet<_>>();
-        let code = self.engine.text();
-        let deltas = code
-            .lines()
-            .map(String::from)
-            .enumerate()
-            .filter_map(|(line, record)| {
-                record.split('\t').next().and_then(|id| {
-                    if ids.contains(id) {
-                        let start = code.line_to_char(line);
-                        let end = code.line_to_char(line + 1);
-                        Some(Delta::Text {
-                            range: (start, end),
-                            new_text: String::new(),
-                            color,
-                        })
-                    } else {
-                        None
-                    }
-                })
+        let mut deltas = ids
+            .iter()
+            .map(|id| Delta::Value {
+                op: ValueOp::Remove(MetaKey::Position(*id)),
+                color,
             })
             .collect::<Vec<_>>();
+        let ids = ids.into_iter().map(String::from).collect::<HashSet<_>>();
+        let code = self.engine.text();
+        deltas.extend(
+            code.lines()
+                .map(String::from)
+                .enumerate()
+                .filter_map(|(line, record)| {
+                    record.split('\t').next().and_then(|id| {
+                        if ids.contains(id) {
+                            let start = code.line_to_char(line);
+                            let end = code.line_to_char(line + 1);
+                            Some(Delta::Text {
+                                range: (start, end),
+                                new_text: String::new(),
+                                color,
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                }),
+        );
         self.engine.edit(&deltas)
     }
 
