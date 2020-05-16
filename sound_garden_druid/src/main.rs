@@ -9,7 +9,7 @@ use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Target, Vec2, W
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 use thread_worker::Worker;
@@ -36,6 +36,8 @@ struct App {
     peer_tx: Option<Sender<Patch<MetaKey, MetaValue>>>,
     /// Edits in the same undo group are undone in one go.
     undo_group: u64,
+    /// Last known node id to text map to detect draft nodes.
+    last_known_node_texts: HashMap<Id, String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -157,6 +159,7 @@ fn main() -> Result<()> {
         record: false,
         peer_tx: peer.as_ref().map(|x| x.sender().clone()),
         undo_group: 0,
+        last_known_node_texts: Default::default(),
     };
 
     let mut data: canvas::Data = Default::default();
@@ -230,7 +233,7 @@ impl AppDelegate<canvas::Data> for App {
                         self.sync(patch);
                         Some(id)
                     })
-                    .map(|id| {
+                    .map(|_| {
                         let cursor = data.cursor.position;
                         let edits = data
                             .nodes
@@ -247,8 +250,6 @@ impl AppDelegate<canvas::Data> for App {
                             })
                             .collect::<HashMap<_, _>>();
                         self.edit(edits);
-                        data.draft_nodes =
-                            Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
                     });
                 data.cursor.position.x += text.chars().count() as f64;
                 false
@@ -282,8 +283,6 @@ impl AppDelegate<canvas::Data> for App {
                     });
 
                     self.edit(edits);
-                    data.draft_nodes =
-                        Arc::new(data.draft_nodes.iter().chain(Some(&id)).copied().collect());
                 });
                 false
             }
@@ -299,7 +298,11 @@ impl AppDelegate<canvas::Data> for App {
                 self.audio_tx
                     .send(audio_server::Message::LoadProgram(ops))
                     .ok();
-                data.draft_nodes = Arc::new(Vec::new());
+                self.last_known_node_texts = data
+                    .nodes
+                    .iter()
+                    .map(|node| (node.id, node.text.to_owned()))
+                    .collect();
                 false
             }
             PLAY_PAUSE => {
@@ -764,6 +767,34 @@ impl AppDelegate<canvas::Data> for App {
         };
         // TODO Regenerate nodes only if necessary.
         data.nodes = Arc::new(self.node_repo.lock().unwrap().nodes());
+        let mut new_draft_nodes = Vec::new();
+        for node in data.nodes.iter() {
+            match self.last_known_node_texts.get(&node.id) {
+                Some(text) => {
+                    if *text != node.text {
+                        new_draft_nodes.push(node.id);
+                    }
+                }
+                None => {
+                    new_draft_nodes.push(node.id);
+                }
+            }
+        }
+        data.draft = !(data
+            .nodes
+            .iter()
+            .map(|node| node.id)
+            .collect::<HashSet<_>>()
+            .symmetric_difference(
+                &self
+                    .last_known_node_texts
+                    .keys()
+                    .copied()
+                    .collect::<HashSet<_>>(),
+            ))
+        .collect::<Vec<_>>()
+        .is_empty();
+        data.draft_nodes = Arc::new(new_draft_nodes);
         result
     }
 }

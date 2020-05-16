@@ -12,7 +12,7 @@ const FONT_SIZE: f64 = 20.0;
 const BACKGROUND_COLOR: Color = Color::WHITE;
 const CURSOR_ALPHA: f64 = 0.33;
 const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x20, 0x20, 0x20);
-// const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
+const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
 
 pub struct Widget {
     mode: Mode,
@@ -25,6 +25,8 @@ pub struct Data {
     pub cursor: Cursor,
     pub nodes: Arc<Vec<Node>>,
     pub draft_nodes: Arc<Vec<Id>>,
+    /// Workspace is draft besides of edited nodes (usually deleted nodes).
+    pub draft: bool,
 }
 
 #[derive(Clone, druid::Data, Default)]
@@ -270,6 +272,14 @@ impl druid::Widget<Data> for Widget {
         let frame = Rect::from_origin_size(Point::ORIGIN, size);
         ctx.fill(frame, &BACKGROUND_COLOR);
 
+        if data.draft || !data.draft_nodes.is_empty() {
+            ctx.stroke(
+                Rect::from((Point::ZERO, size)),
+                &Color::rgb8(0xff, 0x00, 0x00),
+                1.0,
+            );
+        }
+
         // Draw a cursor.
         match self.mode {
             Mode::Normal => {
@@ -308,13 +318,11 @@ impl druid::Widget<Data> for Widget {
                 .new_text_layout(font, &node.text, f64::INFINITY)
                 .build()
                 .unwrap();
-            // Draft check requires extra work to make it reliable when jamming.
-            // let color = if data.draft_nodes.contains(&node.id) {
-            //     DRAFT_NODE_COLOR
-            // } else {
-            //     DEFAULT_NODE_COLOR
-            // };
-            let color = DEFAULT_NODE_COLOR;
+            let color = if data.draft_nodes.contains(&node.id) {
+                DRAFT_NODE_COLOR
+            } else {
+                DEFAULT_NODE_COLOR
+            };
             ctx.draw_text(
                 &layout,
                 Point::new(
