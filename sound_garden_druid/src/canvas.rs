@@ -80,7 +80,8 @@ impl druid::Widget<Data> for Widget {
                             data.cursor.position.y -= 1.0;
                         }
                         _ if HotKey::new(None, KeyCode::KeyL).matches(event)
-                            || HotKey::new(None, KeyCode::ArrowRight).matches(event) =>
+                            || HotKey::new(None, KeyCode::ArrowRight).matches(event)
+                            || HotKey::new(None, KeyCode::Space).matches(event) =>
                         {
                             data.cursor.position.x += 1.0;
                         }
@@ -198,10 +199,11 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
                             data.cursor.position.y -= 1.0;
                         }
-                        _ if HotKey::new(None, KeyCode::ArrowRight).matches(event)
-                            || HotKey::new(None, KeyCode::Space).matches(event) =>
-                        {
+                        _ if HotKey::new(None, KeyCode::ArrowRight).matches(event) => {
                             data.cursor.position.x += 1.0;
+                        }
+                        _ if HotKey::new(None, KeyCode::Space).matches(event) => {
+                            ctx.submit_command(move_right_to_right(), None);
                         }
                         _ if HotKey::new(None, KeyCode::Backspace).matches(event) => {
                             data.cursor.position.x -= 1.0;
