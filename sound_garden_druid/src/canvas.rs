@@ -1,8 +1,8 @@
 use crate::{commands::*, types::*};
 use druid::{
-    piet::{CairoFont, FontBuilder, PietText, Text, TextLayout, TextLayoutBuilder},
-    BoxConstraints, Color, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx,
+    piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
+    BoxConstraints, Color, Command, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
+    LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
 };
 use std::sync::Arc;
 
@@ -17,7 +17,7 @@ const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
 pub struct Widget {
     mode: Mode,
     grid_unit: Option<Size>,
-    font: Option<CairoFont>,
+    font: Option<PietFont>,
 }
 
 #[derive(Clone, druid::Data, Default)]
@@ -69,127 +69,142 @@ impl druid::Widget<Data> for Widget {
                             || HotKey::new(None, KeyCode::ArrowLeft).matches(event)
                             || HotKey::new(None, KeyCode::Backspace).matches(event) =>
                         {
-                            ctx.submit_command(move_cursor(-1.0, 0.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::KeyJ).matches(event)
                             || HotKey::new(None, KeyCode::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(move_cursor(0.0, 1.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(0.0, 1.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::KeyK).matches(event)
                             || HotKey::new(None, KeyCode::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(move_cursor(0.0, -1.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(0.0, -1.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::KeyL).matches(event)
                             || HotKey::new(None, KeyCode::ArrowRight).matches(event)
                             || HotKey::new(None, KeyCode::Space).matches(event) =>
                         {
-                            ctx.submit_command(move_cursor(1.0, 0.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(RawMods::Alt, KeyCode::KeyH).matches(event)
                             || HotKey::new(RawMods::Alt, KeyCode::ArrowLeft).matches(event) =>
                         {
-                            ctx.submit_command(move_node_left(), None);
+                            ctx.submit_command(Command::from(MOVE_NODE_LEFT), None);
                         }
                         _ if HotKey::new(RawMods::Alt, KeyCode::KeyJ).matches(event)
                             || HotKey::new(RawMods::Alt, KeyCode::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(move_node_down(), None);
+                            ctx.submit_command(Command::from(MOVE_NODE_DOWN), None);
                         }
                         _ if HotKey::new(RawMods::Alt, KeyCode::KeyK).matches(event)
                             || HotKey::new(RawMods::Alt, KeyCode::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(move_node_up(), None);
+                            ctx.submit_command(Command::from(MOVE_NODE_UP), None);
                         }
                         _ if HotKey::new(RawMods::Alt, KeyCode::KeyL).matches(event)
                             || HotKey::new(RawMods::Alt, KeyCode::ArrowRight).matches(event) =>
                         {
-                            ctx.submit_command(move_node_right(), None);
+                            ctx.submit_command(Command::from(MOVE_NODE_RIGHT), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyH).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowLeft).matches(event) =>
                         {
-                            ctx.submit_command(move_line_up(), None);
+                            ctx.submit_command(Command::from(MOVE_LINE_UP), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyJ).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(move_right_down(), None);
+                            ctx.submit_command(Command::from(MOVE_RIGHT_DOWN), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyK).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(move_left_up(), None);
+                            ctx.submit_command(Command::from(MOVE_LEFT_UP), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyL).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowRight).matches(event) =>
                         {
-                            ctx.submit_command(move_line_down(), None);
+                            ctx.submit_command(Command::from(MOVE_LINE_DOWN), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
                             self.insert_mode(ctx);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyI).matches(event) => {
                             self.insert_mode(ctx);
-                            ctx.submit_command(splash(), None);
+                            ctx.submit_command(Command::from(SPLASH), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyA).matches(event) => {
-                            ctx.submit_command(move_cursor(1.0, 0.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
+                                None,
+                            );
                             self.insert_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::KeyC).matches(event) => {
                             self.insert_mode(ctx);
-                            ctx.submit_command(cut_node(), None);
+                            ctx.submit_command(Command::from(CUT_NODE), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyD).matches(event) => {
-                            ctx.submit_command(delete_node(), None);
+                            ctx.submit_command(Command::from(DELETE_NODE), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyD).matches(event) => {
-                            ctx.submit_command(delete_line(), None);
+                            ctx.submit_command(Command::from(DELETE_LINE), None);
                         }
                         _ if HotKey::new(None, KeyCode::Return).matches(event) => {
-                            ctx.submit_command(commit_program(), None);
+                            ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
                         }
                         _ if HotKey::new(None, KeyCode::Backslash).matches(event) => {
-                            ctx.submit_command(play_pause(), None);
+                            ctx.submit_command(Command::from(PLAY_PAUSE), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyR).matches(event) => {
-                            ctx.submit_command(toggle_record(), None);
+                            ctx.submit_command(Command::from(TOGGLE_RECORD), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyU).matches(event) => {
-                            ctx.submit_command(undo(), None);
+                            ctx.submit_command(Command::from(UNDO), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyU).matches(event) => {
-                            ctx.submit_command(redo(), None);
+                            ctx.submit_command(Command::from(REDO), None);
                         }
                         _ if HotKey::new(None, KeyCode::Equals).matches(event) => {
-                            ctx.submit_command(cycle_up(), None);
+                            ctx.submit_command(Command::from(CYCLE_UP), None);
                         }
                         _ if HotKey::new(None, KeyCode::Minus).matches(event) => {
-                            ctx.submit_command(cycle_down(), None);
+                            ctx.submit_command(Command::from(CYCLE_DOWN), None);
                         }
                         _ if HotKey::new(None, KeyCode::Comma).matches(event) => {
-                            ctx.submit_command(move_right_to_left(), None);
+                            ctx.submit_command(Command::from(MOVE_RIGHT_TO_LEFT), None);
                         }
                         _ if HotKey::new(None, KeyCode::Period).matches(event) => {
-                            ctx.submit_command(move_right_to_right(), None);
+                            ctx.submit_command(Command::from(MOVE_RIGHT_TO_RIGHT), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::Comma).matches(event) => {
-                            ctx.submit_command(move_left_to_left(), None);
+                            ctx.submit_command(Command::from(MOVE_LEFT_TO_LEFT), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::Period).matches(event) => {
-                            ctx.submit_command(move_left_to_right(), None);
+                            ctx.submit_command(Command::from(MOVE_LEFT_TO_RIGHT), None);
                         }
                         _ if HotKey::new(None, KeyCode::Backtick).matches(event) => {
-                            ctx.submit_command(debug(), None);
+                            ctx.submit_command(Command::from(DEBUG), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyO).matches(event) => {
-                            ctx.submit_command(insert_new_line_below(), None);
+                            ctx.submit_command(Command::from(INSERT_NEW_LINE_BELOW), None);
                             self.insert_mode(ctx);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyO).matches(event) => {
-                            ctx.submit_command(insert_new_line_above(), None);
+                            ctx.submit_command(Command::from(INSERT_NEW_LINE_ABOVE), None);
                             self.insert_mode(ctx);
                         }
                         _ => {}
@@ -201,30 +216,48 @@ impl druid::Widget<Data> for Widget {
                             self.normal_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
-                            ctx.submit_command(move_cursor(-1.0, 0.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
-                            ctx.submit_command(move_cursor(0.0, 1.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(0.0, 1.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
-                            ctx.submit_command(move_cursor(0.0, -1.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(0.0, -1.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::ArrowRight).matches(event) => {
-                            ctx.submit_command(move_cursor(1.0, 0.0), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
+                                None,
+                            );
                         }
                         _ if HotKey::new(None, KeyCode::Space).matches(event) => {
-                            ctx.submit_command(move_right_to_right(), None);
+                            ctx.submit_command(Command::from(MOVE_RIGHT_TO_RIGHT), None);
                         }
                         _ if HotKey::new(None, KeyCode::Backspace).matches(event) => {
-                            ctx.submit_command(move_cursor(-1.0, 0.0), None);
-                            ctx.submit_command(node_delete_char(), None);
+                            ctx.submit_command(
+                                Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
+                                None,
+                            );
+                            ctx.submit_command(Command::from(NODE_DELETE_CHAR), None);
                         }
                         _ if event.key_code.is_printable() => {
                             if let Some(text) = event.text() {
                                 ctx.submit_command(
-                                    node_insert_text(NodeInsertText {
-                                        text: text.to_string(),
-                                    }),
+                                    Command::new(
+                                        NODE_INSERT_TEXT,
+                                        NodeInsertText {
+                                            text: text.to_string(),
+                                        },
+                                    ),
                                     None,
                                 );
                             }
@@ -237,9 +270,12 @@ impl druid::Widget<Data> for Widget {
             Event::MouseDown(event) => {
                 if let Some(grid_unit) = self.grid_unit {
                     ctx.submit_command(
-                        set_cursor(
-                            (event.pos.x / grid_unit.width).round(),
-                            (event.pos.y / grid_unit.height).round(),
+                        Command::new(
+                            SET_CURSOR,
+                            Point::new(
+                                (event.pos.x / grid_unit.width).round(),
+                                (event.pos.y / grid_unit.height).round(),
+                            ),
                         ),
                         None,
                     );
@@ -269,7 +305,7 @@ impl druid::Widget<Data> for Widget {
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &Data, _env: &Env) {
-        let grid_unit = self.get_grid_unit(ctx.text());
+        let grid_unit = self.get_grid_unit(&mut ctx.text());
 
         let size = ctx.size();
 
@@ -317,7 +353,7 @@ impl druid::Widget<Data> for Widget {
 
         // Draw nodes.
         for node in data.nodes.iter() {
-            let font = self.get_font(ctx.text());
+            let font = self.get_font(&mut ctx.text());
             let layout = ctx
                 .text()
                 .new_text_layout(font, &node.text, f64::INFINITY)
@@ -356,7 +392,7 @@ impl Widget {
         self.grid_unit.unwrap()
     }
 
-    fn get_font(&mut self, text: &mut PietText) -> &CairoFont {
+    fn get_font(&mut self, text: &mut PietText) -> &PietFont {
         if self.font.is_none() {
             self.font = Some(text.new_font_by_name(FONT_NAME, FONT_SIZE).build().unwrap());
         }
@@ -365,12 +401,12 @@ impl Widget {
 
     fn insert_mode(&mut self, ctx: &mut EventCtx) {
         self.mode = Mode::Insert;
-        ctx.submit_command(new_undo_group(), None);
+        ctx.submit_command(Command::from(NEW_UNDO_GROUP), None);
     }
 
     fn normal_mode(&mut self, ctx: &mut EventCtx) {
         self.mode = Mode::Normal;
-        ctx.submit_command(new_undo_group(), None);
+        ctx.submit_command(Command::from(NEW_UNDO_GROUP), None);
     }
 }
 

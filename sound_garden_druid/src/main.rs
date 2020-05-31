@@ -169,9 +169,11 @@ fn main() -> Result<()> {
 
     launcher.delegate(app).launch(data)?;
 
-    drop(peer);
+    // FIXME Audio worker deadlock.
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    std::process::exit(0);
 
-    Ok(())
+    // Ok(())
 }
 
 impl App {
@@ -212,15 +214,15 @@ impl AppDelegate<canvas::Data> for App {
     fn command(
         &mut self,
         ctx: &mut DelegateCtx,
-        _target: &Target,
+        _target: Target,
         cmd: &Command,
         data: &mut canvas::Data,
         _env: &Env,
     ) -> bool {
         let prev_cursor_position = data.cursor.position;
-        let result = match cmd.selector {
-            NODE_INSERT_TEXT => {
-                let NodeInsertText { text } = cmd.get_object().unwrap();
+        let result = match cmd {
+            _ if cmd.is(NODE_INSERT_TEXT) => {
+                let NodeInsertText { text } = cmd.get_unchecked(NODE_INSERT_TEXT);
                 data.node_at_cursor()
                     .map(|(Node { id, .. }, index)| {
                         let mut edits = HashMap::new();
@@ -269,7 +271,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x += text.chars().count() as f64;
                 false
             }
-            NODE_DELETE_CHAR => {
+            _ if cmd.is(NODE_DELETE_CHAR) => {
                 data.node_at_cursor().map(|(Node { id, text, .. }, index)| {
                     if index >= text.chars().count() {
                         return;
@@ -301,7 +303,7 @@ impl AppDelegate<canvas::Data> for App {
                 });
                 false
             }
-            COMMIT_PROGRAM => {
+            _ if cmd.is(COMMIT_PROGRAM) => {
                 let ops = data
                     .nodes
                     .iter()
@@ -320,14 +322,14 @@ impl AppDelegate<canvas::Data> for App {
                     .collect();
                 false
             }
-            PLAY_PAUSE => {
+            _ if cmd.is(PLAY_PAUSE) => {
                 self.play = !self.play;
                 self.audio_tx
                     .send(audio_server::Message::Play(self.play))
                     .ok();
                 false
             }
-            TOGGLE_RECORD => {
+            _ if cmd.is(TOGGLE_RECORD) => {
                 self.record = !self.record;
                 self.audio_tx
                     .send(audio_server::Message::Record(self.record))
@@ -335,29 +337,29 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             // TODO cursor undo/redo tracking
-            NEW_UNDO_GROUP => {
+            _ if cmd.is(NEW_UNDO_GROUP) => {
                 self.undo_group += 1;
                 false
             }
-            UNDO => {
+            _ if cmd.is(UNDO) => {
                 if let Some(patch) = self.node_repo.lock().unwrap().undo() {
                     self.sync(patch);
                 }
                 self.save();
                 false
             }
-            REDO => {
+            _ if cmd.is(REDO) => {
                 if let Some(patch) = self.node_repo.lock().unwrap().redo() {
                     self.sync(patch);
                 }
                 self.save();
                 false
             }
-            SAVE => {
+            _ if cmd.is(SAVE) => {
                 self.save();
                 false
             }
-            SPLASH => {
+            _ if cmd.is(SPLASH) => {
                 if let Some((node, _)) = data.node_at_cursor() {
                     let len = node.text.chars().count();
                     data.cursor.position.x = if node.position.x == data.cursor.position.x && len > 1
@@ -388,7 +390,7 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
-            DELETE_NODE => {
+            _ if cmd.is(DELETE_NODE) => {
                 if let Some((node, _)) = data.node_at_cursor() {
                     let patch = self
                         .node_repo
@@ -400,7 +402,7 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
-            DELETE_LINE => {
+            _ if cmd.is(DELETE_LINE) => {
                 let cursor = data.cursor.position;
                 let ids = data
                     .nodes
@@ -422,7 +424,7 @@ impl AppDelegate<canvas::Data> for App {
                 self.save();
                 false
             }
-            CUT_NODE => {
+            _ if cmd.is(CUT_NODE) => {
                 if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
                     edits.insert(
@@ -437,7 +439,7 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
-            CYCLE_UP => {
+            _ if cmd.is(CYCLE_UP) => {
                 if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
                     if let Some(d) = text
                         .get(index..(index + 1))
@@ -454,7 +456,7 @@ impl AppDelegate<canvas::Data> for App {
                             }],
                         );
                         self.edit(edits);
-                        ctx.submit_command(commit_program(), None);
+                        ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
                     } else {
                         for cycle in default_cycles() {
                             if let Some(ops) = cycle.windows(2).find(|ops| ops[0] == text) {
@@ -468,7 +470,7 @@ impl AppDelegate<canvas::Data> for App {
                                     }],
                                 );
                                 self.edit(edits);
-                                ctx.submit_command(commit_program(), None);
+                                ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
                                 break;
                             }
                         }
@@ -476,7 +478,7 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
-            CYCLE_DOWN => {
+            _ if cmd.is(CYCLE_DOWN) => {
                 if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
                     if let Some(d) = text
                         .get(index..(index + 1))
@@ -493,7 +495,7 @@ impl AppDelegate<canvas::Data> for App {
                             }],
                         );
                         self.edit(edits);
-                        ctx.submit_command(commit_program(), None);
+                        ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
                     } else {
                         for cycle in default_cycles() {
                             if let Some(ops) = cycle.windows(2).find(|ops| ops[1] == text) {
@@ -507,7 +509,7 @@ impl AppDelegate<canvas::Data> for App {
                                     }],
                                 );
                                 self.edit(edits);
-                                ctx.submit_command(commit_program(), None);
+                                ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
                                 break;
                             }
                         }
@@ -515,7 +517,7 @@ impl AppDelegate<canvas::Data> for App {
                 }
                 false
             }
-            MOVE_RIGHT_TO_LEFT => {
+            _ if cmd.is(MOVE_RIGHT_TO_LEFT) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -537,7 +539,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x -= 1.0;
                 false
             }
-            MOVE_RIGHT_TO_RIGHT => {
+            _ if cmd.is(MOVE_RIGHT_TO_RIGHT) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -559,7 +561,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x += 1.0;
                 false
             }
-            MOVE_LEFT_TO_LEFT => {
+            _ if cmd.is(MOVE_LEFT_TO_LEFT) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -579,7 +581,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x -= 1.0;
                 false
             }
-            MOVE_LEFT_TO_RIGHT => {
+            _ if cmd.is(MOVE_LEFT_TO_RIGHT) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -599,7 +601,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x += 1.0;
                 false
             }
-            MOVE_NODE_LEFT => {
+            _ if cmd.is(MOVE_NODE_LEFT) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
                     edits.insert(id, vec![NodeEdit::Move(position - Vec2::new(1.0, 0.0))]);
@@ -608,7 +610,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x -= 1.0;
                 false
             }
-            MOVE_NODE_RIGHT => {
+            _ if cmd.is(MOVE_NODE_RIGHT) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
                     edits.insert(id, vec![NodeEdit::Move(position + Vec2::new(1.0, 0.0))]);
@@ -617,7 +619,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.x += 1.0;
                 false
             }
-            MOVE_NODE_UP => {
+            _ if cmd.is(MOVE_NODE_UP) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
                     edits.insert(id, vec![NodeEdit::Move(position - Vec2::new(0.0, 1.0))]);
@@ -626,7 +628,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y -= 1.0;
                 false
             }
-            MOVE_NODE_DOWN => {
+            _ if cmd.is(MOVE_NODE_DOWN) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
                     edits.insert(id, vec![NodeEdit::Move(position + Vec2::new(0.0, 1.0))]);
@@ -635,7 +637,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
-            MOVE_LINE_UP => {
+            _ if cmd.is(MOVE_LINE_UP) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -655,7 +657,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y -= 1.0;
                 false
             }
-            MOVE_LINE_DOWN => {
+            _ if cmd.is(MOVE_LINE_DOWN) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -675,7 +677,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
-            MOVE_LEFT_UP => {
+            _ if cmd.is(MOVE_LEFT_UP) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -697,7 +699,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y -= 1.0;
                 false
             }
-            MOVE_RIGHT_DOWN => {
+            _ if cmd.is(MOVE_RIGHT_DOWN) => {
                 let cursor = data.cursor.position;
                 let edits = data
                     .nodes
@@ -720,7 +722,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
-            INSERT_NEW_LINE_BELOW => {
+            _ if cmd.is(INSERT_NEW_LINE_BELOW) => {
                 let cursor = data.cursor.position;
                 let x = data
                     .nodes
@@ -745,7 +747,7 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
-            INSERT_NEW_LINE_ABOVE => {
+            _ if cmd.is(INSERT_NEW_LINE_ABOVE) => {
                 let cursor = data.cursor.position;
                 let x = data
                     .nodes
@@ -770,23 +772,23 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y -= 1.0;
                 false
             }
-            MOVE_CURSOR => {
-                let delta: Vec2 = *cmd.get_object().unwrap();
+            _ if cmd.is(MOVE_CURSOR) => {
+                let delta: Vec2 = *cmd.get_unchecked(MOVE_CURSOR);
                 data.cursor.position += delta;
                 false
             }
-            SET_CURSOR => {
-                let position: Point = *cmd.get_object().unwrap();
+            _ if cmd.is(SET_CURSOR) => {
+                let position: Point = *cmd.get_unchecked(SET_CURSOR);
                 data.cursor.position = position;
                 false
             }
-            DEBUG => {
+            _ if cmd.is(DEBUG) => {
                 let repo = self.node_repo.lock().unwrap();
                 log::debug!("\nText:\n\n{}\n\nMeta:\n\n{:?}", repo.text(), repo.meta());
                 false
             }
-            ref selector => {
-                log::debug!("Command {} is not handled in delegate.", selector);
+            _ => {
+                log::debug!("Command {:?} is not handled in delegate.", cmd);
                 true
             }
         };
