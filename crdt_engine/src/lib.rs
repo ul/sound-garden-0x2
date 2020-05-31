@@ -122,6 +122,10 @@ impl<K: Member, V: Member> Engine<K, V> {
         &self.text
     }
 
+    pub fn session_id(&self) -> SessionId {
+        self.id
+    }
+
     // Text deltas must not have overlapping ranges.
     pub fn edit(&mut self, deltas: &[Delta<K, V>]) -> Patch<K, V> {
         let mut deltas = deltas.iter().collect::<Vec<_>>();

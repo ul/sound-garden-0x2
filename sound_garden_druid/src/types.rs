@@ -1,3 +1,4 @@
+use crdt_engine::SessionId;
 use druid::{Data, Point};
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, num::ParseIntError};
@@ -61,6 +62,7 @@ pub struct Node {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MetaKey {
     Position(Id),
+    Cursor(SessionId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-use crate::types::*;
+use crate::{canvas::Cursor, types::*};
 use crdt_engine::{Delta, Engine, Patch, Rope, ValueOp};
 use druid::Point;
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,7 @@ impl NodeRepository {
 
     pub fn add_node(&mut self, node: Node, color: u64) -> Patch<MetaKey, MetaValue> {
         let offset = self.engine.text().len_chars();
-        self.engine.edit(&vec![
+        self.engine.edit(&[
             Delta::Text {
                 range: (offset, offset),
                 new_text: format!("{}\t{}\n", String::from(node.id), node.text),
@@ -219,5 +219,28 @@ impl NodeRepository {
 
     pub fn meta(&self) -> &HashMap<MetaKey, MetaValue> {
         self.engine.meta()
+    }
+
+    pub fn get_cursor(&self) -> Cursor {
+        let k = MetaKey::Cursor(self.engine.session_id());
+        let position = self
+            .engine
+            .meta()
+            .get(&k)
+            .and_then(|v| match v {
+                &MetaValue::Position(x, y) => Some(Point::new(x as _, y as _)),
+                // _ => None,
+            })
+            .unwrap_or_default();
+        Cursor { position }
+    }
+
+    pub fn set_cursor(&mut self, cursor: &Cursor, color: u64) -> Patch<MetaKey, MetaValue> {
+        let k = MetaKey::Cursor(self.engine.session_id());
+        let p = cursor.position;
+        self.engine.edit(&[Delta::Value {
+            op: ValueOp::Set(k, MetaValue::Position(p.x as _, p.y as _)),
+            color,
+        }])
     }
 }

@@ -6,7 +6,7 @@ use druid::{
 };
 use std::sync::Arc;
 
-// TODO Move those constants to Data or Env.
+// TODO Move these constants to Data or Env.
 const FONT_NAME: &str = "IBM Plex Mono";
 const FONT_SIZE: f64 = 20.0;
 const BACKGROUND_COLOR: Color = Color::WHITE;
@@ -57,7 +57,7 @@ TODO commands in normal mode:
 */
 
 impl druid::Widget<Data> for Widget {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut Data, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut Data, _env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
@@ -69,23 +69,23 @@ impl druid::Widget<Data> for Widget {
                             || HotKey::new(None, KeyCode::ArrowLeft).matches(event)
                             || HotKey::new(None, KeyCode::Backspace).matches(event) =>
                         {
-                            data.cursor.position.x -= 1.0;
+                            ctx.submit_command(move_cursor(-1.0, 0.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyJ).matches(event)
                             || HotKey::new(None, KeyCode::ArrowDown).matches(event) =>
                         {
-                            data.cursor.position.y += 1.0;
+                            ctx.submit_command(move_cursor(0.0, 1.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyK).matches(event)
                             || HotKey::new(None, KeyCode::ArrowUp).matches(event) =>
                         {
-                            data.cursor.position.y -= 1.0;
+                            ctx.submit_command(move_cursor(0.0, -1.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyL).matches(event)
                             || HotKey::new(None, KeyCode::ArrowRight).matches(event)
                             || HotKey::new(None, KeyCode::Space).matches(event) =>
                         {
-                            data.cursor.position.x += 1.0;
+                            ctx.submit_command(move_cursor(1.0, 0.0), None);
                         }
                         _ if HotKey::new(RawMods::Alt, KeyCode::KeyH).matches(event)
                             || HotKey::new(RawMods::Alt, KeyCode::ArrowLeft).matches(event) =>
@@ -135,7 +135,7 @@ impl druid::Widget<Data> for Widget {
                             ctx.submit_command(splash(), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyA).matches(event) => {
-                            data.cursor.position.x += 1.0;
+                            ctx.submit_command(move_cursor(1.0, 0.0), None);
                             self.insert_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::KeyC).matches(event) => {
@@ -201,22 +201,22 @@ impl druid::Widget<Data> for Widget {
                             self.normal_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
-                            data.cursor.position.x -= 1.0;
+                            ctx.submit_command(move_cursor(-1.0, 0.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
-                            data.cursor.position.y += 1.0;
+                            ctx.submit_command(move_cursor(0.0, 1.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
-                            data.cursor.position.y -= 1.0;
+                            ctx.submit_command(move_cursor(0.0, -1.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowRight).matches(event) => {
-                            data.cursor.position.x += 1.0;
+                            ctx.submit_command(move_cursor(1.0, 0.0), None);
                         }
                         _ if HotKey::new(None, KeyCode::Space).matches(event) => {
                             ctx.submit_command(move_right_to_right(), None);
                         }
                         _ if HotKey::new(None, KeyCode::Backspace).matches(event) => {
-                            data.cursor.position.x -= 1.0;
+                            ctx.submit_command(move_cursor(-1.0, 0.0), None);
                             ctx.submit_command(node_delete_char(), None);
                         }
                         _ if event.key_code.is_printable() => {
@@ -236,8 +236,13 @@ impl druid::Widget<Data> for Widget {
             }
             Event::MouseDown(event) => {
                 if let Some(grid_unit) = self.grid_unit {
-                    data.cursor.position.x = (event.pos.x / grid_unit.width).round();
-                    data.cursor.position.y = (event.pos.y / grid_unit.height).round();
+                    ctx.submit_command(
+                        set_cursor(
+                            (event.pos.x / grid_unit.width).round(),
+                            (event.pos.y / grid_unit.height).round(),
+                        ),
+                        None,
+                    );
                 }
                 ctx.request_paint();
             }

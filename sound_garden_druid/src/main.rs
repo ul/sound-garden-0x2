@@ -1,11 +1,12 @@
 use crate::{commands::*, repository::NodeRepository, types::*};
 use anyhow::Result;
 use audio_program::TextOp;
+use canvas::Cursor;
 use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
-use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Target, Vec2, WindowDesc};
+use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Point, Target, Vec2, WindowDesc};
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -164,6 +165,7 @@ fn main() -> Result<()> {
 
     let mut data: canvas::Data = Default::default();
     data.nodes = Arc::new(node_repo.lock().unwrap().nodes());
+    data.cursor = node_repo.lock().unwrap().get_cursor();
 
     launcher.delegate(app).launch(data)?;
 
@@ -187,6 +189,16 @@ impl App {
         self.save();
     }
 
+    fn set_cursor(&mut self, cursor: &Cursor) {
+        let patch = self
+            .node_repo
+            .lock()
+            .unwrap()
+            .set_cursor(cursor, self.undo_group);
+        self.sync(patch);
+        self.save();
+    }
+
     fn sync(&self, patch: Patch<MetaKey, MetaValue>) {
         if let Some(tx) = self.peer_tx.as_ref() {
             tx.send(patch).ok();
@@ -203,6 +215,7 @@ impl AppDelegate<canvas::Data> for App {
         data: &mut canvas::Data,
         _env: &Env,
     ) -> bool {
+        let prev_cursor_position = data.cursor.position;
         let result = match cmd.selector {
             NODE_INSERT_TEXT => {
                 let NodeInsertText { text } = cmd.get_object().unwrap();
@@ -755,6 +768,16 @@ impl AppDelegate<canvas::Data> for App {
                 data.cursor.position.y -= 1.0;
                 false
             }
+            MOVE_CURSOR => {
+                let delta: Vec2 = *cmd.get_object().unwrap();
+                data.cursor.position += delta;
+                false
+            }
+            SET_CURSOR => {
+                let position: Point = *cmd.get_object().unwrap();
+                data.cursor.position = position;
+                false
+            }
             DEBUG => {
                 let repo = self.node_repo.lock().unwrap();
                 log::debug!("\nText:\n\n{}\n\nMeta:\n\n{:?}", repo.text(), repo.meta());
@@ -765,8 +788,12 @@ impl AppDelegate<canvas::Data> for App {
                 true
             }
         };
+        if data.cursor.position != prev_cursor_position {
+            self.set_cursor(&data.cursor);
+        }
         // TODO Regenerate nodes only if necessary.
         data.nodes = Arc::new(self.node_repo.lock().unwrap().nodes());
+        data.cursor = self.node_repo.lock().unwrap().get_cursor();
         let mut new_draft_nodes = Vec::new();
         for node in data.nodes.iter() {
             match self.last_known_node_texts.get(&node.id) {

@@ -1,4 +1,4 @@
-use druid::{Command, Selector};
+use druid::{Command, Point, Selector, Vec2};
 
 // NOTE Do not construct commands from selectors directly in other modules.
 // Provide and use command creator functions instead.
@@ -184,4 +184,16 @@ pub const INSERT_NEW_LINE_ABOVE: Selector =
 
 pub fn insert_new_line_above() -> Command {
     Command::from(INSERT_NEW_LINE_ABOVE)
+}
+
+pub const MOVE_CURSOR: Selector = Selector::new("sound_garden_druid.MOVE_CURSOR");
+
+pub fn move_cursor(x: f64, y: f64) -> Command {
+    Command::new(MOVE_CURSOR, Vec2::new(x, y))
+}
+
+pub const SET_CURSOR: Selector = Selector::new("sound_garden_druid.SET_CURSOR");
+
+pub fn set_cursor(x: f64, y: f64) -> Command {
+    Command::new(SET_CURSOR, Point::new(x, y))
 }
