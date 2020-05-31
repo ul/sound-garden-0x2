@@ -1,4 +1,5 @@
 use crate::{canvas::Cursor, types::*};
+use anyhow::Result;
 use crdt_engine::{Delta, Engine, Patch, Rope, ValueOp};
 use druid::Point;
 use serde::{Deserialize, Serialize};
@@ -180,10 +181,14 @@ impl NodeRepository {
     }
 
     // TODO Atomic write.
-    pub fn save(&self, filename: &str) {
+    pub fn save(&self, filename: &str) -> Result<()> {
         std::fs::File::create(&filename)
-            .ok()
-            .and_then(|f| serde_cbor::to_writer(snap::write::FrameEncoder::new(f), self).ok());
+            .or_else(|e| anyhow::bail!(e))
+            .and_then(|f| {
+                serde_cbor::to_writer(snap::write::FrameEncoder::new(f), self)
+                    .or_else(|e| anyhow::bail!(e))
+            })
+            .map(|_| ())
     }
 
     pub fn nodes(&self) -> Vec<Node> {

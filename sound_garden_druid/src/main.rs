@@ -176,7 +176,9 @@ fn main() -> Result<()> {
 
 impl App {
     fn save(&self) {
-        self.node_repo.lock().unwrap().save(&self.filename);
+        if self.node_repo.lock().unwrap().save(&self.filename).is_err() {
+            log::error!("Failed to save {}", &self.filename);
+        }
     }
 
     fn edit(&mut self, edits: HashMap<Id, Vec<NodeEdit>>) {
