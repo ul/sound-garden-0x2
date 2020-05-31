@@ -21,6 +21,7 @@ fn main() {
 
     let mut vm = VM::new();
     vm.load_program(parse_program(&text, format.sample_rate.0));
+    vm.play();
 
     let event_loop = host.event_loop();
     let stream_id = event_loop.build_output_stream(&device, &format).unwrap();

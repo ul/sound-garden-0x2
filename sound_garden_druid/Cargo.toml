@@ -1,23 +1,29 @@
 [package]
-name = "sound_garden_vst"
+name = "sound_garden_druid"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2018"
+description = "Sound Garden Druid"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-vst = "0.2.0"
-alloc_counter = "0.0.4"
-serde_json = "1.0.53"
+druid = { git = "https://github.com/xi-editor/druid.git", version = "0.6" }
+anyhow = "1.0.31"
+clap = "2.33.1"
 crossbeam-channel = "0.4.2"
+rand = "0.7.3"
+serde_json = "1.0.53"
+snap = "1.0.0"
+serde_cbor = "0.11.1"
+nng = "1.0.0-rc.2"
+chrono = "0.4.11"
+log = "0.4.8"
+simple_logger = "1.6.0"
 
 [dependencies.serde]
 version = "1.0.111"
 features = ["derive"]
-
-[dependencies.audio_ops]
-path = "../audio_ops"
 
 [dependencies.audio_program]
 path = "../audio_program"
@@ -25,12 +31,8 @@ path = "../audio_program"
 [dependencies.audio_server]
 path = "../audio_server"
 
-[dependencies.audio_vm]
-path = "../audio_vm"
+[dependencies.crdt_engine]
+path = "../crdt_engine"
 
 [dependencies.thread_worker]
 path = "../thread_worker"
-
-[lib]
-name = "soundgarden"
-crate-type = ["cdylib"]

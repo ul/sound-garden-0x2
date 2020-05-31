@@ -506,7 +506,7 @@ scratch in a different form. <a href="http://ul.mantike.pro/SoundGardenManifesto
 <pre>$ git clone https://github.com/ul/sound-garden-0x2.git
 $ cd sound-garden-0x2
 $ cargo install --path play_program --force
-$ cargo install --path sound_garden_terminal --force</pre>
+$ cargo install --path sound_garden_druid --force</pre>
 </div>
 </div>
 </div>
@@ -597,15 +597,207 @@ more tricks in its sleeve to be revealed in <a href="#_templates">Templates</a> 
 </div>
 </div>
 <div class="sect2">
-<h3 id="_sound_garden_terminal">Sound Garden Terminal</h3>
+<h3 id="_sound_garden_druid">Sound Garden Druid</h3>
 <div class="paragraph">
-<p>TBD</p>
+<p>SGD is a GUI interface to Sound Garden which resembles terminal modal editor.
+At the moment you have to run it from command line to provide it with the path to the tree and to configure other options.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>$ sound_garden_terminal ~/Documents/my_tree.sg</pre>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_editing_commands">Editing commands</h4>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 1. Normal mode</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Return</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Commit.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">\</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Play/pause.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">r</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Toggle recording.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">i</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Insert mode.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">I</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Insert mode splash!</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">a</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move left and insert mode.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">c</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cut &amp; insert.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">h</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Left.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">j</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Down.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">k</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Up.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">l</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Right.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">d</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delete node.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">D</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Delete line.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Alt+h</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move node left.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Alt+j</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move node down.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Alt+k</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move node up.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Alt+l</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move node right.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">J</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move node and after down.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">K</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move node and before up.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">H</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move line up.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">L</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move line down.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">,</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move right of line left.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">.</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move right of line right.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">&lt;</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move left of line left.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">&gt;</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move left of line right.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">=</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cycle up / Increase by 1.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">-</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Cycle down / Decrease by 1.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">/</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">List ops.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">u</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Undo</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">U</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Redo</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Cycle commands commit changes immideately.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 2. Insert mode</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 50%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Esc, Return</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Normal mode.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">&lt;char&gt;</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Insert char.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Arrow keys</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move cursor.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Space</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Move cursor left.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Backspace</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Remove previous char.</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
 <div class="sect2">
 <h3 id="_templates">Templates</h3>
 <div class="paragraph">
-<p>TBD</p>
+<p>Templates is syntactic sugar for abbreviating repetitive patterns.
+Template content is defined between square brackets followed by the template name.
+When Sound Garden encounters template name in the program down the line (including other templates),
+it substitutes that name with the template content.
+For example, the following</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ dup s swap c * ] yay
+440 yay 220 yay +</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>will be expanded into</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>440 dup s swap c * 220 dup s swap c * +</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Templates are livecoding-friendly, and replacing <code>s</code> in the template definition with <code>t</code>
+would produce expanded `t`s with the same identity as corresponding `s`s before, preserving phase.</p>
 </div>
 </div>
 </div>
@@ -613,7 +805,7 @@ more tricks in its sleeve to be revealed in <a href="#_templates">Templates</a> 
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2020-02-08 15:48:06 +1100
+Last updated 2020-05-31 16:11:42 +1000
 </div>
 </div>
 </body>

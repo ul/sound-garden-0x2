@@ -44,7 +44,7 @@ impl VM {
             xfade_countdown: 0.0,
             xfade_duration: 2048.0,
             pause_countdown: 0.0,
-            status: Status::Play,
+            status: Status::Pause,
         }
     }
 

@@ -33,6 +33,7 @@ fn main() {
 
     let mut vm = VM::new();
     vm.load_program(parse_program(&text, sample_rate));
+    vm.play();
 
     let t = Instant::now();
     for _ in 0..((duration * (sample_rate as f64)) as _) {

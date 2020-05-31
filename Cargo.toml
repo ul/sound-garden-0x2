@@ -11,8 +11,10 @@ members = [
     "audio_program",
     "audio_server",
     "audio_vm",
+    "crdt_engine",
     "play_program",
     "render_program",
+    "sound_garden_druid",
     "sound_garden_terminal",
     "sound_garden_vst",
     "thread_worker"

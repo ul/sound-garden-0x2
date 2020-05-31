@@ -1,25 +1,12 @@
 use anyhow::Result;
-use audio_program::{compile_program, Context};
-use audio_vm::{Sample, VM};
-use clap::{crate_version, App, Arg};
-use crossbeam_channel::Receiver;
-use ringbuf::RingBuffer;
-use std::sync::{Arc, Mutex};
+use audio_server::{run, Message};
+use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use thread_worker::Worker;
 
-mod audio;
-mod lib;
-mod record;
-
 const CHANNEL_CAPACITY: usize = 64;
-/// It's about 500ms, should be more than enough for write cycle of ~10ms.
-const RECORD_BUFFER_CAPACITY: usize = 48000;
 
 fn main() -> Result<()> {
-    let matches = App::new("kak-lsp")
-        .version(crate_version!())
-        .author("Ruslan Prokopchuk <fer.obbee@gmail.com>")
-        .about("Sound Garden Audio Synth Server")
+    let matches = app_from_crate!()
         .arg(
             Arg::with_name("port")
                 .short("p")
@@ -30,30 +17,7 @@ fn main() -> Result<()> {
         )
         .get_matches();
 
-    let vm = Arc::new(Mutex::new(VM::new()));
-    {
-        vm.lock().unwrap().stop();
-    }
-
-    let rb = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
-    let (producer, consumer) = rb.split();
-
-    let player = {
-        let vm = Arc::clone(&vm);
-        Worker::spawn("Player", CHANNEL_CAPACITY, move |_: Receiver<()>, o| {
-            audio::main(vm, producer, o).unwrap();
-        })
-    };
-
-    let sample_rate = player.receiver().recv()?;
-
-    let recorder = {
-        Worker::spawn("Recorder", CHANNEL_CAPACITY, move |i, o| {
-            record::main(sample_rate, consumer, i, o).unwrap();
-        })
-    };
-
-    let mut ctx = Context::default();
+    let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, run);
 
     let port = matches.value_of("port").unwrap();
     let address = format!("127.0.0.1:{}", port);
@@ -61,28 +25,9 @@ fn main() -> Result<()> {
     for msg in listener.incoming().filter_map(|stream| {
         stream
             .ok()
-            .and_then(|stream| serde_json::from_reader::<_, lib::Message>(stream).ok())
+            .and_then(|stream| serde_json::from_reader::<_, Message>(stream).ok())
     }) {
-        use lib::Message::{LoadProgram, Play, Record};
-        match msg {
-            Play(x) => {
-                if x {
-                    vm.lock().unwrap().play();
-                } else {
-                    vm.lock().unwrap().pause();
-                }
-            }
-            Record(x) => {
-                recorder.sender().send(x).ok();
-            }
-            LoadProgram(ops) => {
-                let program = compile_program(&ops, sample_rate, &mut ctx);
-                let garbage = {
-                    vm.lock().unwrap().load_program(program);
-                };
-                drop(garbage);
-            }
-        }
+        worker.sender().send(msg).unwrap();
     }
 
     Ok(())

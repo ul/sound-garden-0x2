@@ -36,7 +36,7 @@ Continue reading, the rest of the document is Sound Garden manual.
 $ git clone https://github.com/ul/sound-garden-0x2.git
 $ cd sound-garden-0x2
 $ cargo install --path play_program --force
-$ cargo install --path sound_garden_terminal --force
+$ cargo install --path sound_garden_druid --force
 ----
 
 == (Inter)Faces of Sound Garden
@@ -103,10 +103,80 @@ https://github.com/ul/sound-garden-0x2/tree/master/audio_program/src/help.adoc[h
 
 Now its time to dive into Sound Garden as a livecoding environment.
 
-=== Sound Garden Terminal
+=== Sound Garden Druid
 
-TBD
+SGD is a GUI interface to Sound Garden which resembles terminal modal editor.
+At the moment you have to run it from command line to provide it with the path to the tree and to configure other options.
+
+----
+$ sound_garden_terminal ~/Documents/my_tree.sg
+----
+
+==== Editing commands
+
+.Normal mode
+|======================================
+| Return | Commit.
+| \      | Play/pause.
+| r      | Toggle recording.
+| i      | Insert mode.
+| I      | Insert mode splash!
+| a      | Move left and insert mode.
+| c      | Cut & insert.
+| h      | Left.
+| j      | Down.
+| k      | Up.
+| l      | Right.
+| d      | Delete node.
+| D      | Delete line.
+| Alt+h  | Move node left.
+| Alt+j  | Move node down.
+| Alt+k  | Move node up.
+| Alt+l  | Move node right.
+| J      | Move node and after down.
+| K      | Move node and before up.
+| H      | Move line up.
+| L      | Move line down.
+| ,      | Move right of line left.
+| .      | Move right of line right.
+| <      | Move left of line left.
+| >      | Move left of line right.
+| =      | Cycle up / Increase by 1.
+| -      | Cycle down / Decrease by 1.
+| /      | List ops.
+| u      | Undo
+| U      | Redo
+|======================================
+
+Cycle commands commit changes immideately.
+
+.Insert mode
+|======================================
+| Esc, Return | Normal mode.
+| <char>      | Insert char.
+| Arrow keys  | Move cursor.
+| Space       | Move cursor left.
+| Backspace   | Remove previous char.
+|======================================
 
 === Templates
 
-TBD
+Templates is syntactic sugar for abbreviating repetitive patterns.
+Template content is defined between square brackets followed by the template name.
+When Sound Garden encounters template name in the program down the line (including other templates),
+it substitutes that name with the template content.
+For example, the following
+
+----
+[ dup s swap c * ] yay
+440 yay 220 yay +
+----
+
+will be expanded into
+
+----
+440 dup s swap c * 220 dup s swap c * +
+----
+
+Templates are livecoding-friendly, and replacing `s` in the template definition with `t`
+would produce expanded `t`s with the same identity as corresponding `s`s before, preserving phase.
