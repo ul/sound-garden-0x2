@@ -1,4 +1,4 @@
-use crate::{theme::*, types::*};
+use crate::{commands::*, theme::*, types::*};
 use audio_program::get_help;
 use druid::{
     kurbo::{BezPath, Line},
@@ -52,6 +52,12 @@ impl druid::Widget<Data> for Widget {
                     self.record_timer = ctx.request_timer(Duration::from_secs(1));
                 }
                 ctx.request_paint();
+            }
+            Event::MouseDown(e) => {
+                let play_button = Rect::new(18.0, 10.0, 30.0, 30.0);
+                if play_button.contains(e.pos) {
+                    ctx.submit_command(PLAY_PAUSE, None);
+                }
             }
             _ => {}
         }
