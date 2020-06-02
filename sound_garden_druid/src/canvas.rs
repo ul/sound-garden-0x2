@@ -1,21 +1,12 @@
-use crate::{commands::*, types::*};
+use crate::{commands::*, theme::*, types::*};
 use druid::{
     piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
-    BoxConstraints, Color, Command, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
+    BoxConstraints, Command, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
 };
 use std::sync::Arc;
 
-// TODO Move these constants to Data or Env.
-const FONT_NAME: &str = "IBM Plex Mono";
-const FONT_SIZE: f64 = 20.0;
-const BACKGROUND_COLOR: Color = Color::WHITE;
-const CURSOR_ALPHA: f64 = 0.33;
-const DEFAULT_NODE_COLOR: Color = Color::rgb8(0x20, 0x20, 0x20);
-const DRAFT_NODE_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
-
 pub struct Widget {
-    mode: Mode,
     grid_unit: Option<Size>,
     font: Option<PietFont>,
 }
@@ -23,10 +14,9 @@ pub struct Widget {
 #[derive(Clone, druid::Data, Default)]
 pub struct Data {
     pub cursor: Cursor,
-    pub nodes: Arc<Vec<Node>>,
     pub draft_nodes: Arc<Vec<Id>>,
-    /// Workspace is draft besides of edited nodes (usually deleted nodes).
-    pub draft: bool,
+    pub mode: Mode,
+    pub nodes: Arc<Vec<Node>>,
 }
 
 #[derive(Clone, druid::Data, Default)]
@@ -37,7 +27,6 @@ pub struct Cursor {
 impl Default for Widget {
     fn default() -> Self {
         Widget {
-            mode: Default::default(),
             grid_unit: Default::default(),
             font: Default::default(),
         }
@@ -57,13 +46,13 @@ TODO commands in normal mode:
 */
 
 impl druid::Widget<Data> for Widget {
-    fn event(&mut self, ctx: &mut EventCtx, event: &Event, _data: &mut Data, _env: &Env) {
+    fn event(&mut self, ctx: &mut EventCtx, event: &Event, data: &mut Data, _env: &Env) {
         match event {
             Event::WindowConnected => {
                 ctx.request_focus();
             }
             Event::KeyDown(event) => {
-                match self.mode {
+                match data.mode {
                     Mode::Normal => match event {
                         _ if HotKey::new(None, KeyCode::KeyH).matches(event)
                             || HotKey::new(None, KeyCode::ArrowLeft).matches(event)
@@ -140,21 +129,19 @@ impl druid::Widget<Data> for Widget {
                             ctx.submit_command(Command::from(MOVE_LINE_DOWN), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
-                            self.insert_mode(ctx);
+                            ctx.submit_command(Command::from(INSERT_MODE), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyI).matches(event) => {
-                            self.insert_mode(ctx);
                             ctx.submit_command(Command::from(SPLASH), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyA).matches(event) => {
+                            ctx.submit_command(Command::from(INSERT_MODE), None);
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
                                 None,
                             );
-                            self.insert_mode(ctx);
                         }
                         _ if HotKey::new(None, KeyCode::KeyC).matches(event) => {
-                            self.insert_mode(ctx);
                             ctx.submit_command(Command::from(CUT_NODE), None);
                         }
                         _ if HotKey::new(None, KeyCode::KeyD).matches(event) => {
@@ -201,11 +188,9 @@ impl druid::Widget<Data> for Widget {
                         }
                         _ if HotKey::new(None, KeyCode::KeyO).matches(event) => {
                             ctx.submit_command(Command::from(INSERT_NEW_LINE_BELOW), None);
-                            self.insert_mode(ctx);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyO).matches(event) => {
                             ctx.submit_command(Command::from(INSERT_NEW_LINE_ABOVE), None);
-                            self.insert_mode(ctx);
                         }
                         _ => {}
                     },
@@ -213,7 +198,7 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(None, KeyCode::Escape).matches(event)
                             || HotKey::new(None, KeyCode::Return).matches(event) =>
                         {
-                            self.normal_mode(ctx);
+                            ctx.submit_command(Command::from(NORMAL_MODE), None);
                         }
                         _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
                             ctx.submit_command(
@@ -252,12 +237,7 @@ impl druid::Widget<Data> for Widget {
                         _ if event.key_code.is_printable() => {
                             if let Some(text) = event.text() {
                                 ctx.submit_command(
-                                    Command::new(
-                                        NODE_INSERT_TEXT,
-                                        NodeInsertText {
-                                            text: text.to_string(),
-                                        },
-                                    ),
+                                    Command::new(NODE_INSERT_TEXT, text.to_string()),
                                     None,
                                 );
                             }
@@ -273,8 +253,8 @@ impl druid::Widget<Data> for Widget {
                         Command::new(
                             SET_CURSOR,
                             Point::new(
-                                (event.pos.x / grid_unit.width).round(),
-                                (event.pos.y / grid_unit.height).round(),
+                                (event.pos.x / grid_unit.width - 0.5).round(),
+                                (event.pos.y / grid_unit.height - 0.5).round(),
                             ),
                         ),
                         None,
@@ -313,40 +293,32 @@ impl druid::Widget<Data> for Widget {
         let frame = Rect::from_origin_size(Point::ORIGIN, size);
         ctx.fill(frame, &BACKGROUND_COLOR);
 
-        if data.draft || !data.draft_nodes.is_empty() {
-            ctx.stroke(
-                Rect::from((Point::ZERO, size)),
-                &Color::rgb8(0xff, 0x00, 0x00),
-                1.0,
-            );
-        }
-
         // Draw a cursor.
-        match self.mode {
+        match data.mode {
             Mode::Normal => {
                 ctx.blurred_rect(
                     Rect::from((
                         Point::new(
                             data.cursor.position.x * grid_unit.width,
-                            (data.cursor.position.y + 0.25) * grid_unit.height,
+                            (data.cursor.position.y + 0.27) * grid_unit.height,
                         ),
                         grid_unit,
                     )),
                     1.0,
-                    &DEFAULT_NODE_COLOR.with_alpha(CURSOR_ALPHA),
+                    &NODE_DEFAULT_COLOR.with_alpha(CURSOR_NORMAL_ALPHA),
                 );
             }
             Mode::Insert => {
                 ctx.blurred_rect(
                     Rect::from((
                         Point::new(
-                            data.cursor.position.x * grid_unit.width,
-                            (data.cursor.position.y + 1.1) * grid_unit.height,
+                            data.cursor.position.x * grid_unit.width - 2.0,
+                            (data.cursor.position.y + 0.27) * grid_unit.height,
                         ),
-                        Size::new(grid_unit.width, 2.0),
+                        Size::new(2.0, grid_unit.height),
                     )),
                     1.0,
-                    &DEFAULT_NODE_COLOR.with_alpha(CURSOR_ALPHA),
+                    &NODE_DEFAULT_COLOR.with_alpha(CURSOR_INSERT_ALPHA),
                 );
             }
         }
@@ -360,9 +332,9 @@ impl druid::Widget<Data> for Widget {
                 .build()
                 .unwrap();
             let color = if data.draft_nodes.contains(&node.id) {
-                DRAFT_NODE_COLOR
+                NODE_DRAFT_COLOR
             } else {
-                DEFAULT_NODE_COLOR
+                NODE_DEFAULT_COLOR
             };
             ctx.draw_text(
                 &layout,
@@ -397,43 +369,5 @@ impl Widget {
             self.font = Some(text.new_font_by_name(FONT_NAME, FONT_SIZE).build().unwrap());
         }
         self.font.as_ref().unwrap()
-    }
-
-    fn insert_mode(&mut self, ctx: &mut EventCtx) {
-        self.mode = Mode::Insert;
-        ctx.submit_command(Command::from(NEW_UNDO_GROUP), None);
-    }
-
-    fn normal_mode(&mut self, ctx: &mut EventCtx) {
-        self.mode = Mode::Normal;
-        ctx.submit_command(Command::from(NEW_UNDO_GROUP), None);
-    }
-}
-
-impl Data {
-    pub fn node_at_cursor(&self) -> Option<(Node, usize)> {
-        let cursor = self.cursor.position;
-        self.nodes.iter().find_map(|node| {
-            let len = node.text.chars().count() as isize;
-            let index = (cursor.x - node.position.x) as isize;
-            // index <= len instead of strict inequality as we treat trailing space as a part of node.
-            if node.position.y == cursor.y && 0 <= index && index <= len {
-                Some((node.clone(), index as _))
-            } else {
-                None
-            }
-        })
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Mode {
-    Normal,
-    Insert,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Normal
     }
 }

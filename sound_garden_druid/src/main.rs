@@ -7,8 +7,8 @@ use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_v
 use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
 use druid::{
-    AppDelegate, AppLauncher, Command, DelegateCtx, Env, LocalizedString, Point, Target, Vec2,
-    WindowDesc,
+    widget::Flex, AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, LocalizedString,
+    Point, Target, Vec2, Widget, WidgetExt, WindowDesc,
 };
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,9 @@ use thread_worker::Worker;
 
 mod canvas;
 mod commands;
+mod modeline;
 mod repository;
+mod theme;
 mod types;
 
 /// Application business logic is associated with this structure,
@@ -32,10 +34,6 @@ struct App {
     filename: String,
     /// Channel to control audio server.
     audio_tx: Sender<audio_server::Message>,
-    /// Did we ask audio server to play?
-    play: bool,
-    /// Did we ask audio server to record?
-    record: bool,
     /// Channel to communicate to peer.
     peer_tx: Option<Sender<Patch<MetaKey, MetaValue>>>,
     /// Edits in the same undo group are undone in one go.
@@ -47,6 +45,20 @@ struct App {
 #[derive(Serialize, Deserialize)]
 enum JamMessage {
     SyncNodes(Patch<MetaKey, MetaValue>),
+}
+
+#[derive(Clone, druid::Data, Default)]
+struct Data {
+    cursor: Cursor,
+    /// Workspace is draft besides of edited nodes (usually deleted nodes).
+    draft: bool,
+    draft_nodes: Arc<Vec<Id>>,
+    mode: Mode,
+    nodes: Arc<Vec<Node>>,
+    /// Did we ask audio server to play?
+    play: bool,
+    /// Did we ask audio server to record?
+    record: bool,
 }
 
 fn main() -> Result<()> {
@@ -87,7 +99,7 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
     let launcher = AppLauncher::with_window(
-        WindowDesc::new(canvas::Widget::default).title(LocalizedString::new("window-title")),
+        WindowDesc::new(build_ui).title(LocalizedString::new("window-title")),
     );
 
     // Jam mode.
@@ -161,14 +173,12 @@ fn main() -> Result<()> {
         node_repo: Arc::clone(&node_repo),
         filename: String::from(filename),
         audio_tx: audio_control.sender().clone(),
-        play: false, // REVIEW it assumes server starts in pause mode
-        record: false,
         peer_tx: peer.as_ref().map(|x| x.sender().clone()),
         undo_group: 0,
         last_known_node_texts: Default::default(),
     };
 
-    let mut data: canvas::Data = Default::default();
+    let mut data: Data = Default::default();
     data.nodes = Arc::new(node_repo.lock().unwrap().nodes());
     data.cursor = node_repo.lock().unwrap().get_cursor();
 
@@ -215,19 +225,19 @@ impl App {
     }
 }
 
-impl AppDelegate<canvas::Data> for App {
+impl AppDelegate<Data> for App {
     fn command(
         &mut self,
         ctx: &mut DelegateCtx,
         _target: Target,
         cmd: &Command,
-        data: &mut canvas::Data,
+        data: &mut Data,
         _env: &Env,
     ) -> bool {
         let prev_cursor_position = data.cursor.position;
         let result = match cmd {
             _ if cmd.is(NODE_INSERT_TEXT) => {
-                let NodeInsertText { text } = cmd.get_unchecked(NODE_INSERT_TEXT);
+                let text = cmd.get_unchecked(NODE_INSERT_TEXT);
                 data.node_at_cursor()
                     .map(|(Node { id, .. }, index)| {
                         let mut edits = HashMap::new();
@@ -328,22 +338,17 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             _ if cmd.is(PLAY_PAUSE) => {
-                self.play = !self.play;
+                data.play = !data.play;
                 self.audio_tx
-                    .send(audio_server::Message::Play(self.play))
+                    .send(audio_server::Message::Play(data.play))
                     .ok();
                 false
             }
             _ if cmd.is(TOGGLE_RECORD) => {
-                self.record = !self.record;
+                data.record = !data.record;
                 self.audio_tx
-                    .send(audio_server::Message::Record(self.record))
+                    .send(audio_server::Message::Record(data.record))
                     .ok();
-                false
-            }
-            // TODO cursor undo/redo tracking
-            _ if cmd.is(NEW_UNDO_GROUP) => {
-                self.undo_group += 1;
                 false
             }
             _ if cmd.is(UNDO) => {
@@ -365,6 +370,8 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             _ if cmd.is(SPLASH) => {
+                data.mode = Mode::Insert;
+                self.undo_group += 1;
                 if let Some((node, _)) = data.node_at_cursor() {
                     let len = node.text.chars().count();
                     data.cursor.position.x = if node.position.x == data.cursor.position.x && len > 1
@@ -430,6 +437,8 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             _ if cmd.is(CUT_NODE) => {
+                data.mode = Mode::Insert;
+                self.undo_group += 1;
                 if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
                     let mut edits = HashMap::new();
                     edits.insert(
@@ -728,6 +737,8 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             _ if cmd.is(INSERT_NEW_LINE_BELOW) => {
+                data.mode = Mode::Insert;
+                self.undo_group += 1;
                 let cursor = data.cursor.position;
                 let x = data
                     .nodes
@@ -753,6 +764,8 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             _ if cmd.is(INSERT_NEW_LINE_ABOVE) => {
+                data.mode = Mode::Insert;
+                self.undo_group += 1;
                 let cursor = data.cursor.position;
                 let x = data
                     .nodes
@@ -785,6 +798,16 @@ impl AppDelegate<canvas::Data> for App {
             _ if cmd.is(SET_CURSOR) => {
                 let position: Point = *cmd.get_unchecked(SET_CURSOR);
                 data.cursor.position = position;
+                false
+            }
+            _ if cmd.is(INSERT_MODE) => {
+                data.mode = Mode::Insert;
+                self.undo_group += 1;
+                false
+            }
+            _ if cmd.is(NORMAL_MODE) => {
+                data.mode = Mode::Normal;
+                self.undo_group += 1;
                 false
             }
             _ if cmd.is(DEBUG) => {
@@ -835,10 +858,124 @@ impl AppDelegate<canvas::Data> for App {
     }
 }
 
+fn build_ui() -> impl Widget<Data> {
+    Flex::column()
+        .with_flex_child(canvas::Widget::default().lens(CanvasLens {}), 1.0)
+        .with_flex_child(
+            modeline::Widget::default()
+                .fix_height(36.0)
+                .lens(ModelineLens {}),
+            0.0,
+        )
+}
+
 fn default_cycles() -> Vec<Vec<String>> {
     // NOTE Always repeat the first element at the end.
     vec![vec!["s", "t", "w", "c", "s"]]
         .iter()
         .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
         .collect()
+}
+
+struct CanvasLens {}
+
+impl Lens<Data, canvas::Data> for CanvasLens {
+    fn with<V, F: FnOnce(&canvas::Data) -> V>(&self, data: &Data, f: F) -> V {
+        let Data {
+            cursor,
+            draft_nodes,
+            mode,
+            nodes,
+            ..
+        } = data;
+        let data = canvas::Data {
+            cursor: cursor.clone(),
+            draft_nodes: Arc::clone(draft_nodes),
+            mode: *mode,
+            nodes: Arc::clone(nodes),
+        };
+        f(&data)
+    }
+
+    fn with_mut<V, F: FnOnce(&mut canvas::Data) -> V>(&self, data: &mut Data, f: F) -> V {
+        // This lens is read-only, mutation is ignored. Please use commands instead.
+        let Data {
+            cursor,
+            draft_nodes,
+            mode,
+            nodes,
+            ..
+        } = data;
+        let mut data = canvas::Data {
+            cursor: cursor.clone(),
+            draft_nodes: Arc::clone(draft_nodes),
+            mode: *mode,
+            nodes: Arc::clone(nodes),
+        };
+        f(&mut data)
+    }
+}
+
+struct ModelineLens {}
+
+impl Lens<Data, modeline::Data> for ModelineLens {
+    fn with<V, F: FnOnce(&modeline::Data) -> V>(&self, data: &Data, f: F) -> V {
+        let Data {
+            draft,
+            draft_nodes,
+            mode,
+            play,
+            record,
+            ..
+        } = data;
+        let data = modeline::Data {
+            draft: *draft || !draft_nodes.is_empty(),
+            mode: *mode,
+            op_at_cursor: data
+                .node_at_cursor()
+                .and_then(|(node, _)| node.text.split(":").next().map(|s| s.to_owned())),
+            play: *play,
+            record: *record,
+        };
+        f(&data)
+    }
+
+    fn with_mut<V, F: FnOnce(&mut modeline::Data) -> V>(&self, data: &mut Data, f: F) -> V {
+        // This lens is read-only, mutation is ignored. Please use commands instead.
+        let op_at_cursor = data
+            .node_at_cursor()
+            .and_then(|(node, _)| node.text.split(":").next().map(|s| s.to_owned()));
+        let Data {
+            draft,
+            draft_nodes,
+            mode,
+            play,
+            record,
+            ..
+        } = data;
+        let mut data = modeline::Data {
+            draft: *draft || !draft_nodes.is_empty(),
+            mode: *mode,
+            op_at_cursor,
+            play: *play,
+            record: *record,
+        };
+        f(&mut data)
+    }
+}
+
+impl Data {
+    pub fn node_at_cursor(&self) -> Option<(Node, usize)> {
+        let cursor = self.cursor.position;
+        self.nodes.iter().find_map(|node| {
+            let len = node.text.chars().count() as isize;
+            let index = (cursor.x - node.position.x) as isize;
+            // index <= len instead of strict inequality as we treat trailing space as a part of node.
+            if node.position.y == cursor.y && 0 <= index && index <= len {
+                Some((node.clone(), index as _))
+            } else {
+                None
+            }
+        })
+    }
 }

@@ -83,3 +83,15 @@ impl Default for MetaValue {
         MetaValue::Position(0, 0)
     }
 }
+
+#[derive(Clone, Copy, druid::Data, PartialEq, Eq)]
+pub enum Mode {
+    Normal,
+    Insert,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Mode::Normal
+    }
+}

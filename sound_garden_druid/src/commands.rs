@@ -1,9 +1,7 @@
 use druid::{Point, Selector, Vec2};
 
-pub const NODE_INSERT_TEXT: Selector<NodeInsertText> =
-    Selector::new("sound_garden_druid.NODE_INSERT_TEXT");
+pub const NODE_INSERT_TEXT: Selector<String> = Selector::new("sound_garden_druid.NODE_INSERT_TEXT");
 pub const NODE_DELETE_CHAR: Selector = Selector::new("sound_garden_druid.NODE_DELETE_CHAR");
-pub const NEW_UNDO_GROUP: Selector = Selector::new("sound_garden_druid.NEW_UNDO_GROUP");
 pub const COMMIT_PROGRAM: Selector = Selector::new("sound_garden_druid.COMMIT_PROGRAM");
 pub const PLAY_PAUSE: Selector = Selector::new("sound_garden_druid.PLAY_PAUSE");
 pub const TOGGLE_RECORD: Selector = Selector::new("sound_garden_druid.TOGGLE_RECORD");
@@ -35,7 +33,5 @@ pub const INSERT_NEW_LINE_ABOVE: Selector =
     Selector::new("sound_garden_druid.INSERT_NEW_LINE_ABOVE");
 pub const MOVE_CURSOR: Selector<Vec2> = Selector::new("sound_garden_druid.MOVE_CURSOR");
 pub const SET_CURSOR: Selector<Point> = Selector::new("sound_garden_druid.SET_CURSOR");
-
-pub struct NodeInsertText {
-    pub text: String,
-}
+pub const INSERT_MODE: Selector = Selector::new("sound_garden_druid.INSERT_MODE");
+pub const NORMAL_MODE: Selector = Selector::new("sound_garden_druid.NORMAL_MODE");
