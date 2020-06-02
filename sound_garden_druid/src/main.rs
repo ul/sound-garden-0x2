@@ -869,10 +869,20 @@ fn build_ui() -> impl Widget<Data> {
 
 fn default_cycles() -> Vec<Vec<String>> {
     // NOTE Always repeat the first element at the end.
-    vec![vec!["s", "t", "w", "c", "s"]]
-        .iter()
-        .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
-        .collect()
+    [
+        vec!["s", "t", "w", "c", "s"],
+        vec!["sine", "tri", "saw", "cosine", "sine"],
+        vec!["sh", "ssh", "sh"],
+        vec!["l", "h", "l"],
+        vec!["lpf", "hpf", "lpf"],
+        vec!["bqlpf", "bqhpf", "bqlpf"],
+        vec!["clip", "wrap", "clip"],
+        vec!["tline", "tquad", "tline"],
+        vec!["m", "mh", "dm", "dmh", "m"],
+    ]
+    .iter()
+    .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
+    .collect()
 }
 
 struct CanvasLens {}
