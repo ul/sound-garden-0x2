@@ -131,15 +131,15 @@ impl druid::Widget<Data> for Widget {
         .with_alpha(0.8);
         // Play/pause.
         if data.play {
+            ctx.fill(&Rect::new(18.0, 10.0, 22.0, 30.0), &color);
+            ctx.fill(&Rect::new(26.0, 10.0, 30.0, 30.0), &color);
+        } else {
             let mut path = BezPath::new();
             path.move_to(Point::new(18.0, 10.0));
             path.line_to(Point::new(30.0, 20.0));
             path.line_to(Point::new(18.0, 30.0));
             path.close_path();
             ctx.fill(&path, &color);
-        } else {
-            ctx.fill(&Rect::new(18.0, 10.0, 22.0, 30.0), &color);
-            ctx.fill(&Rect::new(26.0, 10.0, 30.0, 30.0), &color);
         }
 
         // Op help.
