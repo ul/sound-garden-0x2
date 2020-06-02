@@ -6,7 +6,10 @@ use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
-use druid::{AppDelegate, AppLauncher, Command, DelegateCtx, Env, Point, Target, Vec2, WindowDesc};
+use druid::{
+    AppDelegate, AppLauncher, Command, DelegateCtx, Env, LocalizedString, Point, Target, Vec2,
+    WindowDesc,
+};
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -83,7 +86,9 @@ fn main() -> Result<()> {
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
-    let launcher = AppLauncher::with_window(WindowDesc::new(canvas::Widget::default));
+    let launcher = AppLauncher::with_window(
+        WindowDesc::new(canvas::Widget::default).title(LocalizedString::new("window-title")),
+    );
 
     // Jam mode.
     // Start a thread to listen to the peer updates.
@@ -788,7 +793,7 @@ impl AppDelegate<canvas::Data> for App {
                 false
             }
             _ => {
-                log::debug!("Command {:?} is not handled in delegate.", cmd);
+                log::debug!("{:?} is not handled in delegate.", cmd);
                 true
             }
         };
