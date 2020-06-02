@@ -7,8 +7,8 @@ use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_v
 use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
 use druid::{
-    widget::Flex, AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, LocalizedString,
-    Point, Target, Vec2, Widget, WidgetExt, WindowDesc,
+    widget::Flex, AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, Point, Target, Vec2,
+    Widget, WidgetExt, WindowDesc,
 };
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
@@ -98,9 +98,7 @@ fn main() -> Result<()> {
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
-    let launcher = AppLauncher::with_window(
-        WindowDesc::new(build_ui).title(LocalizedString::new("window-title")),
-    );
+    let launcher = AppLauncher::with_window(WindowDesc::new(build_ui).title("Sound Garden"));
 
     // Jam mode.
     // Start a thread to listen to the peer updates.
