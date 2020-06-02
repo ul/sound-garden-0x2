@@ -477,8 +477,8 @@ impl AppDelegate<Data> for App {
                                 edits.insert(
                                     id,
                                     vec![NodeEdit::Edit {
-                                        start: index,
-                                        end: index + 1,
+                                        start: 0,
+                                        end: text.len(),
                                         text: ops[1].to_owned(),
                                     }],
                                 );
@@ -516,8 +516,8 @@ impl AppDelegate<Data> for App {
                                 edits.insert(
                                     id,
                                     vec![NodeEdit::Edit {
-                                        start: index,
-                                        end: index + 1,
+                                        start: 0,
+                                        end: text.len(),
                                         text: ops[0].to_owned(),
                                     }],
                                 );
