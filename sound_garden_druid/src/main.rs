@@ -333,6 +333,7 @@ impl AppDelegate<Data> for App {
                     .iter()
                     .map(|node| (node.id, node.text.to_owned()))
                     .collect();
+                self.undo_group += 1;
                 false
             }
             _ if cmd.is(PLAY_PAUSE) => {
