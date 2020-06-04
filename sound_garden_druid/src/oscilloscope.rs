@@ -16,6 +16,13 @@ pub struct Widget {
     max: f64,
 }
 
+#[derive(Clone, druid::Data, Default)]
+pub struct Data {
+    pub enabled: bool,
+    pub monitor: (usize, Frame),
+    pub zoom: i16,
+}
+
 impl Default for Widget {
     fn default() -> Self {
         Widget {
@@ -28,12 +35,12 @@ impl Default for Widget {
     }
 }
 
-impl druid::Widget<(usize, Frame)> for Widget {
+impl druid::Widget<Data> for Widget {
     fn event(
         &mut self,
         _ctx: &mut druid::EventCtx,
         _event: &druid::Event,
-        _data: &mut (usize, Frame),
+        _data: &mut Data,
         _env: &druid::Env,
     ) {
     }
@@ -42,7 +49,7 @@ impl druid::Widget<(usize, Frame)> for Widget {
         &mut self,
         _ctx: &mut druid::LifeCycleCtx,
         _event: &druid::LifeCycle,
-        _data: &(usize, Frame),
+        _data: &Data,
         _env: &druid::Env,
     ) {
     }
@@ -50,8 +57,8 @@ impl druid::Widget<(usize, Frame)> for Widget {
     fn update(
         &mut self,
         ctx: &mut druid::UpdateCtx,
-        _old_data: &(usize, Frame),
-        _data: &(usize, Frame),
+        _old_data: &Data,
+        _data: &Data,
         _env: &druid::Env,
     ) {
         ctx.request_paint();
@@ -61,26 +68,29 @@ impl druid::Widget<(usize, Frame)> for Widget {
         &mut self,
         _ctx: &mut druid::LayoutCtx,
         bc: &druid::BoxConstraints,
-        _data: &(usize, Frame),
+        _data: &Data,
         _env: &druid::Env,
     ) -> druid::Size {
         bc.max()
     }
 
-    fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &(usize, Frame), _env: &druid::Env) {
+    fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &Data, _env: &druid::Env) {
         let size = ctx.size();
 
-        if *data == Default::default() {
+        if !data.enabled {
             ctx.fill(size.to_rect(), &BACKGROUND_COLOR);
             return;
         }
 
         let size = ctx.size();
 
-        self.values.push_back(data.1[0]);
-        if self.values.len() > size.width as usize {
-            self.values
-                .drain(..(self.values.len() - size.width as usize));
+        let zoom = data.zoom + data.zoom.signum();
+
+        let max_len = size.width as usize * if zoom >= 0 { 1 } else { -zoom as _ };
+
+        self.values.push_back(data.monitor.1[0]);
+        if self.values.len() > max_len {
+            self.values.drain(..(self.values.len() - max_len));
         }
 
         let mut min = self
@@ -110,7 +120,17 @@ impl druid::Widget<(usize, Frame)> for Widget {
         let mut path = BezPath::new();
         path.move_to(Point::new(0.0, 0.5 * size.height));
 
-        for (x, &y) in self.values.iter().enumerate() {
+        let screen_step = if zoom > 0 { zoom as _ } else { 1 };
+        let values_step = if zoom < 0 { -zoom as _ } else { 1 };
+        let values_width = values_step * size.width as usize / screen_step;
+        for (x, &y) in (0..(size.width as usize)).step_by(screen_step).zip(
+            self.values
+                .iter()
+                .rev()
+                .take(values_width)
+                .rev()
+                .step_by(values_step),
+        ) {
             let y = linlin(y, max, min, 0.0, size.height);
             path.line_to(Point::new(x as f64, y));
         }

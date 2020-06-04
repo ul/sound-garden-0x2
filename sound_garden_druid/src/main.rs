@@ -66,6 +66,7 @@ struct Data {
     oscilloscope: bool,
     /// The most recent value to render in oscilloscope.
     monitor: (usize, Frame),
+    oscilloscope_zoom: i16,
 }
 
 fn main() -> Result<()> {
@@ -251,18 +252,25 @@ impl AppDelegate<Data> for App {
         let prev_cursor_position = data.cursor.position;
         let result = match cmd {
             _ if cmd.is(OSCILLOSCOPE) => {
-                data.monitor = if data.oscilloscope {
-                    *cmd.get_unchecked(OSCILLOSCOPE)
-                } else {
-                    Default::default()
-                };
-                // Short-circuit for perf.
+                // TODO Just forward event and keep monitor in oscilloscope::Widget
+                // to avoid re-render of other widgets.
+                if data.oscilloscope {
+                    data.monitor = *cmd.get_unchecked(OSCILLOSCOPE)
+                }
+                // Short-circuit for perf as this is a high-freq event.
                 return false;
             }
             _ if cmd.is(TOGGLE_OSCILLOSCOPE) => {
                 data.oscilloscope = !data.oscilloscope;
-                // Short-circuit for perf.
-                return false;
+                false
+            }
+            _ if cmd.is(OSCILLOSCOPE_ZOOM_IN) => {
+                data.oscilloscope_zoom += 1;
+                false
+            }
+            _ if cmd.is(OSCILLOSCOPE_ZOOM_OUT) => {
+                data.oscilloscope_zoom -= 1;
+                false
             }
             _ if cmd.is(NODE_INSERT_TEXT) => {
                 let text = cmd.get_unchecked(NODE_INSERT_TEXT);
@@ -895,7 +903,7 @@ impl AppDelegate<Data> for App {
 }
 
 fn build_ui() -> impl Widget<Data> {
-    let bg = oscilloscope::Widget::default().lens(Data::monitor);
+    let bg = oscilloscope::Widget::default().lens(OscilloscopeLens {});
     let fg = canvas::Widget::default().lens(CanvasLens {});
     let w = overlay::Widget::new(bg, fg);
     Flex::column().with_flex_child(w, 1.0).with_flex_child(
@@ -1024,5 +1032,40 @@ impl Data {
                 None
             }
         })
+    }
+}
+
+struct OscilloscopeLens {}
+
+impl Lens<Data, oscilloscope::Data> for OscilloscopeLens {
+    fn with<V, F: FnOnce(&oscilloscope::Data) -> V>(&self, data: &Data, f: F) -> V {
+        let Data {
+            oscilloscope,
+            monitor,
+            oscilloscope_zoom,
+            ..
+        } = data;
+        let data = oscilloscope::Data {
+            enabled: *oscilloscope,
+            monitor: *monitor,
+            zoom: *oscilloscope_zoom,
+        };
+        f(&data)
+    }
+
+    fn with_mut<V, F: FnOnce(&mut oscilloscope::Data) -> V>(&self, data: &mut Data, f: F) -> V {
+        // This lens is read-only, mutation is ignored. Please use commands instead.
+        let Data {
+            oscilloscope,
+            monitor,
+            oscilloscope_zoom,
+            ..
+        } = data;
+        let mut data = oscilloscope::Data {
+            enabled: *oscilloscope,
+            monitor: *monitor,
+            zoom: *oscilloscope_zoom,
+        };
+        f(&mut data)
     }
 }

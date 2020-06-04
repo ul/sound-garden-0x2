@@ -147,6 +147,8 @@ $ sound_garden_terminal ~/Documents/my_tree.sg
 | u      | Undo
 | U      | Redo
 | v      | Toggle oscilloscope
+| Alt+=  | Oscilloscope zoom in
+| Alt+-  | Oscilloscope zoom out
 |======================================
 
 Cycle commands commit changes immideately.

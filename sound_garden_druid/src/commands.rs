@@ -38,3 +38,6 @@ pub const INSERT_MODE: Selector = Selector::new("sound_garden_druid.INSERT_MODE"
 pub const NORMAL_MODE: Selector = Selector::new("sound_garden_druid.NORMAL_MODE");
 pub const OSCILLOSCOPE: Selector<(usize, Frame)> = Selector::new("sound_garden_druid.OSCILLOSCOPE");
 pub const TOGGLE_OSCILLOSCOPE: Selector = Selector::new("sound_garden_druid.TOGGLE_OSCILLOSCOPE");
+pub const OSCILLOSCOPE_ZOOM_IN: Selector = Selector::new("sound_garden_druid.OSCILLOSCOPE_ZOOM_IN");
+pub const OSCILLOSCOPE_ZOOM_OUT: Selector =
+    Selector::new("sound_garden_druid.OSCILLOSCOPE_ZOOM_OUT");

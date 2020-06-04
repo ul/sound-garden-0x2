@@ -195,6 +195,12 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(None, KeyCode::KeyV).matches(event) => {
                             ctx.submit_command(Command::from(TOGGLE_OSCILLOSCOPE), None);
                         }
+                        _ if HotKey::new(RawMods::Alt, KeyCode::Equals).matches(event) => {
+                            ctx.submit_command(Command::from(OSCILLOSCOPE_ZOOM_IN), None);
+                        }
+                        _ if HotKey::new(RawMods::Alt, KeyCode::Minus).matches(event) => {
+                            ctx.submit_command(Command::from(OSCILLOSCOPE_ZOOM_OUT), None);
+                        }
                         _ => {}
                     },
                     Mode::Insert => match event {
