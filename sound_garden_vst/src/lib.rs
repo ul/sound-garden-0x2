@@ -73,11 +73,10 @@ impl Default for SoundGarden {
                         .ok()
                         .and_then(|stream| serde_json::from_reader::<_, Message>(stream).ok())
                 }) {
-                    use Message::{LoadProgram, Play, Record};
                     match msg {
-                        Play(_x) => {}
-                        Record(_x) => {}
-                        LoadProgram(ops) => {
+                        Message::Play(_x) => {}
+                        Message::Record(_x) => {}
+                        Message::LoadProgram(ops) => {
                             let program = compile_program(
                                 &ops,
                                 sample_rate.load(Ordering::Relaxed),
@@ -85,6 +84,7 @@ impl Default for SoundGarden {
                             );
                             tx.send(ServerOutput::Program(program)).ok();
                         }
+                        Message::Monitor(_) => {}
                     }
                 }
             });

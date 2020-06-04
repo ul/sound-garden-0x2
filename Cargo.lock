@@ -151,6 +151,7 @@ dependencies = [
  "cpal",
  "crossbeam-channel",
  "hound",
+ "nng",
  "ringbuf",
  "serde",
  "serde_json",
@@ -1898,8 +1899,10 @@ name = "sound_garden_druid"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "audio_ops",
  "audio_program",
  "audio_server",
+ "audio_vm",
  "chrono",
  "clap",
  "crdt_engine",

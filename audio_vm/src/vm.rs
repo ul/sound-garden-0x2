@@ -1,8 +1,9 @@
 use crate::op::Op;
-use crate::sample::{Frame, Sample};
+use crate::sample::{AtomicFrame, Frame, Sample};
 use crate::stack::Stack;
 use alloc_counter::no_alloc;
 use smallvec::SmallVec;
+use std::sync::{atomic::Ordering, Arc};
 
 // Totally unscientific attempt to improve performance of small programs by using SmallVec.
 /// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur exetra indirection.
@@ -28,6 +29,11 @@ pub struct VM {
     pause_countdown: Sample,
     /// |> / ||
     status: Status,
+    /// For oscilloscope-like feedback to the client.
+    monitor: Arc<AtomicFrame>,
+    /// What Statement output we want to monitor.
+    /// 0 has a special meaning of the last Statement.
+    monitor_id: u64,
 }
 
 impl Default for VM {
@@ -45,6 +51,8 @@ impl VM {
             xfade_duration: 2048.0,
             pause_countdown: 0.0,
             status: Status::Pause,
+            monitor: Default::default(),
+            monitor_id: 0,
         }
     }
 
@@ -99,7 +107,11 @@ impl VM {
     pub fn next_frame(&mut self) -> Frame {
         match self.status {
             Status::Play => {
-                let frame = perform(&mut self.active_program);
+                let (frame, monitor_frame) =
+                    perform_and_monitor(&mut self.active_program, self.monitor_id);
+                for (a, &x) in self.monitor.iter().zip(&monitor_frame) {
+                    a.store(x.to_bits(), Ordering::Relaxed);
+                }
                 self.xfade(frame);
                 self.play_xfade(frame)
             }
@@ -113,6 +125,14 @@ impl VM {
                 }
             }
         }
+    }
+
+    pub fn monitor(&self) -> Arc<AtomicFrame> {
+        Arc::clone(&self.monitor)
+    }
+
+    pub fn set_monitor_id(&mut self, id: u64) {
+        self.monitor_id = id;
     }
 
     #[inline]
@@ -161,6 +181,23 @@ fn perform(program: &mut Program) -> Frame {
         stmt.op.perform(&mut stack);
     }
     stack.peek()
+}
+
+#[inline]
+fn perform_and_monitor(program: &mut Program, scope_id: u64) -> (Frame, Frame) {
+    let mut scope = Default::default();
+    let mut stack = Stack::new();
+    for stmt in program {
+        stmt.op.perform(&mut stack);
+        if scope_id == stmt.id {
+            scope = stack.peek();
+        }
+    }
+    let frame = stack.peek();
+    if scope_id == 0 {
+        scope = frame;
+    }
+    (frame, scope)
 }
 
 enum Status {

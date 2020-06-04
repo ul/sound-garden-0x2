@@ -1,3 +1,4 @@
+use audio_vm::Frame;
 use druid::{Point, Selector, Vec2};
 
 pub const NODE_INSERT_TEXT: Selector<String> = Selector::new("sound_garden_druid.NODE_INSERT_TEXT");
@@ -35,3 +36,4 @@ pub const MOVE_CURSOR: Selector<Vec2> = Selector::new("sound_garden_druid.MOVE_C
 pub const SET_CURSOR: Selector<Point> = Selector::new("sound_garden_druid.SET_CURSOR");
 pub const INSERT_MODE: Selector = Selector::new("sound_garden_druid.INSERT_MODE");
 pub const NORMAL_MODE: Selector = Selector::new("sound_garden_druid.NORMAL_MODE");
+pub const OSCILLOSCOPE: Selector<(usize, Frame)> = Selector::new("sound_garden_druid.OSCILLOSCOPE");

@@ -25,11 +25,17 @@ simple_logger = "1.6.0"
 version = "1.0.111"
 features = ["derive"]
 
+[dependencies.audio_ops]
+path = "../audio_ops"
+
 [dependencies.audio_program]
 path = "../audio_program"
 
 [dependencies.audio_server]
 path = "../audio_server"
+
+[dependencies.audio_vm]
+path = "../audio_vm"
 
 [dependencies.crdt_engine]
 path = "../crdt_engine"

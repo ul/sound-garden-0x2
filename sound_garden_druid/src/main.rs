@@ -1,6 +1,7 @@
 use crate::{commands::*, repository::NodeRepository, types::*};
 use anyhow::Result;
 use audio_program::TextOp;
+use audio_vm::Frame;
 use canvas::Cursor;
 use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
@@ -21,6 +22,8 @@ use thread_worker::Worker;
 mod canvas;
 mod commands;
 mod modeline;
+mod oscilloscope;
+mod overlay;
 mod repository;
 mod theme;
 mod types;
@@ -47,7 +50,7 @@ enum JamMessage {
     SyncNodes(Patch<MetaKey, MetaValue>),
 }
 
-#[derive(Clone, druid::Data, Default)]
+#[derive(Clone, druid::Data, Default, Lens)]
 struct Data {
     cursor: Cursor,
     /// Workspace is draft besides of edited nodes (usually deleted nodes).
@@ -59,6 +62,7 @@ struct Data {
     play: bool,
     /// Did we ask audio server to record?
     record: bool,
+    monitor: (usize, Frame),
 }
 
 fn main() -> Result<()> {
@@ -149,11 +153,12 @@ fn main() -> Result<()> {
     // Start a worker to send messages to the audio server.
     let audio_control = {
         if let Some(port) = matches.value_of("audio-port") {
+            // TODO Subscribe to remote monitor publisher.
             let address = format!("127.0.0.1:{}", port);
             Worker::spawn(
                 "Audio",
                 1,
-                move |rx: Receiver<audio_server::Message>, _: Sender<()>| {
+                move |rx: Receiver<audio_server::Message>, _: Sender<Frame>| {
                     for msg in rx {
                         if let Ok(stream) = std::net::TcpStream::connect(&address) {
                             serde_json::to_writer(stream, &msg).ok();
@@ -165,6 +170,14 @@ fn main() -> Result<()> {
             Worker::spawn("Audio", 1, audio_server::run)
         }
     };
+
+    let event_sink = launcher.get_external_handle();
+    let monitor_rx = audio_control.receiver().clone();
+    let _scope = Worker::spawn("Oscilloscope", 1, move |_: Receiver<()>, _: Sender<()>| {
+        for msg in monitor_rx.iter().enumerate() {
+            event_sink.submit_command(OSCILLOSCOPE, msg, None).ok();
+        }
+    });
 
     // Finish building app and launch it.
     let app = App {
@@ -234,6 +247,11 @@ impl AppDelegate<Data> for App {
     ) -> bool {
         let prev_cursor_position = data.cursor.position;
         let result = match cmd {
+            _ if cmd.is(OSCILLOSCOPE) => {
+                data.monitor = *cmd.get_unchecked(OSCILLOSCOPE);
+                // Short-circuit for perf.
+                return false;
+            }
             _ if cmd.is(NODE_INSERT_TEXT) => {
                 let text = cmd.get_unchecked(NODE_INSERT_TEXT);
                 data.node_at_cursor()
@@ -853,19 +871,27 @@ impl AppDelegate<Data> for App {
         .collect::<Vec<_>>()
         .is_empty();
         data.draft_nodes = Arc::new(new_draft_nodes);
+        self.audio_tx
+            .send(audio_server::Message::Monitor(
+                data.node_at_cursor()
+                    .map(|(node, _)| u64::from(node.id))
+                    .unwrap_or_default(),
+            ))
+            .ok();
         result
     }
 }
 
 fn build_ui() -> impl Widget<Data> {
-    Flex::column()
-        .with_flex_child(canvas::Widget::default().lens(CanvasLens {}), 1.0)
-        .with_flex_child(
-            modeline::Widget::default()
-                .fix_height(36.0)
-                .lens(ModelineLens {}),
-            0.0,
-        )
+    let bg = oscilloscope::Widget::default().lens(Data::monitor);
+    let fg = canvas::Widget::default().lens(CanvasLens {});
+    let w = overlay::Widget::new(Box::new(bg), Box::new(fg));
+    Flex::column().with_flex_child(w, 1.0).with_flex_child(
+        modeline::Widget::default()
+            .fix_height(36.0)
+            .lens(ModelineLens {}),
+        0.0,
+    )
 }
 
 fn default_cycles() -> Vec<Vec<String>> {
