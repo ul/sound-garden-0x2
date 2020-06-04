@@ -12,6 +12,8 @@ pub struct Widget {
     font: Option<PietFont>,
     grid_unit: Option<Size>,
     values: VecDeque<f64>,
+    min: f64,
+    max: f64,
 }
 
 impl Default for Widget {
@@ -20,6 +22,8 @@ impl Default for Widget {
             font: None,
             grid_unit: None,
             values: VecDeque::new(),
+            min: -1.0,
+            max: 1.0,
         }
     }
 }
@@ -72,29 +76,35 @@ impl druid::Widget<(usize, Frame)> for Widget {
                 .drain(..(self.values.len() - size.width as usize));
         }
 
-        let mut a = self
+        let mut min = self
             .values
             .iter()
             .min_by(|x, y| f64_cmp(x, y))
             .copied()
-            .unwrap_or(-1.0);
-        let mut b = self
+            .unwrap_or(self.min);
+        let mut max = self
             .values
             .iter()
             .max_by(|x, y| f64_cmp(x, y))
             .copied()
-            .unwrap_or(1.0);
+            .unwrap_or(self.max);
 
-        if a == b {
-            a -= 1.0;
-            b += 1.0;
+        if min == max {
+            min -= 1.0;
+            max += 1.0;
         }
+
+        self.min = 0.5 * (self.min + min);
+        self.max = 0.5 * (self.max + max);
+
+        let min = self.min;
+        let max = self.max;
 
         let mut path = BezPath::new();
         path.move_to(Point::new(0.0, 0.5 * size.height));
 
         for (x, &y) in self.values.iter().enumerate() {
-            let y = linlin(y, b, a, 0.0, size.height);
+            let y = linlin(y, max, min, 0.0, size.height);
             path.line_to(Point::new(x as f64, y));
         }
 
@@ -104,7 +114,7 @@ impl druid::Widget<(usize, Frame)> for Widget {
         let font = self.get_font(&mut ctx.text());
         let layout = ctx
             .text()
-            .new_text_layout(font, &format!("{}", b), f64::INFINITY)
+            .new_text_layout(font, &format!("{}", max), f64::INFINITY)
             .build()
             .unwrap();
         ctx.draw_text(
@@ -114,7 +124,7 @@ impl druid::Widget<(usize, Frame)> for Widget {
         );
         let layout = ctx
             .text()
-            .new_text_layout(font, &format!("{}", a), f64::INFINITY)
+            .new_text_layout(font, &format!("{}", min), f64::INFINITY)
             .build()
             .unwrap();
         ctx.draw_text(&layout, Point::new(0.0, size.height), &OSCILLOSCOPE_COLOR);
