@@ -37,3 +37,4 @@ pub const SET_CURSOR: Selector<Point> = Selector::new("sound_garden_druid.SET_CU
 pub const INSERT_MODE: Selector = Selector::new("sound_garden_druid.INSERT_MODE");
 pub const NORMAL_MODE: Selector = Selector::new("sound_garden_druid.NORMAL_MODE");
 pub const OSCILLOSCOPE: Selector<(usize, Frame)> = Selector::new("sound_garden_druid.OSCILLOSCOPE");
+pub const TOGGLE_OSCILLOSCOPE: Selector = Selector::new("sound_garden_druid.TOGGLE_OSCILLOSCOPE");

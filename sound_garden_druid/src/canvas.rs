@@ -192,6 +192,9 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyO).matches(event) => {
                             ctx.submit_command(Command::from(INSERT_NEW_LINE_ABOVE), None);
                         }
+                        _ if HotKey::new(None, KeyCode::KeyV).matches(event) => {
+                            ctx.submit_command(Command::from(TOGGLE_OSCILLOSCOPE), None);
+                        }
                         _ => {}
                     },
                     Mode::Insert => match event {
@@ -270,8 +273,11 @@ impl druid::Widget<Data> for Widget {
         //
     }
 
-    fn update(&mut self, ctx: &mut UpdateCtx, _old_data: &Data, _data: &Data, _env: &Env) {
-        ctx.request_paint();
+    fn update(&mut self, ctx: &mut UpdateCtx, old_data: &Data, data: &Data, _env: &Env) {
+        use druid::Data;
+        if !data.same(old_data) {
+            ctx.request_paint();
+        }
     }
 
     fn layout(

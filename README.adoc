@@ -146,6 +146,7 @@ $ sound_garden_terminal ~/Documents/my_tree.sg
 | /      | List ops.
 | u      | Undo
 | U      | Redo
+| v      | Toggle oscilloscope
 |======================================
 
 Cycle commands commit changes immideately.

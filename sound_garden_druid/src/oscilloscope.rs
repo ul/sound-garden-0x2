@@ -70,6 +70,13 @@ impl druid::Widget<(usize, Frame)> for Widget {
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &(usize, Frame), _env: &druid::Env) {
         let size = ctx.size();
 
+        if *data == Default::default() {
+            ctx.fill(size.to_rect(), &BACKGROUND_COLOR);
+            return;
+        }
+
+        let size = ctx.size();
+
         self.values.push_back(data.1[0]);
         if self.values.len() > size.width as usize {
             self.values

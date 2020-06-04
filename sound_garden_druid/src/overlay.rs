@@ -1,14 +1,17 @@
 use crate::theme::BACKGROUND_COLOR;
-use druid::{Point, Rect, RenderContext};
+use druid::{Point, Rect, RenderContext, WidgetPod};
 
 pub struct Widget<T> {
-    bg: Box<dyn druid::Widget<T>>,
-    fg: Box<dyn druid::Widget<T>>,
+    bg: WidgetPod<T, Box<dyn druid::Widget<T>>>,
+    fg: WidgetPod<T, Box<dyn druid::Widget<T>>>,
 }
 
 impl<T> Widget<T> {
-    pub fn new(bg: Box<dyn druid::Widget<T>>, fg: Box<dyn druid::Widget<T>>) -> Self {
-        Widget { bg, fg }
+    pub fn new(bg: impl druid::Widget<T> + 'static, fg: impl druid::Widget<T> + 'static) -> Self {
+        Widget {
+            bg: WidgetPod::new(bg).boxed(),
+            fg: WidgetPod::new(fg).boxed(),
+        }
     }
 }
 
@@ -35,25 +38,26 @@ impl<T: druid::Data> druid::Widget<T> for Widget<T> {
         self.bg.lifecycle(ctx, event, data, env);
     }
 
-    fn update(&mut self, ctx: &mut druid::UpdateCtx, old_data: &T, data: &T, env: &druid::Env) {
-        self.bg.update(ctx, old_data, data, env);
-        self.fg.update(ctx, old_data, data, env);
+    fn update(&mut self, ctx: &mut druid::UpdateCtx, _old_data: &T, data: &T, env: &druid::Env) {
+        self.bg.update(ctx, data, env);
+        self.fg.update(ctx, data, env);
     }
 
     fn layout(
         &mut self,
-        _ctx: &mut druid::LayoutCtx,
+        ctx: &mut druid::LayoutCtx,
         bc: &druid::BoxConstraints,
-        _data: &T,
-        _env: &druid::Env,
+        data: &T,
+        env: &druid::Env,
     ) -> druid::Size {
-        bc.max()
+        let size = bc.max();
+        self.bg.set_layout_rect(ctx, data, env, size.to_rect());
+        self.fg.set_layout_rect(ctx, data, env, size.to_rect());
+        size
     }
 
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &T, env: &druid::Env) {
         let size = ctx.size();
-
-        // Clean.
         let frame = Rect::from_origin_size(Point::ORIGIN, size);
         ctx.fill(frame, &BACKGROUND_COLOR);
 

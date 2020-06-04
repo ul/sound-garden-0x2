@@ -62,6 +62,9 @@ struct Data {
     play: bool,
     /// Did we ask audio server to record?
     record: bool,
+    /// Do we draw oscilloscope?
+    oscilloscope: bool,
+    /// The most recent value to render in oscilloscope.
     monitor: (usize, Frame),
 }
 
@@ -248,7 +251,16 @@ impl AppDelegate<Data> for App {
         let prev_cursor_position = data.cursor.position;
         let result = match cmd {
             _ if cmd.is(OSCILLOSCOPE) => {
-                data.monitor = *cmd.get_unchecked(OSCILLOSCOPE);
+                data.monitor = if data.oscilloscope {
+                    *cmd.get_unchecked(OSCILLOSCOPE)
+                } else {
+                    Default::default()
+                };
+                // Short-circuit for perf.
+                return false;
+            }
+            _ if cmd.is(TOGGLE_OSCILLOSCOPE) => {
+                data.oscilloscope = !data.oscilloscope;
                 // Short-circuit for perf.
                 return false;
             }
@@ -885,7 +897,7 @@ impl AppDelegate<Data> for App {
 fn build_ui() -> impl Widget<Data> {
     let bg = oscilloscope::Widget::default().lens(Data::monitor);
     let fg = canvas::Widget::default().lens(CanvasLens {});
-    let w = overlay::Widget::new(Box::new(bg), Box::new(fg));
+    let w = overlay::Widget::new(bg, fg);
     Flex::column().with_flex_child(w, 1.0).with_flex_child(
         modeline::Widget::default()
             .fix_height(36.0)

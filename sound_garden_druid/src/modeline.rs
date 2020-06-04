@@ -79,11 +79,14 @@ impl druid::Widget<Data> for Widget {
         data: &Data,
         _env: &druid::Env,
     ) {
-        if data.record && data.record != old_data.record {
-            self.record_phase = true;
-            self.record_timer = ctx.request_timer(Duration::from_secs(1));
+        use druid::Data;
+        if !data.same(old_data) {
+            if data.record && data.record != old_data.record {
+                self.record_phase = true;
+                self.record_timer = ctx.request_timer(Duration::from_secs(1));
+            }
+            ctx.request_paint();
         }
-        ctx.request_paint();
     }
 
     fn layout(
