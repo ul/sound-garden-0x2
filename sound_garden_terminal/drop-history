@@ -1,3 +1,0 @@
-#!/bin/sh
-
-jq 'setpath(["entries"];[]) | setpath(["current"];0) | setpath(["saved"];0)'
