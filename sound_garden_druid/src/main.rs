@@ -9,7 +9,7 @@ use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
 use druid::{
     widget::Flex, AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, Point, Target, Vec2,
-    Widget, WidgetExt, WindowDesc,
+    Widget, WidgetExt, WindowDesc, WindowId,
 };
 use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,6 @@ mod canvas;
 mod commands;
 mod modeline;
 mod oscilloscope;
-mod overlay;
 mod repository;
 mod theme;
 mod types;
@@ -43,6 +42,7 @@ struct App {
     undo_group: u64,
     /// Last known node id to text map to detect draft nodes.
     last_known_node_texts: HashMap<Id, String>,
+    oscilloscope: Option<WindowId>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,10 +62,6 @@ struct Data {
     play: bool,
     /// Did we ask audio server to record?
     record: bool,
-    /// Do we draw oscilloscope?
-    oscilloscope: bool,
-    /// The most recent value to render in oscilloscope.
-    monitor: (usize, Frame),
     oscilloscope_zoom: i16,
 }
 
@@ -178,8 +174,8 @@ fn main() -> Result<()> {
     let event_sink = launcher.get_external_handle();
     let monitor_rx = audio_control.receiver().clone();
     let _scope = Worker::spawn("Oscilloscope", 1, move |_: Receiver<()>, _: Sender<()>| {
-        for msg in monitor_rx.iter().enumerate() {
-            event_sink.submit_command(OSCILLOSCOPE, msg, None).ok();
+        for frame in monitor_rx {
+            event_sink.submit_command(OSCILLOSCOPE, frame, None).ok();
         }
     });
 
@@ -191,6 +187,7 @@ fn main() -> Result<()> {
         peer_tx: peer.as_ref().map(|x| x.sender().clone()),
         undo_group: 0,
         last_known_node_texts: Default::default(),
+        oscilloscope: None,
     };
 
     let mut data: Data = Default::default();
@@ -252,16 +249,23 @@ impl AppDelegate<Data> for App {
         let prev_cursor_position = data.cursor.position;
         let result = match cmd {
             _ if cmd.is(OSCILLOSCOPE) => {
-                // TODO Just forward event and keep monitor in oscilloscope::Widget
-                // to avoid re-render of other widgets.
-                if data.oscilloscope {
-                    data.monitor = *cmd.get_unchecked(OSCILLOSCOPE)
-                }
                 // Short-circuit for perf as this is a high-freq event.
-                return false;
+                return true;
             }
             _ if cmd.is(TOGGLE_OSCILLOSCOPE) => {
-                data.oscilloscope = !data.oscilloscope;
+                match self.oscilloscope {
+                    Some(id) => {
+                        ctx.submit_command(druid::commands::SHOW_WINDOW, Some(Target::Window(id)));
+                    }
+                    None => {
+                        let w = WindowDesc::new(|| {
+                            oscilloscope::Widget::default().lens(OscilloscopeLens {})
+                        })
+                        .title("Oscilloscope");
+                        self.oscilloscope = Some(w.id);
+                        ctx.new_window(w);
+                    }
+                }
                 false
             }
             _ if cmd.is(OSCILLOSCOPE_ZOOM_IN) => {
@@ -900,18 +904,31 @@ impl AppDelegate<Data> for App {
             .ok();
         result
     }
+
+    fn window_removed(
+        &mut self,
+        id: WindowId,
+        _data: &mut Data,
+        _env: &Env,
+        _ctx: &mut DelegateCtx,
+    ) {
+        if let Some(oid) = self.oscilloscope {
+            if oid == id {
+                self.oscilloscope = None;
+            }
+        }
+    }
 }
 
 fn build_ui() -> impl Widget<Data> {
-    let bg = oscilloscope::Widget::default().lens(OscilloscopeLens {});
-    let fg = canvas::Widget::default().lens(CanvasLens {});
-    let w = overlay::Widget::new(bg, fg);
-    Flex::column().with_flex_child(w, 1.0).with_flex_child(
-        modeline::Widget::default()
-            .fix_height(36.0)
-            .lens(ModelineLens {}),
-        0.0,
-    )
+    Flex::column()
+        .with_flex_child(canvas::Widget::default().lens(CanvasLens {}), 1.0)
+        .with_flex_child(
+            modeline::Widget::default()
+                .fix_height(36.0)
+                .lens(ModelineLens {}),
+            0.0,
+        )
 }
 
 fn default_cycles() -> Vec<Vec<String>> {
@@ -1040,14 +1057,9 @@ struct OscilloscopeLens {}
 impl Lens<Data, oscilloscope::Data> for OscilloscopeLens {
     fn with<V, F: FnOnce(&oscilloscope::Data) -> V>(&self, data: &Data, f: F) -> V {
         let Data {
-            oscilloscope,
-            monitor,
-            oscilloscope_zoom,
-            ..
+            oscilloscope_zoom, ..
         } = data;
         let data = oscilloscope::Data {
-            enabled: *oscilloscope,
-            monitor: *monitor,
             zoom: *oscilloscope_zoom,
         };
         f(&data)
@@ -1056,14 +1068,9 @@ impl Lens<Data, oscilloscope::Data> for OscilloscopeLens {
     fn with_mut<V, F: FnOnce(&mut oscilloscope::Data) -> V>(&self, data: &mut Data, f: F) -> V {
         // This lens is read-only, mutation is ignored. Please use commands instead.
         let Data {
-            oscilloscope,
-            monitor,
-            oscilloscope_zoom,
-            ..
+            oscilloscope_zoom, ..
         } = data;
         let mut data = oscilloscope::Data {
-            enabled: *oscilloscope,
-            monitor: *monitor,
             zoom: *oscilloscope_zoom,
         };
         f(&mut data)

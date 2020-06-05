@@ -15,4 +15,4 @@ pub const MODELINE_DRAFT_COLOR: Color = NODE_DRAFT_COLOR;
 pub const MODELINE_NORMAL_COLOR: Color = Color::rgb8(0xcc, 0xcc, 0xcc);
 pub const MODELINE_INSERT_COLOR: Color = Color::rgb8(0x11, 0xcc, 0x11);
 pub const MODELINE_RECORD_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
-pub const OSCILLOSCOPE_COLOR: Color = Color::rgb8(0x00, 0x88, 0x00);
+pub const OSCILLOSCOPE_FOREGROUND_COLOR: Color = Color::rgb8(0x00, 0x88, 0x00);

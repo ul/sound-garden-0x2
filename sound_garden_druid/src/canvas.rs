@@ -300,9 +300,8 @@ impl druid::Widget<Data> for Widget {
         let grid_unit = self.get_grid_unit(&mut ctx.text());
 
         // Clean.
-        // let size = ctx.size();
-        // let frame = Rect::from_origin_size(Point::ORIGIN, size);
-        // ctx.fill(frame, &BACKGROUND_COLOR);
+        let size = ctx.size();
+        ctx.fill(size.to_rect(), &BACKGROUND_COLOR);
 
         // Draw a cursor.
         match data.mode {

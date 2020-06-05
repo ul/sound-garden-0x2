@@ -101,9 +101,9 @@ impl druid::Widget<Data> for Widget {
 
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &Data, _env: &druid::Env) {
         let size = ctx.size();
+        let frame = size.to_rect();
 
         // Clean.
-        let frame = Rect::from_origin_size(Point::ORIGIN, size);
         ctx.fill(frame, &BACKGROUND_COLOR);
         // Border.
         let color = match data.mode {

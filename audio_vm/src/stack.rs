@@ -1,6 +1,6 @@
 use crate::sample::{Frame, Sample, CHANNELS};
 
-const STACK_SIZE: usize = 256;
+const STACK_SIZE: usize = 16;
 const STACK_CAPACITY: usize = CHANNELS * STACK_SIZE;
 
 /// Simple fixed capacity stack tolerant to {over,under}flows.

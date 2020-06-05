@@ -1,10 +1,9 @@
-use crate::theme::*;
+use crate::{commands::*, theme::*};
 use audio_ops::pure::linlin;
-use audio_vm::Frame;
 use druid::{
     kurbo::BezPath,
     piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
-    Point, RenderContext, Size,
+    Event, Point, RenderContext, Size,
 };
 use std::collections::VecDeque;
 
@@ -18,8 +17,6 @@ pub struct Widget {
 
 #[derive(Clone, druid::Data, Default)]
 pub struct Data {
-    pub enabled: bool,
-    pub monitor: (usize, Frame),
     pub zoom: i16,
 }
 
@@ -38,11 +35,18 @@ impl Default for Widget {
 impl druid::Widget<Data> for Widget {
     fn event(
         &mut self,
-        _ctx: &mut druid::EventCtx,
-        _event: &druid::Event,
+        ctx: &mut druid::EventCtx,
+        event: &druid::Event,
         _data: &mut Data,
         _env: &druid::Env,
     ) {
+        match event {
+            Event::Command(cmd) if cmd.is(OSCILLOSCOPE) => {
+                self.values.push_back(cmd.get_unchecked(OSCILLOSCOPE)[0]);
+                ctx.request_paint();
+            }
+            _ => {}
+        }
     }
 
     fn lifecycle(
@@ -77,18 +81,12 @@ impl druid::Widget<Data> for Widget {
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &Data, _env: &druid::Env) {
         let size = ctx.size();
 
-        if !data.enabled {
-            ctx.fill(size.to_rect(), &BACKGROUND_COLOR);
-            return;
-        }
-
-        let size = ctx.size();
+        ctx.fill(size.to_rect(), &BACKGROUND_COLOR);
 
         let zoom = data.zoom + data.zoom.signum();
 
         let max_len = size.width as usize * if zoom >= 0 { 1 } else { -zoom as _ };
 
-        self.values.push_back(data.monitor.1[0]);
         if self.values.len() > max_len {
             self.values.drain(..(self.values.len() - max_len));
         }
@@ -135,7 +133,7 @@ impl druid::Widget<Data> for Widget {
             path.line_to(Point::new(x as f64, y));
         }
 
-        ctx.stroke(path, &OSCILLOSCOPE_COLOR.with_alpha(0.25), 1.0);
+        ctx.stroke(path, &OSCILLOSCOPE_FOREGROUND_COLOR, 1.0);
 
         let grid_unit = self.get_grid_unit(&mut ctx.text());
         let font = self.get_font(&mut ctx.text());
@@ -147,14 +145,18 @@ impl druid::Widget<Data> for Widget {
         ctx.draw_text(
             &layout,
             Point::new(0.0, 0.8 * grid_unit.height),
-            &OSCILLOSCOPE_COLOR,
+            &FOREGROUND_COLOR,
         );
         let layout = ctx
             .text()
             .new_text_layout(font, &format!("{}", min), f64::INFINITY)
             .build()
             .unwrap();
-        ctx.draw_text(&layout, Point::new(0.0, size.height), &OSCILLOSCOPE_COLOR);
+        ctx.draw_text(
+            &layout,
+            Point::new(0.0, size.height - 0.2 * grid_unit.height),
+            &FOREGROUND_COLOR,
+        );
     }
 }
 
