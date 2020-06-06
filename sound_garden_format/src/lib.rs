@@ -1,8 +1,8 @@
-use crate::{canvas::Cursor, types::*};
 use anyhow::Result;
 use crdt_engine::{Delta, Engine, Patch, Rope, ValueOp};
 use druid::Point;
 use serde::{Deserialize, Serialize};
+use sound_garden_types::*;
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,

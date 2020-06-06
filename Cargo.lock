@@ -1880,7 +1880,39 @@ dependencies = [
  "serde_json",
  "simple_logger",
  "snap",
+ "sound_garden_format",
+ "sound_garden_types",
  "thread_worker",
+]
+
+[[package]]
+name = "sound_garden_format"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crdt_engine",
+ "druid",
+ "serde",
+ "serde_cbor",
+ "snap",
+ "sound_garden_types",
+]
+
+[[package]]
+name = "sound_garden_program"
+version = "0.1.0"
+dependencies = [
+ "sound_garden_format",
+]
+
+[[package]]
+name = "sound_garden_types"
+version = "0.1.0"
+dependencies = [
+ "crdt_engine",
+ "druid",
+ "rand 0.7.3",
+ "serde",
 ]
 
 [[package]]

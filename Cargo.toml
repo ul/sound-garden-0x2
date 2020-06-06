@@ -15,6 +15,9 @@ members = [
     "play_program",
     "render_program",
     "sound_garden_druid",
+    "sound_garden_format",
+    "sound_garden_program",
+    "sound_garden_types",
     "sound_garden_vst",
     "thread_worker"
 ]

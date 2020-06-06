@@ -40,5 +40,11 @@ path = "../audio_vm"
 [dependencies.crdt_engine]
 path = "../crdt_engine"
 
+[dependencies.sound_garden_format]
+path = "../sound_garden_format"
+
+[dependencies.sound_garden_types]
+path = "../sound_garden_types"
+
 [dependencies.thread_worker]
 path = "../thread_worker"

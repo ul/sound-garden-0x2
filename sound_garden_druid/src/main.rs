@@ -1,8 +1,7 @@
-use crate::{commands::*, repository::NodeRepository, types::*};
+use crate::commands::*;
 use anyhow::Result;
 use audio_program::TextOp;
 use audio_vm::Frame;
-use canvas::Cursor;
 use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use crdt_engine::Patch;
@@ -11,8 +10,9 @@ use druid::{
     widget::Flex, AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, Point, Target, Vec2,
     Widget, WidgetExt, WindowDesc, WindowId,
 };
-use repository::NodeEdit;
 use serde::{Deserialize, Serialize};
+use sound_garden_format::{NodeEdit, NodeRepository};
+use sound_garden_types::*;
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -23,9 +23,7 @@ mod canvas;
 mod commands;
 mod modeline;
 mod oscilloscope;
-mod repository;
 mod theme;
-mod types;
 
 /// Application business logic is associated with this structure,
 /// we implement druid's AppDelegate for it.

@@ -1,10 +1,11 @@
-use crate::{commands::*, theme::*, types::*};
+use crate::{commands::*, theme::*};
 use audio_program::get_help;
 use druid::{
     kurbo::{BezPath, Line},
     piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
     Event, Point, Rect, RenderContext, Size, TimerToken,
 };
+use sound_garden_types::*;
 use std::{collections::HashMap, time::Duration};
 
 pub struct Widget {

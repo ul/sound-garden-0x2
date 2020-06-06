@@ -1,9 +1,10 @@
-use crate::{commands::*, theme::*, types::*};
+use crate::{commands::*, theme::*};
 use druid::{
     piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
     BoxConstraints, Command, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
 };
+use sound_garden_types::*;
 use std::sync::Arc;
 
 pub struct Widget {
@@ -17,11 +18,6 @@ pub struct Data {
     pub draft_nodes: Arc<Vec<Id>>,
     pub mode: Mode,
     pub nodes: Arc<Vec<Node>>,
-}
-
-#[derive(Clone, druid::Data, Default)]
-pub struct Cursor {
-    pub position: Point,
 }
 
 impl Default for Widget {

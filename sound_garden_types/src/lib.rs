@@ -95,3 +95,8 @@ impl Default for Mode {
         Mode::Normal
     }
 }
+
+#[derive(Clone, druid::Data, Default)]
+pub struct Cursor {
+    pub position: Point,
+}
