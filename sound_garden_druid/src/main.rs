@@ -932,6 +932,7 @@ fn build_ui() -> impl Widget<Data> {
 fn default_cycles() -> Vec<Vec<String>> {
     // NOTE Always repeat the first element at the end.
     [
+        vec!["+", "*", "+"],
         vec!["s", "t", "w", "c", "s"],
         vec!["sine", "tri", "saw", "cosine", "sine"],
         vec!["sh", "ssh", "sh"],
