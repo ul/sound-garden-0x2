@@ -149,6 +149,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "tquad" => push_args!(id, Transition, sample_rate, pure::quadratic_curve),
             "unit" => push_args!(id, Fn1, pure::unit),
             "w" => push_args!(id, Phasor, sample_rate),
+            "wah" => push_args!(id, WahPedal, sample_rate),
             "wrap" => push_args!(id, Fn1, pure::wrap),
             _ => match op.parse::<Sample>() {
                 Ok(x) => push_args!(id, Constant, x),

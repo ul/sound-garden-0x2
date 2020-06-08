@@ -77,6 +77,7 @@ delay:<N>, dl:<N>:: (x, time) -> max delay time is <N> seconds
 feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo, max delay is <N> seconds
 conv:<N>:: (x, y) -> convolve two signals with a N frames wide window
 convm:<N>:: (x, ...ys) -> convolve x with a N frames wide kernel of ys
+wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass!
 
 === Triggers
 

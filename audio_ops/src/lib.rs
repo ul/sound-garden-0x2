@@ -23,11 +23,12 @@ mod sampler;
 mod spectral_transform;
 mod stack;
 mod variable;
+mod wah;
 mod yin;
 
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*,
     filters::*, function::*, input::*, metro::*, noise::*, noop::*, osc::*, pan::*, param::*,
     phasor::*, pulse::*, sample_and_hold::*, sampler::*, spectral_transform::*, stack::*,
-    variable::*, yin::*,
+    variable::*, wah::*, yin::*,
 };
