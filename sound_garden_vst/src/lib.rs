@@ -93,6 +93,8 @@ impl Default for SoundGarden {
         if let ServerOutput::Port(p) = server.receiver().recv().unwrap() {
             port = p;
         };
+        let mut vm: VM = Default::default();
+        vm.play();
         SoundGarden {
             input,
             params: Arc::new(Params {
@@ -101,7 +103,7 @@ impl Default for SoundGarden {
                 port,
             }),
             server,
-            vm: Default::default(),
+            vm,
         }
     }
 }
