@@ -11,7 +11,7 @@ druid = { git = "https://github.com/xi-editor/druid.git", version = "0.6" }
 rand = "0.7.3"
 
 [dependencies.serde]
-version = "1.0.111"
+version = "1.0.112"
 features = ["derive"]
 
 [dependencies.crdt_engine]

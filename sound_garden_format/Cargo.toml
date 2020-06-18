@@ -13,7 +13,7 @@ serde_cbor = "0.11.1"
 snap = "1.0.0"
 
 [dependencies.serde]
-version = "1.0.111"
+version = "1.0.112"
 features = ["derive"]
 
 [dependencies.crdt_engine]

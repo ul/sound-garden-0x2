@@ -10,7 +10,7 @@ edition = "2018"
 itertools = "0.9.0"
 rustfft = "3.0.1"
 apodize = "1.0.0"
-micromath = "1.0.0"
+micromath = "1.0.1"
 
 [dependencies.audio_vm]
 path = "../audio_vm"

@@ -20,11 +20,11 @@ clap = "2.33.1"
 crossbeam-channel = "0.4.2"
 hound = "3.4.0"
 ringbuf = "0.2.1"
-serde_json = "1.0.53"
+serde_json = "1.0.55"
 nng = "1.0.0-rc.2"
 
 [dependencies.serde]
-version = "1.0.111"
+version = "1.0.112"
 features = ["derive"]
 
 [dependencies.audio_ops]
