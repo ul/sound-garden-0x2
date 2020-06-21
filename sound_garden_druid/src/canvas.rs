@@ -307,7 +307,7 @@ impl druid::Widget<Data> for Widget {
         // Draw a cursor.
         match data.mode {
             Mode::Normal => {
-                ctx.blurred_rect(
+                ctx.fill(
                     Rect::from((
                         Point::new(
                             data.cursor.position.x * grid_unit.width,
@@ -315,21 +315,19 @@ impl druid::Widget<Data> for Widget {
                         ),
                         grid_unit,
                     )),
-                    1.0,
-                    &NODE_DEFAULT_COLOR.with_alpha(CURSOR_NORMAL_ALPHA),
+                    &CURSOR_COLOR.with_alpha(CURSOR_NORMAL_ALPHA),
                 );
             }
             Mode::Insert => {
-                ctx.blurred_rect(
+                ctx.fill(
                     Rect::from((
                         Point::new(
-                            data.cursor.position.x * grid_unit.width - 2.0,
+                            data.cursor.position.x * grid_unit.width - 1.0,
                             (data.cursor.position.y + 0.27) * grid_unit.height,
                         ),
                         Size::new(2.0, grid_unit.height),
                     )),
-                    1.0,
-                    &NODE_DEFAULT_COLOR.with_alpha(CURSOR_INSERT_ALPHA),
+                    &CURSOR_COLOR.with_alpha(CURSOR_INSERT_ALPHA),
                 );
             }
         }
