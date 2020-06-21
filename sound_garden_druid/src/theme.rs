@@ -12,6 +12,7 @@ pub const CURSOR_INSERT_ALPHA: f64 = 1.0;
 pub const NODE_DEFAULT_COLOR: Color = FOREGROUND_COLOR;
 pub const NODE_DRAFT_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);
 pub const MODELINE_DRAFT_COLOR: Color = NODE_DRAFT_COLOR;
+pub const MODELINE_HEIGHT: f64 = 36.0;
 pub const MODELINE_NORMAL_COLOR: Color = Color::rgb8(0xcc, 0xcc, 0xcc);
 pub const MODELINE_INSERT_COLOR: Color = Color::rgb8(0x11, 0xcc, 0x11);
 pub const MODELINE_RECORD_COLOR: Color = Color::rgb8(0xff, 0x00, 0x00);

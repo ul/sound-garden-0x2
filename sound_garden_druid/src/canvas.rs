@@ -7,6 +7,7 @@ use druid::{
 use sound_garden_types::*;
 use std::sync::Arc;
 
+#[derive(Default)]
 pub struct Widget {
     grid_unit: Option<Size>,
     font: Option<PietFont>,
@@ -18,15 +19,7 @@ pub struct Data {
     pub draft_nodes: Arc<Vec<Id>>,
     pub mode: Mode,
     pub nodes: Arc<Vec<Node>>,
-}
-
-impl Default for Widget {
-    fn default() -> Self {
-        Widget {
-            grid_unit: Default::default(),
-            font: Default::default(),
-        }
-    }
+    pub window_size: Size,
 }
 
 /*
@@ -284,12 +277,24 @@ impl druid::Widget<Data> for Widget {
 
     fn layout(
         &mut self,
-        _ctx: &mut LayoutCtx,
-        bc: &BoxConstraints,
-        _data: &Data,
+        ctx: &mut LayoutCtx,
+        _bc: &BoxConstraints,
+        data: &Data,
         _env: &Env,
     ) -> Size {
-        bc.max()
+        let grid_unit = self.get_grid_unit(&mut ctx.text());
+        Size::from(data.nodes.iter().fold(
+            (
+                data.window_size.width,
+                data.window_size.height - MODELINE_HEIGHT,
+            ),
+            |(width, height), node| {
+                let x =
+                    (node.position.x + node.text.chars().count() as f64 + 1.0) * grid_unit.width;
+                let y = (node.position.y + 2.0) * grid_unit.height;
+                (width.max(x), height.max(y))
+            },
+        ))
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, data: &Data, _env: &Env) {

@@ -1,4 +1,4 @@
-use crate::commands::*;
+use crate::{commands::*, theme::*};
 use anyhow::Result;
 use audio_program::TextOp;
 use audio_vm::Frame;
@@ -7,7 +7,8 @@ use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_v
 use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
 use druid::{
-    widget::Flex, AppDelegate, AppLauncher, Command, DelegateCtx, Env, Lens, Point, Target, Vec2,
+    widget::{Flex, Scroll},
+    AppDelegate, AppLauncher, Command, DelegateCtx, Env, Event, Lens, Point, Size, Target, Vec2,
     Widget, WidgetExt, WindowDesc, WindowId,
 };
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,7 @@ struct App {
     /// Last known node id to text map to detect draft nodes.
     last_known_node_texts: HashMap<Id, String>,
     oscilloscope: Option<WindowId>,
+    main_window: WindowId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,6 +63,7 @@ struct Data {
     /// Did we ask audio server to record?
     record: bool,
     oscilloscope_zoom: i16,
+    window_size: Size,
 }
 
 fn main() -> Result<()> {
@@ -100,7 +103,9 @@ fn main() -> Result<()> {
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
-    let launcher = AppLauncher::with_window(WindowDesc::new(build_ui).title("Sound Garden"));
+    let main_window = WindowDesc::new(build_ui).title("Sound Garden");
+    let main_window_id = main_window.id;
+    let launcher = AppLauncher::with_window(main_window);
 
     // Jam mode.
     // Start a thread to listen to the peer updates.
@@ -186,6 +191,7 @@ fn main() -> Result<()> {
         undo_group: 0,
         last_known_node_texts: Default::default(),
         oscilloscope: None,
+        main_window: main_window_id,
     };
 
     let mut data: Data = Default::default();
@@ -916,14 +922,33 @@ impl AppDelegate<Data> for App {
             }
         }
     }
+
+    fn event(
+        &mut self,
+        _ctx: &mut DelegateCtx,
+        window_id: WindowId,
+        event: Event,
+        data: &mut Data,
+        _env: &Env,
+    ) -> Option<Event> {
+        if window_id == self.main_window {
+            if let Event::WindowSize(window_size) = event {
+                data.window_size = window_size;
+            }
+        }
+        Some(event)
+    }
 }
 
 fn build_ui() -> impl Widget<Data> {
     Flex::column()
-        .with_flex_child(canvas::Widget::default().lens(CanvasLens {}), 1.0)
+        .with_flex_child(
+            Scroll::new(canvas::Widget::default().lens(CanvasLens {})),
+            1.0,
+        )
         .with_flex_child(
             modeline::Widget::default()
-                .fix_height(36.0)
+                .fix_height(MODELINE_HEIGHT)
                 .lens(ModelineLens {}),
             0.0,
         )
@@ -957,6 +982,7 @@ impl Lens<Data, canvas::Data> for CanvasLens {
             draft_nodes,
             mode,
             nodes,
+            window_size,
             ..
         } = data;
         let data = canvas::Data {
@@ -964,6 +990,7 @@ impl Lens<Data, canvas::Data> for CanvasLens {
             draft_nodes: Arc::clone(draft_nodes),
             mode: *mode,
             nodes: Arc::clone(nodes),
+            window_size: *window_size,
         };
         f(&data)
     }
@@ -975,6 +1002,7 @@ impl Lens<Data, canvas::Data> for CanvasLens {
             draft_nodes,
             mode,
             nodes,
+            window_size,
             ..
         } = data;
         let mut data = canvas::Data {
@@ -982,6 +1010,7 @@ impl Lens<Data, canvas::Data> for CanvasLens {
             draft_nodes: Arc::clone(draft_nodes),
             mode: *mode,
             nodes: Arc::clone(nodes),
+            window_size: *window_size,
         };
         f(&mut data)
     }
