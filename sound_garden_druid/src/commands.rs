@@ -27,6 +27,10 @@ pub const MOVE_LINE_UP: Selector = Selector::new("sound_garden_druid.MOVE_LINE_U
 pub const MOVE_LINE_DOWN: Selector = Selector::new("sound_garden_druid.MOVE_LINE_DOWN");
 pub const MOVE_LEFT_UP: Selector = Selector::new("sound_garden_druid.MOVE_LEFT_UP");
 pub const MOVE_RIGHT_DOWN: Selector = Selector::new("sound_garden_druid.MOVE_RIGHT_DOWN");
+pub const MOVE_BELOW_UP: Selector = Selector::new("sound_garden_druid.MOVE_BELOW_UP");
+pub const MOVE_BELOW_DOWN: Selector = Selector::new("sound_garden_druid.MOVE_BELOW_DOWN");
+pub const MOVE_ABOVE_UP: Selector = Selector::new("sound_garden_druid.MOVE_ABOVE_UP");
+pub const MOVE_ABOVE_DOWN: Selector = Selector::new("sound_garden_druid.MOVE_ABOVE_DOWN");
 pub const DEBUG: Selector = Selector::new("sound_garden_druid.DEBUG");
 pub const INSERT_NEW_LINE_BELOW: Selector =
     Selector::new("sound_garden_druid.INSERT_NEW_LINE_BELOW");

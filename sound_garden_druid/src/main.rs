@@ -781,6 +781,86 @@ impl AppDelegate<Data> for App {
                 data.cursor.position.y += 1.0;
                 false
             }
+            _ if cmd.is(MOVE_BELOW_UP) => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y >= cursor.y {
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position - Vec2::new(0.0, 1.0))],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y -= 1.0;
+                false
+            }
+            _ if cmd.is(MOVE_BELOW_DOWN) => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y >= cursor.y {
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y += 1.0;
+                false
+            }
+            _ if cmd.is(MOVE_ABOVE_UP) => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y <= cursor.y {
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position - Vec2::new(0.0, 1.0))],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y -= 1.0;
+                false
+            }
+            _ if cmd.is(MOVE_ABOVE_DOWN) => {
+                let cursor = data.cursor.position;
+                let edits = data
+                    .nodes
+                    .iter()
+                    .filter_map(|node| {
+                        if node.position.y <= cursor.y {
+                            Some((
+                                node.id,
+                                vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<HashMap<_, _>>();
+                self.edit(edits);
+                data.cursor.position.y += 1.0;
+                false
+            }
             _ if cmd.is(INSERT_NEW_LINE_BELOW) => {
                 data.mode = Mode::Insert;
                 self.undo_group += 1;

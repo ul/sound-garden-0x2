@@ -109,7 +109,7 @@ SGD is a GUI interface to Sound Garden which resembles terminal modal editor.
 At the moment you have to run it from command line to provide it with the path to the tree and to configure other options.
 
 ----
-$ sound_garden_terminal ~/Documents/my_tree.sg
+$ sound_garden_druid ~/Documents/my_tree.sg
 ----
 
 ==== Editing commands
@@ -129,14 +129,10 @@ $ sound_garden_terminal ~/Documents/my_tree.sg
 | l      | Right.
 | d      | Delete node.
 | D      | Delete line.
-| Alt+h  | Move node left.
-| Alt+j  | Move node down.
-| Alt+k  | Move node up.
-| Alt+l  | Move node right.
-| J      | Move node and after down.
-| K      | Move node and before up.
-| H      | Move line up.
-| L      | Move line down.
+| J      | Move line and below down.
+| K      | Move line and below up.
+| Alt+J  | Move line and above down.
+| Alt+K  | Move line and above up.
 | ,      | Move right of line left.
 | .      | Move right of line right.
 | <      | Move left of line left.
@@ -149,6 +145,12 @@ $ sound_garden_terminal ~/Documents/my_tree.sg
 | v      | Toggle oscilloscope
 | Alt+=  | Oscilloscope zoom in
 | Alt+-  | Oscilloscope zoom out
+| Alt+h  | Move node left.
+| Alt+j  | Move node down.
+| Alt+k  | Move node up.
+| Alt+l  | Move node right.
+| H      | Move line up.
+| L      | Move line down.
 |======================================
 
 Cycle commands commit changes immideately.

@@ -97,20 +97,31 @@ impl druid::Widget<Data> for Widget {
                         {
                             ctx.submit_command(Command::from(MOVE_NODE_RIGHT), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyH).matches(event)
-                            || HotKey::new(SysMods::Shift, KeyCode::ArrowLeft).matches(event) =>
-                        {
-                            ctx.submit_command(Command::from(MOVE_LINE_UP), None);
-                        }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyJ).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_RIGHT_DOWN), None);
+                            ctx.submit_command(Command::from(MOVE_BELOW_DOWN), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyK).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_LEFT_UP), None);
+                            ctx.submit_command(Command::from(MOVE_BELOW_UP), None);
+                        }
+                        _ if HotKey::new(RawMods::AltShift, KeyCode::KeyJ).matches(event)
+                            || HotKey::new(RawMods::AltShift, KeyCode::ArrowDown)
+                                .matches(event) =>
+                        {
+                            ctx.submit_command(Command::from(MOVE_ABOVE_DOWN), None);
+                        }
+                        _ if HotKey::new(RawMods::AltShift, KeyCode::KeyK).matches(event)
+                            || HotKey::new(RawMods::AltShift, KeyCode::ArrowUp).matches(event) =>
+                        {
+                            ctx.submit_command(Command::from(MOVE_ABOVE_UP), None);
+                        }
+                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyH).matches(event)
+                            || HotKey::new(SysMods::Shift, KeyCode::ArrowLeft).matches(event) =>
+                        {
+                            ctx.submit_command(Command::from(MOVE_LINE_UP), None);
                         }
                         _ if HotKey::new(SysMods::Shift, KeyCode::KeyL).matches(event)
                             || HotKey::new(SysMods::Shift, KeyCode::ArrowRight).matches(event) =>
