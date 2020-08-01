@@ -97,7 +97,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "linlin" | "project" => push_args!(id, Fn5, pure::linlin),
             "lpf" => push_args!(id, LPF, sample_rate),
             "m" | "metro" => push_args!(id, Metro, sample_rate),
-            "m2f" | "midi2freq" => push_args!(id, Fn1, pure::midi2freq),
+            "m2f" | "midi2freq" | "#" => push_args!(id, Fn1, pure::midi2freq),
             "max" => push_args!(id, Fn2, pure::max),
             "mh" | "metro_hold" => push_args!(id, MetroHold, sample_rate),
             "min" => push_args!(id, Fn2, pure::min),
