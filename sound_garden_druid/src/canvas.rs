@@ -1,7 +1,7 @@
 use crate::{commands::*, theme::*};
 use druid::{
     piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
-    BoxConstraints, Command, Env, Event, EventCtx, HotKey, KeyCode, LayoutCtx, LifeCycle,
+    BoxConstraints, Command, Env, Event, EventCtx, HotKey, KbKey, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
 };
 use sound_garden_types::*;
@@ -43,215 +43,213 @@ impl druid::Widget<Data> for Widget {
             Event::KeyDown(event) => {
                 match data.mode {
                     Mode::Normal => match event {
-                        _ if HotKey::new(None, KeyCode::KeyH).matches(event)
-                            || HotKey::new(None, KeyCode::ArrowLeft).matches(event)
-                            || HotKey::new(None, KeyCode::Backspace).matches(event) =>
+                        _ if HotKey::new(None, "h").matches(event)
+                            || HotKey::new(None, KbKey::ArrowLeft).matches(event)
+                            || HotKey::new(None, KbKey::Backspace).matches(event) =>
                         {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::KeyJ).matches(event)
-                            || HotKey::new(None, KeyCode::ArrowDown).matches(event) =>
+                        _ if HotKey::new(None, "j").matches(event)
+                            || HotKey::new(None, KbKey::ArrowDown).matches(event) =>
                         {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(0.0, 1.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::KeyK).matches(event)
-                            || HotKey::new(None, KeyCode::ArrowUp).matches(event) =>
+                        _ if HotKey::new(None, "k").matches(event)
+                            || HotKey::new(None, KbKey::ArrowUp).matches(event) =>
                         {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(0.0, -1.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::KeyL).matches(event)
-                            || HotKey::new(None, KeyCode::ArrowRight).matches(event)
-                            || HotKey::new(None, KeyCode::Space).matches(event) =>
+                        _ if HotKey::new(None, "l").matches(event)
+                            || HotKey::new(None, KbKey::ArrowRight).matches(event)
+                            || HotKey::new(None, " ").matches(event) =>
                         {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyH).matches(event)
-                            || HotKey::new(RawMods::Alt, KeyCode::ArrowLeft).matches(event) =>
+                        _ if HotKey::new(RawMods::Alt, "h").matches(event)
+                            || HotKey::new(RawMods::Alt, KbKey::ArrowLeft).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_NODE_LEFT), None);
                         }
-                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyJ).matches(event)
-                            || HotKey::new(RawMods::Alt, KeyCode::ArrowDown).matches(event) =>
+                        _ if HotKey::new(RawMods::Alt, "j").matches(event)
+                            || HotKey::new(RawMods::Alt, KbKey::ArrowDown).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_NODE_DOWN), None);
                         }
-                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyK).matches(event)
-                            || HotKey::new(RawMods::Alt, KeyCode::ArrowUp).matches(event) =>
+                        _ if HotKey::new(RawMods::Alt, "k").matches(event)
+                            || HotKey::new(RawMods::Alt, KbKey::ArrowUp).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_NODE_UP), None);
                         }
-                        _ if HotKey::new(RawMods::Alt, KeyCode::KeyL).matches(event)
-                            || HotKey::new(RawMods::Alt, KeyCode::ArrowRight).matches(event) =>
+                        _ if HotKey::new(RawMods::Alt, "l").matches(event)
+                            || HotKey::new(RawMods::Alt, KbKey::ArrowRight).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_NODE_RIGHT), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyJ).matches(event)
-                            || HotKey::new(SysMods::Shift, KeyCode::ArrowDown).matches(event) =>
+                        _ if HotKey::new(SysMods::Shift, "J").matches(event)
+                            || HotKey::new(SysMods::Shift, KbKey::ArrowDown).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_BELOW_DOWN), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyK).matches(event)
-                            || HotKey::new(SysMods::Shift, KeyCode::ArrowUp).matches(event) =>
+                        _ if HotKey::new(SysMods::Shift, "K").matches(event)
+                            || HotKey::new(SysMods::Shift, KbKey::ArrowUp).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_BELOW_UP), None);
                         }
-                        _ if HotKey::new(RawMods::AltShift, KeyCode::KeyJ).matches(event)
-                            || HotKey::new(RawMods::AltShift, KeyCode::ArrowDown)
-                                .matches(event) =>
+                        _ if HotKey::new(RawMods::AltShift, "J").matches(event)
+                            || HotKey::new(RawMods::AltShift, KbKey::ArrowDown).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_ABOVE_DOWN), None);
                         }
-                        _ if HotKey::new(RawMods::AltShift, KeyCode::KeyK).matches(event)
-                            || HotKey::new(RawMods::AltShift, KeyCode::ArrowUp).matches(event) =>
+                        _ if HotKey::new(RawMods::AltShift, "K").matches(event)
+                            || HotKey::new(RawMods::AltShift, KbKey::ArrowUp).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_ABOVE_UP), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyH).matches(event)
-                            || HotKey::new(SysMods::Shift, KeyCode::ArrowLeft).matches(event) =>
+                        _ if HotKey::new(SysMods::Shift, "H").matches(event)
+                            || HotKey::new(SysMods::Shift, KbKey::ArrowLeft).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_LINE_UP), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyL).matches(event)
-                            || HotKey::new(SysMods::Shift, KeyCode::ArrowRight).matches(event) =>
+                        _ if HotKey::new(SysMods::Shift, "L").matches(event)
+                            || HotKey::new(SysMods::Shift, KbKey::ArrowRight).matches(event) =>
                         {
                             ctx.submit_command(Command::from(MOVE_LINE_DOWN), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyI).matches(event) => {
+                        _ if HotKey::new(None, "i").matches(event) => {
                             ctx.submit_command(Command::from(INSERT_MODE), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyI).matches(event) => {
+                        _ if HotKey::new(SysMods::Shift, "I").matches(event) => {
                             ctx.submit_command(Command::from(SPLASH), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyA).matches(event) => {
+                        _ if HotKey::new(None, "a").matches(event) => {
                             ctx.submit_command(Command::from(INSERT_MODE), None);
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::KeyC).matches(event) => {
+                        _ if HotKey::new(None, "c").matches(event) => {
                             ctx.submit_command(Command::from(CUT_NODE), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyD).matches(event) => {
+                        _ if HotKey::new(None, "d").matches(event) => {
                             ctx.submit_command(Command::from(DELETE_NODE), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyD).matches(event) => {
+                        _ if HotKey::new(SysMods::Shift, "D").matches(event) => {
                             ctx.submit_command(Command::from(DELETE_LINE), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Return).matches(event) => {
+                        _ if HotKey::new(None, KbKey::Enter).matches(event) => {
                             ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Backslash).matches(event) => {
+                        _ if HotKey::new(None, "\\").matches(event) => {
                             ctx.submit_command(Command::from(PLAY_PAUSE), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyR).matches(event) => {
+                        _ if HotKey::new(None, "r").matches(event) => {
                             ctx.submit_command(Command::from(TOGGLE_RECORD), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyU).matches(event) => {
+                        _ if HotKey::new(None, "u").matches(event) => {
                             ctx.submit_command(Command::from(UNDO), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyU).matches(event) => {
+                        _ if HotKey::new(SysMods::Shift, "U").matches(event) => {
                             ctx.submit_command(Command::from(REDO), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Equals).matches(event) => {
+                        _ if HotKey::new(None, "=").matches(event) => {
                             ctx.submit_command(Command::from(CYCLE_UP), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Minus).matches(event) => {
+                        _ if HotKey::new(None, "-").matches(event) => {
                             ctx.submit_command(Command::from(CYCLE_DOWN), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Comma).matches(event) => {
+                        _ if HotKey::new(None, ",").matches(event) => {
                             ctx.submit_command(Command::from(MOVE_RIGHT_TO_LEFT), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Period).matches(event) => {
+                        _ if HotKey::new(None, ".").matches(event) => {
                             ctx.submit_command(Command::from(MOVE_RIGHT_TO_RIGHT), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::Comma).matches(event) => {
+                        _ if HotKey::new(SysMods::Shift, ">").matches(event) => {
                             ctx.submit_command(Command::from(MOVE_LEFT_TO_LEFT), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::Period).matches(event) => {
+                        _ if HotKey::new(SysMods::Shift, "<").matches(event) => {
                             ctx.submit_command(Command::from(MOVE_LEFT_TO_RIGHT), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Backtick).matches(event) => {
+                        _ if HotKey::new(None, "`").matches(event) => {
                             ctx.submit_command(Command::from(DEBUG), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyO).matches(event) => {
+                        _ if HotKey::new(None, "o").matches(event) => {
                             ctx.submit_command(Command::from(INSERT_NEW_LINE_BELOW), None);
                         }
-                        _ if HotKey::new(SysMods::Shift, KeyCode::KeyO).matches(event) => {
+                        _ if HotKey::new(SysMods::Shift, "O").matches(event) => {
                             ctx.submit_command(Command::from(INSERT_NEW_LINE_ABOVE), None);
                         }
-                        _ if HotKey::new(None, KeyCode::KeyV).matches(event) => {
+                        _ if HotKey::new(None, "v").matches(event) => {
                             ctx.submit_command(Command::from(TOGGLE_OSCILLOSCOPE), None);
                         }
-                        _ if HotKey::new(RawMods::Alt, KeyCode::Equals).matches(event) => {
+                        _ if HotKey::new(RawMods::Alt, "=").matches(event) => {
                             ctx.submit_command(Command::from(OSCILLOSCOPE_ZOOM_IN), None);
                         }
-                        _ if HotKey::new(RawMods::Alt, KeyCode::Minus).matches(event) => {
+                        _ if HotKey::new(RawMods::Alt, "-").matches(event) => {
                             ctx.submit_command(Command::from(OSCILLOSCOPE_ZOOM_OUT), None);
                         }
                         _ => {}
                     },
                     Mode::Insert => match event {
-                        _ if HotKey::new(None, KeyCode::Escape).matches(event)
-                            || HotKey::new(None, KeyCode::Return).matches(event) =>
+                        _ if HotKey::new(None, KbKey::Escape).matches(event)
+                            || HotKey::new(None, KbKey::Enter).matches(event) =>
                         {
                             ctx.submit_command(Command::from(NORMAL_MODE), None);
                         }
-                        _ if HotKey::new(None, KeyCode::ArrowLeft).matches(event) => {
+                        _ if HotKey::new(None, KbKey::ArrowLeft).matches(event) => {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::ArrowDown).matches(event) => {
+                        _ if HotKey::new(None, KbKey::ArrowDown).matches(event) => {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(0.0, 1.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::ArrowUp).matches(event) => {
+                        _ if HotKey::new(None, KbKey::ArrowUp).matches(event) => {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(0.0, -1.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::ArrowRight).matches(event) => {
+                        _ if HotKey::new(None, KbKey::ArrowRight).matches(event) => {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
                                 None,
                             );
                         }
-                        _ if HotKey::new(None, KeyCode::Space).matches(event) => {
+                        _ if HotKey::new(None, " ").matches(event) => {
                             ctx.submit_command(Command::from(MOVE_RIGHT_TO_RIGHT), None);
                         }
-                        _ if HotKey::new(None, KeyCode::Backspace).matches(event) => {
+                        _ if HotKey::new(None, KbKey::Backspace).matches(event) => {
                             ctx.submit_command(
                                 Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
                                 None,
                             );
                             ctx.submit_command(Command::from(NODE_DELETE_CHAR), None);
                         }
-                        _ if event.key_code.is_printable() => {
-                            if let Some(text) = event.text() {
+                        _ => {
+                            if let KbKey::Character(text) = &event.key {
                                 ctx.submit_command(
                                     Command::new(NODE_INSERT_TEXT, text.to_string()),
                                     None,
                                 );
                             }
                         }
-                        _ => {}
                     },
                 }
                 ctx.request_paint();

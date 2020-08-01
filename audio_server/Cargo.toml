@@ -14,17 +14,17 @@ path = "./src/lib.rs"
 [dependencies]
 alloc_counter = "0.0.4"
 anyhow = "1.0.31"
-chrono = "0.4.11"
-cpal = "0.11.0"
+chrono = "0.4.13"
+cpal = "0.12.0"
 clap = "2.33.1"
-crossbeam-channel = "0.4.2"
+crossbeam-channel = "0.4.3"
 hound = "3.4.0"
-ringbuf = "0.2.1"
-serde_json = "1.0.55"
+ringbuf = "0.2.2"
+serde_json = "1.0.56"
 nng = "1.0.0-rc.2"
 
 [dependencies.serde]
-version = "1.0.112"
+version = "1.0.114"
 features = ["derive"]
 
 [dependencies.audio_ops]

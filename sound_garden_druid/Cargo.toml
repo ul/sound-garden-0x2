@@ -8,21 +8,21 @@ description = "Sound Garden Druid"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-druid = { git = "https://github.com/xi-editor/druid.git", version = "0.6" }
+druid = { git = "https://github.com/linebender/druid.git", version = "0.6" }
 anyhow = "1.0.31"
 clap = "2.33.1"
-crossbeam-channel = "0.4.2"
+crossbeam-channel = "0.4.3"
 rand = "0.7.3"
-serde_json = "1.0.55"
-snap = "1.0.0"
+serde_json = "1.0.56"
+snap = "1.0.1"
 serde_cbor = "0.11.1"
 nng = "1.0.0-rc.2"
-chrono = "0.4.11"
-log = "0.4.8"
+chrono = "0.4.13"
+log = "0.4.11"
 simple_logger = "1.6.0"
 
 [dependencies.serde]
-version = "1.0.112"
+version = "1.0.114"
 features = ["derive"]
 
 [dependencies.audio_ops]

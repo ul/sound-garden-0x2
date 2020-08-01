@@ -45,6 +45,12 @@ struct App {
     main_window: WindowId,
 }
 
+impl Drop for App {
+    fn drop(&mut self) {
+        println!("DROP APP");
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 enum JamMessage {
     SyncNodes(Patch<MetaKey, MetaValue>),
@@ -176,9 +182,15 @@ fn main() -> Result<()> {
 
     let event_sink = launcher.get_external_handle();
     let monitor_rx = audio_control.receiver().clone();
-    let _scope = Worker::spawn("Oscilloscope", 1, move |_: Receiver<()>, _: Sender<()>| {
-        for frame in monitor_rx {
-            event_sink.submit_command(OSCILLOSCOPE, frame, None).ok();
+    let _scope = Worker::spawn("Oscilloscope", 1, move |rx: Receiver<()>, _: Sender<()>| {
+        loop {
+            crossbeam_channel::select! {
+                recv(rx) -> msg => if msg.is_err() { break; },
+                recv(monitor_rx) -> frame => match frame {
+                    Ok(frame) => { event_sink.submit_command(OSCILLOSCOPE, frame, None).ok(); },
+                    Err(_) => { break; }
+                },
+            }
         }
     });
 
@@ -200,11 +212,9 @@ fn main() -> Result<()> {
 
     launcher.delegate(app).launch(data)?;
 
-    // FIXME Audio worker deadlock.
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    std::process::exit(0);
+    audio_control.sender().send(audio_server::Message::Quit)?;
 
-    // Ok(())
+    Ok(())
 }
 
 impl App {

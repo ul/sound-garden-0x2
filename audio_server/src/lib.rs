@@ -23,6 +23,7 @@ pub enum Message {
     Record(bool),
     LoadProgram(Vec<TextOp>),
     Monitor(u64),
+    Quit,
 }
 
 pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
@@ -33,8 +34,8 @@ pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
 
     let player = {
         let vm = Arc::clone(&vm);
-        Worker::spawn("Player", CHANNEL_CAPACITY, move |_: Receiver<()>, o| {
-            audio::main(vm, producer, o).unwrap();
+        Worker::spawn("Player", CHANNEL_CAPACITY, move |i, o| {
+            audio::main(vm, producer, i, o).unwrap();
         })
     };
 
@@ -47,7 +48,7 @@ pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
     };
 
     let monitor = vm.lock().unwrap().monitor();
-    let oscilloscope = Worker::spawn("Oscilloscope", 0, move |rx: Receiver<()>, _: Sender<()>| {
+    let _scope = Worker::spawn("Oscilloscope", 0, move |rx: Receiver<()>, _: Sender<()>| {
         loop {
             crossbeam_channel::select! {
                 recv(rx) -> msg => if msg.is_err() { break; },
@@ -86,8 +87,9 @@ pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
             Message::Monitor(id) => {
                 vm.lock().unwrap().set_monitor_id(id);
             }
+            Message::Quit => {
+                break;
+            }
         }
     }
-
-    drop(oscilloscope);
 }

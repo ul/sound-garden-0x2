@@ -1,21 +1,24 @@
 use anyhow::Result;
 use audio_ops::pure::clip;
 use audio_vm::{Sample, CHANNELS, VM};
-use cpal::traits::{DeviceTrait, EventLoopTrait, HostTrait};
-use crossbeam_channel::Sender;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use crossbeam_channel::{Receiver, Sender};
 use ringbuf::Producer;
 use std::sync::{Arc, Mutex};
 
-pub fn main(vm: Arc<Mutex<VM>>, mut producer: Producer<Sample>, tx: Sender<u32>) -> Result<()> {
+pub fn main(
+    vm: Arc<Mutex<VM>>,
+    producer: Producer<Sample>,
+    rx: Receiver<()>,
+    tx: Sender<u32>,
+) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .ok_or(anyhow::anyhow!("No default device available."))?;
-    let format = device
-        .default_output_format()
-        .map_err(|_| anyhow::anyhow!("Default format error."))?;
+    let config = device.default_output_config()?;
 
-    let channels = format.channels as usize;
+    let channels = config.channels() as usize;
     if channels != CHANNELS {
         return Err(anyhow::anyhow!(
             "audio_vm supports exactly {} channels, but your device has {}.",
@@ -23,64 +26,58 @@ pub fn main(vm: Arc<Mutex<VM>>, mut producer: Producer<Sample>, tx: Sender<u32>)
             channels
         ));
     }
-    let sample_rate = format.sample_rate.0;
+    let sample_rate = config.sample_rate().0;
     tx.send(sample_rate)?;
 
-    let event_loop = host.event_loop();
-    let stream_id = event_loop
-        .build_output_stream(&device, &format)
-        .map_err(|_| anyhow::anyhow!("Failed to build output stream."))?;
-    event_loop
-        .play_stream(stream_id.clone())
-        .map_err(|_| anyhow::anyhow!("Failed to play output stream."))?;
+    match config.sample_format() {
+        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), vm, producer, rx),
+        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), vm, producer, rx),
+        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), vm, producer, rx),
+    }
+}
 
-    event_loop.run(move |id, result| {
-        let data = match result {
-            Ok(data) => data,
-            Err(err) => {
-                eprintln!("An error occurred on stream {:?}: {}.", id, err);
-                return;
-            }
-        };
-        let mut vm = vm.lock().unwrap();
-        match data {
-            cpal::StreamData::Output {
-                buffer: cpal::UnknownTypeOutputBuffer::U16(mut buffer),
-            } => {
-                for frame in buffer.chunks_mut(format.channels as usize) {
-                    let next_frame = vm.next_frame();
-                    for (out, &sample) in frame.iter_mut().zip(&next_frame) {
-                        let sample = clip(sample);
-                        *out = ((sample * 0.5 + 0.5) * std::u16::MAX as Sample) as u16;
-                        producer.push(sample).ok();
-                    }
-                }
-            }
-            cpal::StreamData::Output {
-                buffer: cpal::UnknownTypeOutputBuffer::I16(mut buffer),
-            } => {
-                for frame in buffer.chunks_mut(format.channels as usize) {
-                    let next_frame = vm.next_frame();
-                    for (out, &sample) in frame.iter_mut().zip(&next_frame) {
-                        let sample = clip(sample);
-                        *out = (sample * std::i16::MAX as Sample) as i16;
-                        producer.push(sample).ok();
-                    }
-                }
-            }
-            cpal::StreamData::Output {
-                buffer: cpal::UnknownTypeOutputBuffer::F32(mut buffer),
-            } => {
-                for frame in buffer.chunks_mut(format.channels as usize) {
-                    let next_frame = vm.next_frame();
-                    for (out, &sample) in frame.iter_mut().zip(&next_frame) {
-                        let sample = clip(sample);
-                        *out = sample as f32;
-                        producer.push(sample).ok();
-                    }
-                }
-            }
-            _ => (),
+fn run<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    vm: Arc<Mutex<VM>>,
+    mut producer: Producer<Sample>,
+    rx: Receiver<()>,
+) -> Result<(), anyhow::Error>
+where
+    T: cpal::Sample,
+{
+    let channels = config.channels as usize;
+
+    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+
+    let stream = device.build_output_stream(
+        config,
+        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            write_data(data, channels, &vm, &mut producer)
+        },
+        err_fn,
+    )?;
+    stream.play()?;
+
+    for _ in rx {}
+
+    Ok(())
+}
+
+fn write_data<T>(
+    output: &mut [T],
+    channels: usize,
+    vm: &Arc<Mutex<VM>>,
+    producer: &mut Producer<Sample>,
+) where
+    T: cpal::Sample,
+{
+    let mut vm = vm.lock().unwrap();
+    for frame in output.chunks_mut(channels) {
+        for (sample, &value) in frame.iter_mut().zip(vm.next_frame().iter()) {
+            let value = clip(value);
+            *sample = cpal::Sample::from::<f32>(&(value as f32));
+            producer.push(value).ok();
         }
-    });
+    }
 }

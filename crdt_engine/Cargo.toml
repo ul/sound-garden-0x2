@@ -12,5 +12,5 @@ ropey = "1.2.0"
 rand = "0.7.3"
 
 [dependencies.serde]
-version = "1.0.112"
+version = "1.0.114"
 features = ["derive"]
