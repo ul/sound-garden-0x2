@@ -107,6 +107,8 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "pan1" => push!(id, Pan1),
             "pan2" => push!(id, Pan2),
             "panx" => push!(id, Pan3),
+            "pi" => push_args!(id, Constant, std::f64::consts::PI),
+            "tau" => push_args!(id, Constant, 2.0 * std::f64::consts::PI),
             "pitch" => push_args!(id, Yin, sample_rate, 1024, 64, 0.2),
             "pop" => push!(id, Pop),
             "prime" => push!(id, Prime),
