@@ -60,6 +60,7 @@ exp:: (x) -> e^x
 sin:: (x)
 cos:: (x)
 tan:: (x)
+sinc:: (x)
 sinh:: (x)
 cosh:: (x)
 tanh:: (x)

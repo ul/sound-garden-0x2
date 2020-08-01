@@ -70,16 +70,31 @@ pub fn quantize(x: Sample, step: Sample) -> Sample {
 
 #[inline]
 pub fn sin(x: Sample) -> Sample {
-    micromath::F32Ext::sin(x as f32) as _
+    x.sin()
 }
 
 #[inline]
 pub fn cos(x: Sample) -> Sample {
-    micromath::F32Ext::cos(x as f32) as _
+    x.cos()
 }
 
 #[inline]
 pub fn tan(x: Sample) -> Sample {
+    x.tan()
+}
+
+#[inline]
+pub fn sin_fast(x: Sample) -> Sample {
+    micromath::F32Ext::sin(x as f32) as _
+}
+
+#[inline]
+pub fn cos_fast(x: Sample) -> Sample {
+    micromath::F32Ext::cos(x as f32) as _
+}
+
+#[inline]
+pub fn tan_fast(x: Sample) -> Sample {
     micromath::F32Ext::tan(x as f32) as _
 }
 
@@ -136,6 +151,18 @@ pub fn sine(phase: Sample) -> Sample {
 #[inline]
 pub fn cosine(phase: Sample) -> Sample {
     cos(2.0 * PI * phase)
+}
+
+/// Connect Phasor to Fn1(sine) to generate sine wave
+#[inline]
+pub fn sine_fast(phase: Sample) -> Sample {
+    sin_fast(2.0 * PI * phase)
+}
+
+/// Connect Phasor to Fn1(cosine) to generate cosine wave
+#[inline]
+pub fn cosine_fast(phase: Sample) -> Sample {
+    cos_fast(2.0 * PI * phase)
 }
 
 /// Connect Phasor to Fn1(triangle) to generate symmetric triangle wave
@@ -289,4 +316,22 @@ pub fn linear_curve(a: Sample, dx: Sample) -> Sample {
 #[inline]
 pub fn quadratic_curve(a: Sample, dx: Sample) -> Sample {
     a.powi(4) * dx
+}
+
+#[inline]
+pub fn sinc(x: Sample) -> Sample {
+    if x != 0.0 {
+        x.sin() / x
+    } else {
+        1.0
+    }
+}
+
+#[inline]
+pub fn sinc_fast(x: Sample) -> Sample {
+    if x != 0.0 {
+        sin_fast(x) / x
+    } else {
+        1.0
+    }
 }
