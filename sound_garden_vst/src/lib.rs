@@ -85,6 +85,7 @@ impl Default for SoundGarden {
                             tx.send(ServerOutput::Program(program)).ok();
                         }
                         Message::Monitor(_) => {}
+                        Message::Quit => {}
                     }
                 }
             });
