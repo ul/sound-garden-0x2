@@ -25,15 +25,14 @@ impl Op for Normalise {
         let input = stack.pop();
         self.window.push_back(input);
 
-        let (min, max) =
-            self.window
-                .iter()
-                .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), frame| {
-                    (
-                        frame.iter().fold(min, |min, &x| min.min(x)),
-                        frame.iter().fold(max, |max, &x| max.max(x)),
-                    )
-                });
+        let mut min = f64::INFINITY;
+        let mut max = f64::NEG_INFINITY;
+        for frame in self.window.iter() {
+            for &x in frame.iter() {
+                min = min.min(x);
+                max = max.max(x);
+            }
+        }
 
         let mut frame = [0.0; CHANNELS];
         for (y, &x) in izip!(&mut frame, &input) {

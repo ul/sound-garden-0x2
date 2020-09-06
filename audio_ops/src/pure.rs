@@ -63,7 +63,7 @@ pub fn safe_recip(x: Sample) -> Sample {
 /// Round `x` to the nearest `step` multiplicative.
 #[inline]
 pub fn quantize(x: Sample, step: Sample) -> Sample {
-    (x / step).round() * step
+    safe_div(x, step).round() * step
 }
 
 // Trigonometry
@@ -118,7 +118,7 @@ pub fn tanh(x: Sample) -> Sample {
 /// Assuming that x varies in the range a..b linearly project it into the range c..d
 #[inline]
 pub fn linlin(x: Sample, a: Sample, b: Sample, c: Sample, d: Sample) -> Sample {
-    (d - c) * (x - a) / (b - a) + c
+    safe_div((d - c) * (x - a), b - a) + c
 }
 
 /// Assuming that x varies in the range -1..1 linearly project it into the range a..b
