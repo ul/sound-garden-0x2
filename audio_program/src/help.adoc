@@ -32,6 +32,7 @@ sr:: () -> put sample rate on the stack
 whiteNoise, noise, n:: () -> each sample in each channel is the next value provided by pseudo-random generator
 linlin, project:: (x, a, b, c, d) -> assuming that signal x varies in the range from a to b linearly project its values to the range from c to d
 Note that ranges are just signals and are allowed to vary in time
+norm:<N>:: (x) -> normalise signal within a <N> frames wide window, default <N> is 256
 
 range, r:: (x, c, d) -> same as project with a = -1 and b = 1
 unit:: (x) -> same as range with c = 0 and d = 1

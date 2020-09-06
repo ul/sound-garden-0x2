@@ -337,6 +337,10 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                 log::warn!("Missing param number parameter.");
                             }
                         },
+                        "norm" => match tokens.get(1) {
+                            Some(x) => push_args!(id, Normalise, x.parse::<usize>().unwrap_or(256)),
+                            None => push_args!(id, Normalise, 256),
+                        },
                         _ => {
                             log::warn!("Unknown token: {}", op);
                         }
