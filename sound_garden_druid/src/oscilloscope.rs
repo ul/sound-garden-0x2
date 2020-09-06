@@ -2,13 +2,13 @@ use crate::{commands::*, theme::*};
 use audio_ops::pure::linlin;
 use druid::{
     kurbo::BezPath,
-    piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
+    piet::{FontFamily, PietText, Text, TextLayout, TextLayoutBuilder},
     Event, Point, RenderContext, Size,
 };
 use std::collections::VecDeque;
 
 pub struct Widget {
-    font: Option<PietFont>,
+    font: Option<FontFamily>,
     grid_unit: Option<Size>,
     values: VecDeque<f64>,
     min: f64,
@@ -139,24 +139,20 @@ impl druid::Widget<Data> for Widget {
         let font = self.get_font(&mut ctx.text());
         let layout = ctx
             .text()
-            .new_text_layout(font, &format!("{}", max), f64::INFINITY)
+            .new_text_layout(&format!("{}", max))
+            .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
+            .text_color(FOREGROUND_COLOR)
             .build()
             .unwrap();
-        ctx.draw_text(
-            &layout,
-            Point::new(0.0, 0.8 * grid_unit.height),
-            &FOREGROUND_COLOR,
-        );
+        ctx.draw_text(&layout, Point::new(0.0, 0.0));
         let layout = ctx
             .text()
-            .new_text_layout(font, &format!("{}", min), f64::INFINITY)
+            .new_text_layout(&format!("{}", min))
+            .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
+            .text_color(FOREGROUND_COLOR)
             .build()
             .unwrap();
-        ctx.draw_text(
-            &layout,
-            Point::new(0.0, size.height - 0.2 * grid_unit.height),
-            &FOREGROUND_COLOR,
-        );
+        ctx.draw_text(&layout, Point::new(0.0, size.height - grid_unit.height));
     }
 }
 
@@ -173,23 +169,22 @@ impl Widget {
         if self.grid_unit.is_none() {
             let font = self.get_font(text);
             let layout = text
-                .new_text_layout(font, "Q", f64::INFINITY)
+                .new_text_layout("Q")
+                .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
+                .text_color(FOREGROUND_COLOR)
                 .build()
                 .unwrap();
-            self.grid_unit = Some(Size::new(
-                layout.width(),
-                layout.line_metric(0).unwrap().height,
-            ));
+            // self.grid_unit = Some(Size::new(
+            //     layout.size().width,
+            //     layout.line_metric(0).unwrap().height,
+            // ));
+            self.grid_unit = Some(layout.size())
         }
         self.grid_unit.unwrap()
     }
-    fn get_font(&mut self, text: &mut PietText) -> &PietFont {
+    fn get_font(&mut self, text: &mut PietText) -> &FontFamily {
         if self.font.is_none() {
-            self.font = Some(
-                text.new_font_by_name(FONT_NAME, OSCILLOSCOPE_FONT_SIZE)
-                    .build()
-                    .unwrap(),
-            );
+            self.font = Some(text.font_family(FONT_NAME).unwrap_or(FontFamily::MONOSPACE));
         }
         self.font.as_ref().unwrap()
     }

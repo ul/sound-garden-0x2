@@ -1,6 +1,6 @@
 use crate::{commands::*, theme::*};
 use druid::{
-    piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
+    piet::{FontFamily, PietText, Text, TextLayout, TextLayoutBuilder},
     BoxConstraints, Command, Env, Event, EventCtx, HotKey, KbKey, LayoutCtx, LifeCycle,
     LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
 };
@@ -10,7 +10,7 @@ use std::sync::Arc;
 #[derive(Default)]
 pub struct Widget {
     grid_unit: Option<Size>,
-    font: Option<PietFont>,
+    font: Option<FontFamily>,
 }
 
 #[derive(Clone, druid::Data, Default)]
@@ -320,7 +320,7 @@ impl druid::Widget<Data> for Widget {
                     Rect::from((
                         Point::new(
                             data.cursor.position.x * grid_unit.width,
-                            (data.cursor.position.y + 0.27) * grid_unit.height,
+                            data.cursor.position.y * grid_unit.height,
                         ),
                         grid_unit,
                     )),
@@ -332,7 +332,7 @@ impl druid::Widget<Data> for Widget {
                     Rect::from((
                         Point::new(
                             data.cursor.position.x * grid_unit.width - 1.0,
-                            (data.cursor.position.y + 0.27) * grid_unit.height,
+                            data.cursor.position.y * grid_unit.height,
                         ),
                         Size::new(2.0, grid_unit.height),
                     )),
@@ -344,23 +344,24 @@ impl druid::Widget<Data> for Widget {
         // Draw nodes.
         for node in data.nodes.iter() {
             let font = self.get_font(&mut ctx.text());
-            let layout = ctx
-                .text()
-                .new_text_layout(font, &node.text, f64::INFINITY)
-                .build()
-                .unwrap();
             let color = if data.draft_nodes.contains(&node.id) {
                 NODE_DRAFT_COLOR
             } else {
                 NODE_DEFAULT_COLOR
             };
+            let layout = ctx
+                .text()
+                .new_text_layout(&node.text)
+                .font(font.clone(), FONT_SIZE)
+                .text_color(color)
+                .build()
+                .unwrap();
             ctx.draw_text(
                 &layout,
                 Point::new(
                     node.position.x * grid_unit.width,
-                    (node.position.y + 1.0) * grid_unit.height,
+                    node.position.y * grid_unit.height,
                 ),
-                &color,
             );
         }
     }
@@ -371,20 +372,19 @@ impl Widget {
         if self.grid_unit.is_none() {
             let font = self.get_font(text);
             let layout = text
-                .new_text_layout(font, "Q", f64::INFINITY)
+                .new_text_layout("Q")
+                .font(font.clone(), FONT_SIZE)
+                .text_color(FOREGROUND_COLOR)
                 .build()
                 .unwrap();
-            self.grid_unit = Some(Size::new(
-                layout.width(),
-                layout.line_metric(0).unwrap().height,
-            ));
+            self.grid_unit = Some(layout.size());
         }
         self.grid_unit.unwrap()
     }
 
-    fn get_font(&mut self, text: &mut PietText) -> &PietFont {
+    fn get_font(&mut self, text: &mut PietText) -> &FontFamily {
         if self.font.is_none() {
-            self.font = Some(text.new_font_by_name(FONT_NAME, FONT_SIZE).build().unwrap());
+            self.font = Some(text.font_family(FONT_NAME).unwrap_or(FontFamily::MONOSPACE));
         }
         self.font.as_ref().unwrap()
     }

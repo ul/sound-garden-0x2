@@ -7,10 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crdts = "4.1.0"
+crdts = "4.2.0"
 ropey = "1.2.0"
 rand = "0.7.3"
 
 [dependencies.serde]
-version = "1.0.114"
+version = "1.0.115"
 features = ["derive"]

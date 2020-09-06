@@ -73,7 +73,7 @@ struct Data {
 }
 
 fn main() -> Result<()> {
-    simple_logger::init().unwrap();
+    simple_logger::SimpleLogger::new().init().unwrap();
 
     // CLI interface.
     let matches = app_from_crate!()

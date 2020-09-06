@@ -2,14 +2,14 @@ use crate::{commands::*, theme::*};
 use audio_program::get_help;
 use druid::{
     kurbo::{BezPath, Line},
-    piet::{FontBuilder, PietFont, PietText, Text, TextLayout, TextLayoutBuilder},
+    piet::{FontFamily, PietText, Text, TextLayout, TextLayoutBuilder},
     Event, Point, Rect, RenderContext, Size, TimerToken,
 };
 use sound_garden_types::*;
 use std::{collections::HashMap, time::Duration};
 
 pub struct Widget {
-    font: Option<PietFont>,
+    font: Option<FontFamily>,
     grid_unit: Option<Size>,
     op_help: HashMap<String, String>,
     /// Is record marker animation is in visible phase?
@@ -157,14 +157,12 @@ impl druid::Widget<Data> for Widget {
             let font = self.get_font(&mut ctx.text());
             let layout = ctx
                 .text()
-                .new_text_layout(font, &help, f64::INFINITY)
+                .new_text_layout(&help)
+                .font(font.clone(), MODELINE_FONT_SIZE)
+                .text_color(FOREGROUND_COLOR)
                 .build()
                 .unwrap();
-            ctx.draw_text(
-                &layout,
-                Point::new(44.0, 1.2 * grid_unit.height),
-                &FOREGROUND_COLOR,
-            );
+            ctx.draw_text(&layout, Point::new(44.0, 0.4 * grid_unit.height));
         }
     }
 }
@@ -174,23 +172,22 @@ impl Widget {
         if self.grid_unit.is_none() {
             let font = self.get_font(text);
             let layout = text
-                .new_text_layout(font, "Q", f64::INFINITY)
+                .new_text_layout("Q")
+                .font(font.clone(), MODELINE_FONT_SIZE)
+                .text_color(FOREGROUND_COLOR)
                 .build()
                 .unwrap();
-            self.grid_unit = Some(Size::new(
-                layout.width(),
-                layout.line_metric(0).unwrap().height,
-            ));
+            // self.grid_unit = Some(Size::new(
+            //     layout.size().width,
+            //     layout.line_metric(0).unwrap().height,
+            // ));
+            self.grid_unit = Some(layout.size())
         }
         self.grid_unit.unwrap()
     }
-    fn get_font(&mut self, text: &mut PietText) -> &PietFont {
+    fn get_font(&mut self, text: &mut PietText) -> &FontFamily {
         if self.font.is_none() {
-            self.font = Some(
-                text.new_font_by_name(FONT_NAME, MODELINE_FONT_SIZE)
-                    .build()
-                    .unwrap(),
-            );
+            self.font = Some(text.font_family(FONT_NAME).unwrap_or(FontFamily::MONOSPACE));
         }
         self.font.as_ref().unwrap()
     }
