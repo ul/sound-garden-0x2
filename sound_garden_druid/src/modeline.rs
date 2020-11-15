@@ -55,7 +55,7 @@ impl druid::Widget<Data> for Widget {
                 ctx.request_paint();
             }
             Event::MouseDown(e) => {
-                let play_button = Rect::new(18.0, 10.0, 30.0, 30.0);
+                let play_button = Rect::new(11.0, 5.0, 31.0, 23.0);
                 if play_button.contains(e.pos) {
                     ctx.submit_command(PLAY_PAUSE, None);
                 }
@@ -123,7 +123,7 @@ impl druid::Widget<Data> for Widget {
                 Point::new(frame.max_x(), frame.min_y() + 2.0),
             ),
             &color,
-            2.0,
+            4.0,
         );
         // TODO Extract drawing to helpers, use transform.
         // Play/pause + record.
@@ -132,16 +132,16 @@ impl druid::Widget<Data> for Widget {
         } else {
             FOREGROUND_COLOR
         }
-        .with_alpha(0.8);
+        .with_alpha(0.66);
         // Play/pause.
         if data.play {
-            ctx.fill(&Rect::new(18.0, 10.0, 22.0, 30.0), &color);
-            ctx.fill(&Rect::new(26.0, 10.0, 30.0, 30.0), &color);
+            ctx.fill(&Rect::new(15.0, 7.0, 19.0, 21.0), &color);
+            ctx.fill(&Rect::new(23.0, 7.0, 27.0, 21.0), &color);
         } else {
             let mut path = BezPath::new();
-            path.move_to(Point::new(18.0, 10.0));
-            path.line_to(Point::new(30.0, 20.0));
-            path.line_to(Point::new(18.0, 30.0));
+            path.move_to(Point::new(15.0, 7.0));
+            path.line_to(Point::new(27.0, 14.0));
+            path.line_to(Point::new(15.0, 21.0));
             path.close_path();
             ctx.fill(&path, &color);
         }
@@ -162,7 +162,7 @@ impl druid::Widget<Data> for Widget {
                 .text_color(FOREGROUND_COLOR)
                 .build()
                 .unwrap();
-            ctx.draw_text(&layout, Point::new(44.0, 0.4 * grid_unit.height));
+            ctx.draw_text(&layout, Point::new(35.0, 0.4 * grid_unit.height));
         }
     }
 }
