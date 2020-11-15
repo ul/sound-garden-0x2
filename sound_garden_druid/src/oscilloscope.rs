@@ -81,7 +81,7 @@ impl druid::Widget<Data> for Widget {
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &Data, _env: &druid::Env) {
         let size = ctx.size();
 
-        ctx.fill(size.to_rect(), &BACKGROUND_COLOR);
+        ctx.fill(size.to_rect(), &OSCILLOSCOPE_BACKGROUND_COLOR);
 
         let zoom = data.zoom + data.zoom.signum();
 
@@ -129,11 +129,11 @@ impl druid::Widget<Data> for Widget {
                 .rev()
                 .step_by(values_step),
         ) {
-            let y = linlin(y, max, min, 0.0, size.height);
+            let y = linlin(y, max, min, 16.0, size.height - 16.0);
             path.line_to(Point::new(x as f64, y));
         }
 
-        ctx.stroke(path, &OSCILLOSCOPE_FOREGROUND_COLOR, 1.0);
+        ctx.stroke(path, &OSCILLOSCOPE_FOREGROUND_COLOR, 0.75);
 
         let grid_unit = self.get_grid_unit(&mut ctx.text());
         let font = self.get_font(&mut ctx.text());
@@ -141,7 +141,7 @@ impl druid::Widget<Data> for Widget {
             .text()
             .new_text_layout(&format!("{}", max))
             .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
-            .text_color(FOREGROUND_COLOR)
+            .text_color(OSCILLOSCOPE_FOREGROUND_COLOR)
             .build()
             .unwrap();
         ctx.draw_text(&layout, Point::new(0.0, 0.0));
@@ -149,7 +149,7 @@ impl druid::Widget<Data> for Widget {
             .text()
             .new_text_layout(&format!("{}", min))
             .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
-            .text_color(FOREGROUND_COLOR)
+            .text_color(OSCILLOSCOPE_FOREGROUND_COLOR)
             .build()
             .unwrap();
         ctx.draw_text(&layout, Point::new(0.0, size.height - grid_unit.height));
