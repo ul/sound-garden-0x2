@@ -9,20 +9,20 @@ description = "Sound Garden Druid"
 
 [dependencies]
 druid = { git = "https://github.com/linebender/druid.git", version = "0.6" }
-anyhow = "1.0.32"
+anyhow = "1.0.34"
 clap = "2.33.3"
-crossbeam-channel = "0.4.3"
+crossbeam-channel = "0.5.0"
 rand = "0.7.3"
-serde_json = "1.0.57"
+serde_json = "1.0.59"
 snap = "1.0.1"
 serde_cbor = "0.11.1"
 nng = "1.0.0-rc.2"
-chrono = "0.4.15"
+chrono = "0.4.19"
 log = "0.4.11"
-simple_logger = "1.9.0"
+simple_logger = "1.11.0"
 
 [dependencies.serde]
-version = "1.0.115"
+version = "1.0.117"
 features = ["derive"]
 
 [dependencies.audio_ops]

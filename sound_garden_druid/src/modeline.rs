@@ -57,7 +57,7 @@ impl druid::Widget<Data> for Widget {
             Event::MouseDown(e) => {
                 let play_button = Rect::new(11.0, 5.0, 31.0, 23.0);
                 if play_button.contains(e.pos) {
-                    ctx.submit_command(PLAY_PAUSE, None);
+                    ctx.submit_command(PLAY_PAUSE);
                 }
             }
             _ => {}
@@ -157,7 +157,7 @@ impl druid::Widget<Data> for Widget {
             let font = self.get_font(&mut ctx.text());
             let layout = ctx
                 .text()
-                .new_text_layout(&help)
+                .new_text_layout(help)
                 .font(font.clone(), MODELINE_FONT_SIZE)
                 .text_color(FOREGROUND_COLOR)
                 .build()

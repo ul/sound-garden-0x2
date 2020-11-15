@@ -139,7 +139,7 @@ impl druid::Widget<Data> for Widget {
         let font = self.get_font(&mut ctx.text());
         let layout = ctx
             .text()
-            .new_text_layout(&format!("{}", max))
+            .new_text_layout(format!("{}", max))
             .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
             .text_color(OSCILLOSCOPE_FOREGROUND_COLOR)
             .build()
@@ -147,7 +147,7 @@ impl druid::Widget<Data> for Widget {
         ctx.draw_text(&layout, Point::new(0.0, 0.0));
         let layout = ctx
             .text()
-            .new_text_layout(&format!("{}", min))
+            .new_text_layout(format!("{}", min))
             .font(font.clone(), OSCILLOSCOPE_FONT_SIZE)
             .text_color(OSCILLOSCOPE_FOREGROUND_COLOR)
             .build()

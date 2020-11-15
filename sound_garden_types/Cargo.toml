@@ -11,7 +11,7 @@ druid = { git = "https://github.com/linebender/druid.git", version = "0.6" }
 rand = "0.7.3"
 
 [dependencies.serde]
-version = "1.0.115"
+version = "1.0.117"
 features = ["derive"]
 
 [dependencies.crdt_engine]

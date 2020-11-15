@@ -8,8 +8,8 @@ use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
 use druid::{
     widget::{Flex, Scroll},
-    AppDelegate, AppLauncher, Command, DelegateCtx, Env, Event, Lens, Point, Size, Target, Vec2,
-    Widget, WidgetExt, WindowDesc, WindowId,
+    AppDelegate, AppLauncher, Command, DelegateCtx, Env, Event, Handled, Lens, Point, Size, Target,
+    Vec2, Widget, WidgetExt, WindowDesc, WindowId,
 };
 use serde::{Deserialize, Serialize};
 use sound_garden_format::{NodeEdit, NodeRepository};
@@ -132,7 +132,7 @@ fn main() -> Result<()> {
                             node_repo.apply(patch);
                         }
                     }
-                    event_sink.submit_command(SAVE, (), None).ok();
+                    event_sink.submit_command(SAVE, (), Target::Auto).ok();
                 }
             }
         });
@@ -187,7 +187,7 @@ fn main() -> Result<()> {
             crossbeam_channel::select! {
                 recv(rx) -> msg => if msg.is_err() { break; },
                 recv(monitor_rx) -> frame => match frame {
-                    Ok(frame) => { event_sink.submit_command(OSCILLOSCOPE, frame, None).ok(); },
+                    Ok(frame) => { event_sink.submit_command(OSCILLOSCOPE, frame, Target::Auto).ok(); },
                     Err(_) => { break; }
                 },
             }
@@ -259,17 +259,17 @@ impl AppDelegate<Data> for App {
         cmd: &Command,
         data: &mut Data,
         _env: &Env,
-    ) -> bool {
+    ) -> Handled {
         let prev_cursor_position = data.cursor.position;
         let result = match cmd {
             _ if cmd.is(OSCILLOSCOPE) => {
                 // Short-circuit for perf as this is a high-freq event.
-                return true;
+                return Handled::Yes;
             }
             _ if cmd.is(TOGGLE_OSCILLOSCOPE) => {
                 match self.oscilloscope {
                     Some(id) => {
-                        ctx.submit_command(druid::commands::SHOW_WINDOW, Some(Target::Window(id)));
+                        ctx.submit_command(druid::commands::SHOW_WINDOW.to(Target::Window(id)));
                     }
                     None => {
                         let w = WindowDesc::new(|| {
@@ -280,15 +280,15 @@ impl AppDelegate<Data> for App {
                         ctx.new_window(w);
                     }
                 }
-                false
+                Handled::No
             }
             _ if cmd.is(OSCILLOSCOPE_ZOOM_IN) => {
                 data.oscilloscope_zoom += 1;
-                false
+                Handled::No
             }
             _ if cmd.is(OSCILLOSCOPE_ZOOM_OUT) => {
                 data.oscilloscope_zoom -= 1;
-                false
+                Handled::No
             }
             _ if cmd.is(NODE_INSERT_TEXT) => {
                 let text = cmd.get_unchecked(NODE_INSERT_TEXT);
@@ -338,7 +338,7 @@ impl AppDelegate<Data> for App {
                         self.edit(edits);
                     });
                 data.cursor.position.x += text.chars().count() as f64;
-                false
+                Handled::No
             }
             _ if cmd.is(NODE_DELETE_CHAR) => {
                 data.node_at_cursor().map(|(Node { id, text, .. }, index)| {
@@ -370,7 +370,7 @@ impl AppDelegate<Data> for App {
 
                     self.edit(edits);
                 });
-                false
+                Handled::No
             }
             _ if cmd.is(COMMIT_PROGRAM) => {
                 let ops = data
@@ -390,39 +390,39 @@ impl AppDelegate<Data> for App {
                     .map(|node| (node.id, node.text.to_owned()))
                     .collect();
                 self.undo_group += 1;
-                false
+                Handled::No
             }
             _ if cmd.is(PLAY_PAUSE) => {
                 data.play = !data.play;
                 self.audio_tx
                     .send(audio_server::Message::Play(data.play))
                     .ok();
-                false
+                Handled::No
             }
             _ if cmd.is(TOGGLE_RECORD) => {
                 data.record = !data.record;
                 self.audio_tx
                     .send(audio_server::Message::Record(data.record))
                     .ok();
-                false
+                Handled::No
             }
             _ if cmd.is(UNDO) => {
                 if let Some(patch) = self.node_repo.lock().unwrap().undo() {
                     self.sync(patch);
                 }
                 self.save();
-                false
+                Handled::No
             }
             _ if cmd.is(REDO) => {
                 if let Some(patch) = self.node_repo.lock().unwrap().redo() {
                     self.sync(patch);
                 }
                 self.save();
-                false
+                Handled::No
             }
             _ if cmd.is(SAVE) => {
                 self.save();
-                false
+                Handled::No
             }
             _ if cmd.is(SPLASH) => {
                 data.mode = Mode::Insert;
@@ -455,7 +455,7 @@ impl AppDelegate<Data> for App {
                         self.edit(edits);
                     }
                 }
-                false
+                Handled::No
             }
             _ if cmd.is(DELETE_NODE) => {
                 if let Some((node, _)) = data.node_at_cursor() {
@@ -467,7 +467,7 @@ impl AppDelegate<Data> for App {
                     self.sync(patch);
                     self.save();
                 }
-                false
+                Handled::No
             }
             _ if cmd.is(DELETE_LINE) => {
                 let cursor = data.cursor.position;
@@ -489,7 +489,7 @@ impl AppDelegate<Data> for App {
                     .delete_nodes(&ids, self.undo_group);
                 self.sync(patch);
                 self.save();
-                false
+                Handled::No
             }
             _ if cmd.is(CUT_NODE) => {
                 data.mode = Mode::Insert;
@@ -506,7 +506,7 @@ impl AppDelegate<Data> for App {
                     );
                     self.edit(edits);
                 }
-                false
+                Handled::No
             }
             _ if cmd.is(CYCLE_UP) => {
                 if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
@@ -525,7 +525,7 @@ impl AppDelegate<Data> for App {
                             }],
                         );
                         self.edit(edits);
-                        ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
+                        ctx.submit_command(COMMIT_PROGRAM);
                     } else {
                         for cycle in default_cycles() {
                             if let Some(ops) = cycle.windows(2).find(|ops| ops[0] == text) {
@@ -539,13 +539,13 @@ impl AppDelegate<Data> for App {
                                     }],
                                 );
                                 self.edit(edits);
-                                ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
+                                ctx.submit_command(COMMIT_PROGRAM);
                                 break;
                             }
                         }
                     }
                 }
-                false
+                Handled::No
             }
             _ if cmd.is(CYCLE_DOWN) => {
                 if let Some((Node { id, text, .. }, index)) = data.node_at_cursor() {
@@ -564,7 +564,7 @@ impl AppDelegate<Data> for App {
                             }],
                         );
                         self.edit(edits);
-                        ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
+                        ctx.submit_command(COMMIT_PROGRAM);
                     } else {
                         for cycle in default_cycles() {
                             if let Some(ops) = cycle.windows(2).find(|ops| ops[1] == text) {
@@ -578,13 +578,13 @@ impl AppDelegate<Data> for App {
                                     }],
                                 );
                                 self.edit(edits);
-                                ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
+                                ctx.submit_command(COMMIT_PROGRAM);
                                 break;
                             }
                         }
                     }
                 }
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_RIGHT_TO_LEFT) => {
                 let cursor = data.cursor.position;
@@ -606,7 +606,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.x -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_RIGHT_TO_RIGHT) => {
                 let cursor = data.cursor.position;
@@ -628,7 +628,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.x += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_LEFT_TO_LEFT) => {
                 let cursor = data.cursor.position;
@@ -648,7 +648,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.x -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_LEFT_TO_RIGHT) => {
                 let cursor = data.cursor.position;
@@ -668,7 +668,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.x += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_NODE_LEFT) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
@@ -677,7 +677,7 @@ impl AppDelegate<Data> for App {
                     self.edit(edits);
                 }
                 data.cursor.position.x -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_NODE_RIGHT) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
@@ -686,7 +686,7 @@ impl AppDelegate<Data> for App {
                     self.edit(edits);
                 }
                 data.cursor.position.x += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_NODE_UP) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
@@ -695,7 +695,7 @@ impl AppDelegate<Data> for App {
                     self.edit(edits);
                 }
                 data.cursor.position.y -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_NODE_DOWN) => {
                 if let Some((Node { id, position, .. }, _)) = data.node_at_cursor() {
@@ -704,7 +704,7 @@ impl AppDelegate<Data> for App {
                     self.edit(edits);
                 }
                 data.cursor.position.y += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_LINE_UP) => {
                 let cursor = data.cursor.position;
@@ -724,7 +724,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_LINE_DOWN) => {
                 let cursor = data.cursor.position;
@@ -744,7 +744,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_LEFT_UP) => {
                 let cursor = data.cursor.position;
@@ -766,7 +766,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_RIGHT_DOWN) => {
                 let cursor = data.cursor.position;
@@ -789,7 +789,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_BELOW_UP) => {
                 let cursor = data.cursor.position;
@@ -809,7 +809,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_BELOW_DOWN) => {
                 let cursor = data.cursor.position;
@@ -829,7 +829,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_ABOVE_UP) => {
                 let cursor = data.cursor.position;
@@ -849,7 +849,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_ABOVE_DOWN) => {
                 let cursor = data.cursor.position;
@@ -869,7 +869,7 @@ impl AppDelegate<Data> for App {
                     .collect::<HashMap<_, _>>();
                 self.edit(edits);
                 data.cursor.position.y += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(INSERT_NEW_LINE_BELOW) => {
                 data.mode = Mode::Insert;
@@ -896,7 +896,7 @@ impl AppDelegate<Data> for App {
                 self.edit(edits);
                 data.cursor.position.x = x;
                 data.cursor.position.y += 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(INSERT_NEW_LINE_ABOVE) => {
                 data.mode = Mode::Insert;
@@ -923,36 +923,36 @@ impl AppDelegate<Data> for App {
                 self.edit(edits);
                 data.cursor.position.x = x;
                 data.cursor.position.y -= 1.0;
-                false
+                Handled::No
             }
             _ if cmd.is(MOVE_CURSOR) => {
                 let delta: Vec2 = *cmd.get_unchecked(MOVE_CURSOR);
                 data.cursor.position += delta;
-                false
+                Handled::No
             }
             _ if cmd.is(SET_CURSOR) => {
                 let position: Point = *cmd.get_unchecked(SET_CURSOR);
                 data.cursor.position = position;
-                false
+                Handled::No
             }
             _ if cmd.is(INSERT_MODE) => {
                 data.mode = Mode::Insert;
                 self.undo_group += 1;
-                false
+                Handled::No
             }
             _ if cmd.is(NORMAL_MODE) => {
                 data.mode = Mode::Normal;
                 self.undo_group += 1;
-                false
+                Handled::No
             }
             _ if cmd.is(DEBUG) => {
                 let repo = self.node_repo.lock().unwrap();
                 log::debug!("\nText:\n\n{}\n\nMeta:\n\n{:?}", repo.text(), repo.meta());
-                false
+                Handled::No
             }
             _ => {
                 log::debug!("{:?} is not handled in delegate.", cmd);
-                true
+                Handled::Yes
             }
         };
         if data.cursor.position != prev_cursor_position {

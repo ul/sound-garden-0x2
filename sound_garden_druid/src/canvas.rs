@@ -1,8 +1,8 @@
 use crate::{commands::*, theme::*};
 use druid::{
     piet::{FontFamily, PietText, Text, TextLayout, TextLayoutBuilder},
-    BoxConstraints, Command, Env, Event, EventCtx, HotKey, KbKey, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
+    BoxConstraints, Env, Event, EventCtx, HotKey, KbKey, LayoutCtx, LifeCycle, LifeCycleCtx,
+    PaintCtx, Point, RawMods, Rect, RenderContext, Size, SysMods, UpdateCtx, Vec2,
 };
 use sound_garden_types::*;
 use std::sync::Arc;
@@ -47,158 +47,143 @@ impl druid::Widget<Data> for Widget {
                             || HotKey::new(None, KbKey::ArrowLeft).matches(event)
                             || HotKey::new(None, KbKey::Backspace).matches(event) =>
                         {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(-1.0, 0.0)));
                         }
                         _ if HotKey::new(None, "j").matches(event)
                             || HotKey::new(None, KbKey::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(0.0, 1.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(0.0, 1.0)));
                         }
                         _ if HotKey::new(None, "k").matches(event)
                             || HotKey::new(None, KbKey::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(0.0, -1.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(0.0, -1.0)));
                         }
                         _ if HotKey::new(None, "l").matches(event)
                             || HotKey::new(None, KbKey::ArrowRight).matches(event)
                             || HotKey::new(None, " ").matches(event) =>
                         {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(1.0, 0.0)));
                         }
                         _ if HotKey::new(RawMods::Alt, "h").matches(event)
                             || HotKey::new(RawMods::Alt, KbKey::ArrowLeft).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_NODE_LEFT), None);
+                            ctx.submit_command(MOVE_NODE_LEFT);
                         }
                         _ if HotKey::new(RawMods::Alt, "j").matches(event)
                             || HotKey::new(RawMods::Alt, KbKey::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_NODE_DOWN), None);
+                            ctx.submit_command(MOVE_NODE_DOWN);
                         }
                         _ if HotKey::new(RawMods::Alt, "k").matches(event)
                             || HotKey::new(RawMods::Alt, KbKey::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_NODE_UP), None);
+                            ctx.submit_command(MOVE_NODE_UP);
                         }
                         _ if HotKey::new(RawMods::Alt, "l").matches(event)
                             || HotKey::new(RawMods::Alt, KbKey::ArrowRight).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_NODE_RIGHT), None);
+                            ctx.submit_command(MOVE_NODE_RIGHT);
                         }
                         _ if HotKey::new(SysMods::Shift, "J").matches(event)
                             || HotKey::new(SysMods::Shift, KbKey::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_BELOW_DOWN), None);
+                            ctx.submit_command(MOVE_BELOW_DOWN);
                         }
                         _ if HotKey::new(SysMods::Shift, "K").matches(event)
                             || HotKey::new(SysMods::Shift, KbKey::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_BELOW_UP), None);
+                            ctx.submit_command(MOVE_BELOW_UP);
                         }
                         _ if HotKey::new(RawMods::AltShift, "J").matches(event)
                             || HotKey::new(RawMods::AltShift, KbKey::ArrowDown).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_ABOVE_DOWN), None);
+                            ctx.submit_command(MOVE_ABOVE_DOWN);
                         }
                         _ if HotKey::new(RawMods::AltShift, "K").matches(event)
                             || HotKey::new(RawMods::AltShift, KbKey::ArrowUp).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_ABOVE_UP), None);
+                            ctx.submit_command(MOVE_ABOVE_UP);
                         }
                         _ if HotKey::new(SysMods::Shift, "H").matches(event)
                             || HotKey::new(SysMods::Shift, KbKey::ArrowLeft).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_LINE_UP), None);
+                            ctx.submit_command(MOVE_LINE_UP);
                         }
                         _ if HotKey::new(SysMods::Shift, "L").matches(event)
                             || HotKey::new(SysMods::Shift, KbKey::ArrowRight).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(MOVE_LINE_DOWN), None);
+                            ctx.submit_command(MOVE_LINE_DOWN);
                         }
                         _ if HotKey::new(None, "i").matches(event) => {
-                            ctx.submit_command(Command::from(INSERT_MODE), None);
+                            ctx.submit_command(INSERT_MODE);
                         }
                         _ if HotKey::new(SysMods::Shift, "I").matches(event) => {
-                            ctx.submit_command(Command::from(SPLASH), None);
+                            ctx.submit_command(SPLASH);
                         }
                         _ if HotKey::new(None, "a").matches(event) => {
-                            ctx.submit_command(Command::from(INSERT_MODE), None);
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
-                                None,
-                            );
+                            ctx.submit_command(INSERT_MODE);
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(1.0, 0.0)));
                         }
                         _ if HotKey::new(None, "c").matches(event) => {
-                            ctx.submit_command(Command::from(CUT_NODE), None);
+                            ctx.submit_command(CUT_NODE);
                         }
                         _ if HotKey::new(None, "d").matches(event) => {
-                            ctx.submit_command(Command::from(DELETE_NODE), None);
+                            ctx.submit_command(DELETE_NODE);
                         }
                         _ if HotKey::new(SysMods::Shift, "D").matches(event) => {
-                            ctx.submit_command(Command::from(DELETE_LINE), None);
+                            ctx.submit_command(DELETE_LINE);
                         }
                         _ if HotKey::new(None, KbKey::Enter).matches(event) => {
-                            ctx.submit_command(Command::from(COMMIT_PROGRAM), None);
+                            ctx.submit_command(COMMIT_PROGRAM);
                         }
                         _ if HotKey::new(None, "\\").matches(event) => {
-                            ctx.submit_command(Command::from(PLAY_PAUSE), None);
+                            ctx.submit_command(PLAY_PAUSE);
                         }
                         _ if HotKey::new(None, "r").matches(event) => {
-                            ctx.submit_command(Command::from(TOGGLE_RECORD), None);
+                            ctx.submit_command(TOGGLE_RECORD);
                         }
                         _ if HotKey::new(None, "u").matches(event) => {
-                            ctx.submit_command(Command::from(UNDO), None);
+                            ctx.submit_command(UNDO);
                         }
                         _ if HotKey::new(SysMods::Shift, "U").matches(event) => {
-                            ctx.submit_command(Command::from(REDO), None);
+                            ctx.submit_command(REDO);
                         }
                         _ if HotKey::new(None, "=").matches(event) => {
-                            ctx.submit_command(Command::from(CYCLE_UP), None);
+                            ctx.submit_command(CYCLE_UP);
                         }
                         _ if HotKey::new(None, "-").matches(event) => {
-                            ctx.submit_command(Command::from(CYCLE_DOWN), None);
+                            ctx.submit_command(CYCLE_DOWN);
                         }
                         _ if HotKey::new(None, ",").matches(event) => {
-                            ctx.submit_command(Command::from(MOVE_RIGHT_TO_LEFT), None);
+                            ctx.submit_command(MOVE_RIGHT_TO_LEFT);
                         }
                         _ if HotKey::new(None, ".").matches(event) => {
-                            ctx.submit_command(Command::from(MOVE_RIGHT_TO_RIGHT), None);
+                            ctx.submit_command(MOVE_RIGHT_TO_RIGHT);
                         }
                         _ if HotKey::new(SysMods::Shift, ">").matches(event) => {
-                            ctx.submit_command(Command::from(MOVE_LEFT_TO_LEFT), None);
+                            ctx.submit_command(MOVE_LEFT_TO_LEFT);
                         }
                         _ if HotKey::new(SysMods::Shift, "<").matches(event) => {
-                            ctx.submit_command(Command::from(MOVE_LEFT_TO_RIGHT), None);
+                            ctx.submit_command(MOVE_LEFT_TO_RIGHT);
                         }
                         _ if HotKey::new(None, "`").matches(event) => {
-                            ctx.submit_command(Command::from(DEBUG), None);
+                            ctx.submit_command(DEBUG);
                         }
                         _ if HotKey::new(None, "o").matches(event) => {
-                            ctx.submit_command(Command::from(INSERT_NEW_LINE_BELOW), None);
+                            ctx.submit_command(INSERT_NEW_LINE_BELOW);
                         }
                         _ if HotKey::new(SysMods::Shift, "O").matches(event) => {
-                            ctx.submit_command(Command::from(INSERT_NEW_LINE_ABOVE), None);
+                            ctx.submit_command(INSERT_NEW_LINE_ABOVE);
                         }
                         _ if HotKey::new(None, "v").matches(event) => {
-                            ctx.submit_command(Command::from(TOGGLE_OSCILLOSCOPE), None);
+                            ctx.submit_command(TOGGLE_OSCILLOSCOPE);
                         }
                         _ if HotKey::new(RawMods::Alt, "=").matches(event) => {
-                            ctx.submit_command(Command::from(OSCILLOSCOPE_ZOOM_IN), None);
+                            ctx.submit_command(OSCILLOSCOPE_ZOOM_IN);
                         }
                         _ if HotKey::new(RawMods::Alt, "-").matches(event) => {
-                            ctx.submit_command(Command::from(OSCILLOSCOPE_ZOOM_OUT), None);
+                            ctx.submit_command(OSCILLOSCOPE_ZOOM_OUT);
                         }
                         _ => {}
                     },
@@ -206,48 +191,30 @@ impl druid::Widget<Data> for Widget {
                         _ if HotKey::new(None, KbKey::Escape).matches(event)
                             || HotKey::new(None, KbKey::Enter).matches(event) =>
                         {
-                            ctx.submit_command(Command::from(NORMAL_MODE), None);
+                            ctx.submit_command(NORMAL_MODE);
                         }
                         _ if HotKey::new(None, KbKey::ArrowLeft).matches(event) => {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(-1.0, 0.0)));
                         }
                         _ if HotKey::new(None, KbKey::ArrowDown).matches(event) => {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(0.0, 1.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(0.0, 1.0)));
                         }
                         _ if HotKey::new(None, KbKey::ArrowUp).matches(event) => {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(0.0, -1.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(0.0, -1.0)));
                         }
                         _ if HotKey::new(None, KbKey::ArrowRight).matches(event) => {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(1.0, 0.0)),
-                                None,
-                            );
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(1.0, 0.0)));
                         }
                         _ if HotKey::new(None, " ").matches(event) => {
-                            ctx.submit_command(Command::from(MOVE_RIGHT_TO_RIGHT), None);
+                            ctx.submit_command(MOVE_RIGHT_TO_RIGHT);
                         }
                         _ if HotKey::new(None, KbKey::Backspace).matches(event) => {
-                            ctx.submit_command(
-                                Command::new(MOVE_CURSOR, Vec2::new(-1.0, 0.0)),
-                                None,
-                            );
-                            ctx.submit_command(Command::from(NODE_DELETE_CHAR), None);
+                            ctx.submit_command(MOVE_CURSOR.with(Vec2::new(-1.0, 0.0)));
+                            ctx.submit_command(NODE_DELETE_CHAR);
                         }
                         _ => {
                             if let KbKey::Character(text) = &event.key {
-                                ctx.submit_command(
-                                    Command::new(NODE_INSERT_TEXT, text.to_string()),
-                                    None,
-                                );
+                                ctx.submit_command(NODE_INSERT_TEXT.with(text.to_string()));
                             }
                         }
                     },
@@ -256,16 +223,10 @@ impl druid::Widget<Data> for Widget {
             }
             Event::MouseDown(event) => {
                 if let Some(grid_unit) = self.grid_unit {
-                    ctx.submit_command(
-                        Command::new(
-                            SET_CURSOR,
-                            Point::new(
-                                (event.pos.x / grid_unit.width - 0.5).round(),
-                                (event.pos.y / grid_unit.height - 0.5).round(),
-                            ),
-                        ),
-                        None,
-                    );
+                    ctx.submit_command(SET_CURSOR.with(Point::new(
+                        (event.pos.x / grid_unit.width - 0.5).round(),
+                        (event.pos.y / grid_unit.height - 0.5).round(),
+                    )));
                 }
                 ctx.request_paint();
             }
@@ -351,7 +312,7 @@ impl druid::Widget<Data> for Widget {
             };
             let layout = ctx
                 .text()
-                .new_text_layout(&node.text)
+                .new_text_layout(node.text.clone())
                 .font(font.clone(), FONT_SIZE)
                 .text_color(color)
                 .build()
