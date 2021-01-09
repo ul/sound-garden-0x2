@@ -7,11 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-smallvec = "1.4.2"
+smallvec = "1.6.1"
 fasthash = "0.4.0"
 log = "0.4.11"
-regex = "1.4.2"
-audrey = "0.2.0"
+regex = "1.4.3"
+
+[dependencies.audrey]
+version = "0.2.0"
+git = "https://github.com/grantgustafson/audrey.git"
+branch = "sample_dep_fix"
 
 [dependencies.audio_ops]
 path = "../audio_ops"
@@ -20,9 +24,9 @@ path = "../audio_ops"
 path = "../audio_vm"
 
 [dependencies.rand]
-version = "0.7.3"
+version = "0.8.1"
 features = ["small_rng"]
 
 [dependencies.serde]
-version = "1.0.117"
+version = "1.0.118"
 features = ["derive"]

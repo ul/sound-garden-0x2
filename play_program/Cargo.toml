@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 cpal = "0.13.1"
-rand = "0.7.3"
-anyhow = "1.0.34"
+rand = "0.8.1"
+anyhow = "1.0.37"
 
 [dependencies.audio_ops]
 path = "../audio_ops"

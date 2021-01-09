@@ -7,13 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.34"
-druid = { git = "https://github.com/linebender/druid.git", version = "0.6" }
+anyhow = "1.0.37"
+druid = { git = "https://github.com/linebender/druid.git", version = "0.7" }
 serde_cbor = "0.11.1"
-snap = "1.0.1"
+snap = "1.0.3"
 
 [dependencies.serde]
-version = "1.0.117"
+version = "1.0.118"
 features = ["derive"]
 
 [dependencies.crdt_engine]

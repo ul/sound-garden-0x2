@@ -140,6 +140,29 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                     Box::new(move |freqs| freqs.shuffle(&mut rng)),
                 )
             }
+            "st1" => {
+                push_args!(
+                    id,
+                    SpectralTransform,
+                    2048, // window_size
+                    64,   // period
+                    Box::new(|freqs| {
+                        let mut max = 0.0;
+                        let mut max_idx = 0;
+                        for (i, freq) in freqs.iter().enumerate() {
+                            if freq.re > max {
+                                max = freq.re;
+                                max_idx = i;
+                            }
+                        }
+                        for (i, freq) in freqs.iter_mut().enumerate() {
+                            if i != max_idx {
+                                *freq = Default::default();
+                            }
+                        }
+                    }),
+                )
+            }
             "spectral_reverse" => {
                 push_args!(
                     id,
