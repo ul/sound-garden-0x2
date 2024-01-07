@@ -14,7 +14,7 @@ impl Stack {
     pub fn new() -> Self {
         Stack {
             data: [0.0; STACK_CAPACITY],
-            /// Index of the top of the stack (in Samples, not Frames).
+            // Index of the top of the stack (in Samples, not Frames).
             top: 0,
         }
     }
