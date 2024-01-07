@@ -25,7 +25,7 @@ impl Op for TableReader {
             let z = ix * self.sample_rate;
             let i = z as usize;
             let k = z.fract();
-            let a = f64::from_bits(self.table[(i % size)][channel].load(Ordering::Relaxed));
+            let a = f64::from_bits(self.table[i % size][channel].load(Ordering::Relaxed));
             let b = f64::from_bits(self.table[(i + 1) % size][channel].load(Ordering::Relaxed));
             *sample = (1.0 - k) * a + k * b;
         }
