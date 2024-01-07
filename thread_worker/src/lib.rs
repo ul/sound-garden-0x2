@@ -26,7 +26,7 @@ impl Drop for ScopedThread {
         // escalate panic, but avoid aborting the process
         if let Err(e) = res {
             if !thread::panicking() {
-                panic!(e)
+                panic!("{:?}", e)
             }
         }
     }
