@@ -109,7 +109,7 @@ fn main() -> Result<()> {
         .map(|s| s.to_owned())
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
-    let main_window = WindowDesc::new(build_ui).title("Sound Garden");
+    let main_window = WindowDesc::new(build_ui()).title("Sound Garden");
     let main_window_id = main_window.id;
     let launcher = AppLauncher::with_window(main_window);
 
@@ -272,9 +272,9 @@ impl AppDelegate<Data> for App {
                         ctx.submit_command(druid::commands::SHOW_WINDOW.to(Target::Window(id)));
                     }
                     None => {
-                        let w = WindowDesc::new(|| {
+                        let w = WindowDesc::new((|| {
                             oscilloscope::Widget::default().lens(OscilloscopeLens {})
-                        })
+                        })())
                         .title("Oscilloscope");
                         self.oscilloscope = Some(w.id);
                         ctx.new_window(w);

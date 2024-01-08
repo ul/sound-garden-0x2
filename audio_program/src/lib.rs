@@ -422,7 +422,7 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     let mut result: Vec<TextOp> = Vec::new();
     let mut new_term: Option<Term> = None;
     let mut terms: HashMap<String, Term> = Default::default();
-    let mut stack: Vec<TextOp> = Vec::from(stmts.clone());
+    let mut stack: Vec<TextOp> = Vec::from(stmts);
     stack.reverse();
     while let Some(stmt) = stack.pop() {
         // This is a known term, let's rewrite it...

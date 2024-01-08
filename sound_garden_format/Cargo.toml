@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.37"
-druid = { git = "https://github.com/linebender/druid.git", version = "0.7" }
+druid = { git = "https://github.com/linebender/druid.git", version = "0.8" }
 serde_cbor = "0.11.1"
 snap = "1.0.3"
 
