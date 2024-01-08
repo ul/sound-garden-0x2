@@ -10,7 +10,7 @@ edition = "2018"
 smallvec = "1.6.1"
 fasthash = "0.4.0"
 log = "0.4.11"
-regex = "1.4.3"
+regex = "1.5.5"
 
 [dependencies.audrey]
 version = "0.2.0"
