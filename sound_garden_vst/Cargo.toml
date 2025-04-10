@@ -10,7 +10,7 @@ edition = "2018"
 vst = "0.2.1"
 alloc_counter = "0.0.4"
 serde_json = "1.0.61"
-crossbeam-channel = "0.5.0"
+crossbeam-channel = "0.5.15"
 
 [dependencies.serde]
 version = "1.0.118"
