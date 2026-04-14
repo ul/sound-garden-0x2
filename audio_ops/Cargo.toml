@@ -16,5 +16,5 @@ micromath = "1.1.0"
 path = "../audio_vm"
 
 [dependencies.rand]
-version = "0.8.1"
+version = "0.9.3"
 features = ["small_rng"]

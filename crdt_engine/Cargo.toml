@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 crdts = "4.3.0"
 ropey = "1.2.0"
-rand = "0.8.1"
+rand = "0.9.3"
 
 [dependencies.serde]
 version = "1.0.118"
