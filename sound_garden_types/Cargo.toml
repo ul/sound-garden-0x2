@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 druid = { git = "https://github.com/linebender/druid.git", version = "0.8" }
-rand = "0.8.1"
+rand = "0.8.6"
 
 [dependencies.serde]
 version = "1.0.118"

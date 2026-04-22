@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 hound = "3.4.0"
-rand = "0.8.1"
+rand = "0.8.6"
 
 [dependencies.audio_ops]
 path = "../audio_ops"
