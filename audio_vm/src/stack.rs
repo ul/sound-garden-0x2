@@ -59,3 +59,54 @@ impl Default for Stack {
         Stack::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_stack_peeks_and_pops_silence() {
+        let mut stack = Stack::new();
+
+        assert_eq!(stack.peek(), [0.0, 0.0]);
+        assert_eq!(stack.pop(), [0.0, 0.0]);
+        assert_eq!(stack.peek(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn push_peek_and_pop_are_lifo_by_frame() {
+        let mut stack = Stack::new();
+
+        stack.push(&[1.0, 2.0]);
+        stack.push(&[3.0, 4.0]);
+
+        assert_eq!(stack.peek(), [3.0, 4.0]);
+        assert_eq!(stack.pop(), [3.0, 4.0]);
+        assert_eq!(stack.pop(), [1.0, 2.0]);
+        assert_eq!(stack.pop(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn reset_discards_frames() {
+        let mut stack = Stack::new();
+        stack.push(&[1.0, 2.0]);
+
+        stack.reset();
+
+        assert_eq!(stack.peek(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn push_ignores_frames_after_capacity() {
+        let mut stack = Stack::new();
+
+        for i in 0..STACK_SIZE {
+            let x = i as Sample;
+            stack.push(&[x, -x]);
+        }
+        stack.push(&[99.0, 99.0]);
+
+        let top = (STACK_SIZE - 1) as Sample;
+        assert_eq!(stack.peek(), [top, -top]);
+    }
+}

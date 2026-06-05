@@ -506,82 +506,110 @@ struct Term {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::Context;
 
     #[test]
     fn rewrite_terms_does_its_thing() {
         assert_eq!(
             rewrite_terms(&vec![
-                TextOp {
-                    id: 1,
-                    op: "[?".to_string()
-                },
-                TextOp {
-                    id: 10,
-                    op: "s]".to_string()
-                },
-                TextOp {
-                    id: 100,
-                    op: "foo".to_string()
-                },
-                TextOp {
-                    id: 1000,
-                    op: "[?".to_string()
-                },
-                TextOp {
-                    id: 10000,
-                    op: "foo".to_string()
-                },
-                TextOp {
-                    id: 100000,
-                    op: "+]".to_string()
-                },
-                TextOp {
-                    id: 1000000,
-                    op: "bar".to_string()
-                },
-                TextOp {
-                    id: 10000000,
-                    op: "1".to_string()
-                },
-                TextOp {
-                    id: 100000000,
-                    op: "bar".to_string()
-                },
-                TextOp {
-                    id: 1000000000,
-                    op: "2".to_string()
-                },
-                TextOp {
-                    id: 10000000000,
-                    op: "bar".to_string()
-                },
+                TextOp { id: 1, op: "[?".to_string() },
+                TextOp { id: 10, op: "s]".to_string() },
+                TextOp { id: 100, op: "foo".to_string() },
+                TextOp { id: 1000, op: "[?".to_string() },
+                TextOp { id: 10000, op: "foo".to_string() },
+                TextOp { id: 100000, op: "+]".to_string() },
+                TextOp { id: 1000000, op: "bar".to_string() },
+                TextOp { id: 10000000, op: "1".to_string() },
+                TextOp { id: 100000000, op: "bar".to_string() },
+                TextOp { id: 1000000000, op: "2".to_string() },
+                TextOp { id: 10000000000, op: "bar".to_string() },
             ]),
             vec![
-                TextOp {
-                    id: 10000000,
-                    op: "1".to_string()
-                },
-                TextOp {
-                    id: 100010010,
-                    op: "s".to_string()
-                },
-                TextOp {
-                    id: 100100000,
-                    op: "+".to_string()
-                },
-                TextOp {
-                    id: 1000000000,
-                    op: "2".to_string()
-                },
-                TextOp {
-                    id: 10000010010,
-                    op: "s".to_string()
-                },
-                TextOp {
-                    id: 10000100000,
-                    op: "+".to_string()
-                }
+                TextOp { id: 10000000, op: "1".to_string() },
+                TextOp { id: 100010010, op: "s".to_string() },
+                TextOp { id: 100100000, op: "+".to_string() },
+                TextOp { id: 1000000000, op: "2".to_string() },
+                TextOp { id: 10000010010, op: "s".to_string() },
+                TextOp { id: 10000100000, op: "+".to_string() },
             ]
         );
+    }
+
+    fn op(id: u64, op: &str) -> TextOp {
+        TextOp { id, op: op.to_owned() }
+    }
+
+    fn run_once(ops: &[TextOp], context: &mut Context) -> Frame {
+        let mut vm = audio_vm::VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(compile_program(ops, 100, context));
+        vm.play();
+        vm.next_frame()
+    }
+
+    #[test]
+    fn compile_program_evaluates_stack_arithmetic_and_aliases() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(&[op(1, "2"), op(2, "3"), op(3, "add"), op(4, "4"), op(5, "mul")], &mut context),
+            [20.0, 20.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_reads_input_and_parameters_from_shared_context() {
+        let mut context = Context::new();
+        context.input[0].store(0.25f64.to_bits(), Ordering::Relaxed);
+        context.input[1].store((-0.5f64).to_bits(), Ordering::Relaxed);
+        context.params[2].store(4.0f64.to_bits(), Ordering::Relaxed);
+
+        assert_eq!(
+            run_once(&[op(1, "input"), op(2, "param:2"), op(3, "*")], &mut context),
+            [1.0, -2.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_shares_named_variables_between_ops() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(&[op(1, "7"), op(2, "set:answer"), op(3, "get:answer"), op(4, "+")], &mut context),
+            [14.0, 14.0]
+        );
+        assert!(context.variables.contains_key("answer"));
+    }
+
+    #[test]
+    fn compile_program_creates_and_writes_named_tables() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(&[op(1, "0.75"), op(2, "1"), op(3, "wt:loop:0.01")], &mut context),
+            [0.75, 0.75]
+        );
+
+        let table = context.tables.get("loop").expect("created table");
+        assert_eq!(table.len(), 1);
+        assert_eq!(
+            [
+                f64::from_bits(table[0][0].load(Ordering::Relaxed)),
+                f64::from_bits(table[0][1].load(Ordering::Relaxed)),
+            ],
+            [0.75, 0.75]
+        );
+    }
+
+    #[test]
+    fn help_index_contains_aliases_and_grouped_terms() {
+        let help = get_help();
+        assert_eq!(help.get("+").map(String::as_str), help.get("add").map(String::as_str));
+        assert!(help.contains_key("metro"));
+
+        let groups = get_op_groups();
+        assert!(groups.iter().any(|(group, terms)|
+            group == "Triggers" && terms.iter().any(|term| term.starts_with("metro"))
+        ));
     }
 }

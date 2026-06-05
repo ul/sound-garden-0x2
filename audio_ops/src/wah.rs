@@ -7,11 +7,11 @@
 //!
 //! #### Usage
 //!
-//! ```
+//! ```text
 //! _ : wah4_demo : _;
 //! ```
 //! DSP
-//! ```
+//! ```text
 //! wah4_demo = ba.bypass1(bp, ve.wah4(fr))
 //! with{
 //! 	wah4_group(x) = hgroup("WAH4 [tooltip: Fourth-order wah effect made using moog_vcf]", x);

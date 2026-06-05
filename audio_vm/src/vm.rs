@@ -112,13 +112,13 @@ impl VM {
                 for (a, &x) in self.monitor.iter().zip(&monitor_frame) {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
-                self.xfade(frame);
+                let frame = self.xfade(frame);
                 self.play_xfade(frame)
             }
             Status::Pause => {
                 if self.pause_countdown > 0.0 {
                     let frame = perform(&mut self.active_program);
-                    self.xfade(frame);
+                    let frame = self.xfade(frame);
                     self.pause_xfade(frame)
                 } else {
                     Default::default()
@@ -203,4 +203,135 @@ fn perform_and_monitor(program: &mut Program, scope_id: u64) -> (Frame, Frame) {
 enum Status {
     Play,
     Pause,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smallvec::smallvec;
+
+    struct PushFrame(Frame);
+
+    impl Op for PushFrame {
+        fn perform(&mut self, stack: &mut Stack) {
+            stack.push(&self.0);
+        }
+    }
+
+    struct AddTopTwo;
+
+    impl Op for AddTopTwo {
+        fn perform(&mut self, stack: &mut Stack) {
+            let b = stack.pop();
+            let a = stack.pop();
+            stack.push(&[a[0] + b[0], a[1] + b[1]]);
+        }
+    }
+
+    struct Counter {
+        count: Sample,
+    }
+
+    impl Counter {
+        fn new() -> Self {
+            Self { count: 0.0 }
+        }
+    }
+
+    impl Op for Counter {
+        fn perform(&mut self, stack: &mut Stack) {
+            self.count += 1.0;
+            stack.push(&[self.count; 2]);
+        }
+
+        fn migrate(&mut self, other: &Box<dyn Op>) {
+            if let Some(other) = other.downcast_ref::<Self>() {
+                self.count = other.count;
+            }
+        }
+    }
+
+    fn statement(id: u64, op: impl Op + 'static) -> Statement {
+        Statement {
+            id,
+            op: Box::new(op),
+        }
+    }
+
+    #[test]
+    fn paused_vm_outputs_silence_until_playing() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(smallvec![statement(1, PushFrame([1.0, -1.0]))]);
+
+        assert_eq!(vm.next_frame(), [0.0, 0.0]);
+
+        vm.play();
+
+        assert_eq!(vm.next_frame(), [1.0, -1.0]);
+    }
+
+    #[test]
+    fn monitor_tracks_selected_statement_or_final_output() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(smallvec![
+            statement(10, PushFrame([2.0, 3.0])),
+            statement(20, PushFrame([5.0, 7.0])),
+            statement(30, AddTopTwo),
+        ]);
+        vm.play();
+
+        vm.set_monitor_id(10);
+        assert_eq!(vm.next_frame(), [7.0, 10.0]);
+        let monitor = vm.monitor();
+        assert_eq!(
+            [
+                Sample::from_bits(monitor[0].load(Ordering::Relaxed)),
+                Sample::from_bits(monitor[1].load(Ordering::Relaxed)),
+            ],
+            [2.0, 3.0]
+        );
+
+        vm.set_monitor_id(0);
+        assert_eq!(vm.next_frame(), [7.0, 10.0]);
+        let monitor = vm.monitor();
+        assert_eq!(
+            [
+                Sample::from_bits(monitor[0].load(Ordering::Relaxed)),
+                Sample::from_bits(monitor[1].load(Ordering::Relaxed)),
+            ],
+            [7.0, 10.0]
+        );
+    }
+
+    #[test]
+    fn load_program_migrates_matching_statement_state() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(smallvec![statement(42, Counter::new())]);
+        vm.play();
+
+        assert_eq!(vm.next_frame(), [1.0, 1.0]);
+
+        vm.load_program(smallvec![statement(42, Counter::new())]);
+
+        assert_eq!(vm.next_frame(), [2.0, 2.0]);
+    }
+
+    #[test]
+    fn crossfades_from_previous_program_to_new_program() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(2.0);
+        vm.load_program(smallvec![statement(1, PushFrame([0.0, 0.0]))]);
+        vm.play();
+        vm.next_frame();
+        vm.next_frame();
+
+        vm.load_program(smallvec![statement(1, PushFrame([10.0, 20.0]))]);
+
+        assert_eq!(vm.next_frame(), [0.0, 0.0]);
+        assert_eq!(vm.next_frame(), [5.0, 10.0]);
+        assert_eq!(vm.next_frame(), [10.0, 20.0]);
+    }
 }

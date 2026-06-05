@@ -79,10 +79,7 @@ pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
             }
             Message::LoadProgram(ops) => {
                 let program = compile_program(&ops, sample_rate, &mut ctx);
-                let garbage = {
-                    vm.lock().unwrap().load_program(program);
-                };
-                drop(garbage);
+                vm.lock().unwrap().load_program(program);
             }
             Message::Monitor(id) => {
                 vm.lock().unwrap().set_monitor_id(id);

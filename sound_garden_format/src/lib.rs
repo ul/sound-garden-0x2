@@ -289,3 +289,99 @@ impl TryFrom<&str> for NodeRepository {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: u64, x: f64, y: f64, text: &str) -> Node {
+        Node {
+            id: Id::from(id),
+            position: Point::new(x, y),
+            text: text.to_owned(),
+        }
+    }
+
+    #[test]
+    fn nodes_and_text_are_sorted_by_grid_position() {
+        let mut repo = NodeRepository::new();
+        repo.add_node(node(0x2, 5.0, 1.0, "second"), 1);
+        repo.add_node(node(0x1, 1.0, 1.0, "first"), 2);
+        repo.add_node(node(0x3, 0.0, 2.0, "third"), 3);
+
+        let nodes = repo.nodes();
+
+        assert_eq!(nodes[0].id, Id::from(0x1));
+        assert_eq!(nodes[1].id, Id::from(0x2));
+        assert_eq!(nodes[2].id, Id::from(0x3));
+        assert_eq!(
+            repo.text(),
+            "0000000000000001\tfirst\n0000000000000002\tsecond\n0000000000000003\tthird\n"
+        );
+    }
+
+    #[test]
+    fn edit_nodes_moves_and_edits_by_character_range() {
+        let mut repo = NodeRepository::new();
+        repo.add_node(node(0x1, 0.0, 0.0, "a🎹cd"), 1);
+
+        let mut edits = HashMap::new();
+        edits.insert(
+            Id::from(0x1),
+            vec![
+                NodeEdit::Move(Point::new(3.0, 4.0)),
+                NodeEdit::Edit {
+                    start: 1,
+                    end: 2,
+                    text: "b".to_owned(),
+                },
+            ],
+        );
+        repo.edit_nodes(edits, 2);
+
+        let nodes = repo.nodes();
+        assert_eq!(nodes[0].position, Point::new(3.0, 4.0));
+        assert_eq!(nodes[0].text, "abcd");
+        assert_eq!(
+            repo.meta().get(&MetaKey::Position(Id::from(0x1))),
+            Some(&MetaValue::Position(3, 4))
+        );
+    }
+
+    #[test]
+    fn undo_groups_changes_by_color_and_redo_restores_them() {
+        let mut repo = NodeRepository::new();
+        repo.add_node(node(0x1, 0.0, 0.0, "one"), 7);
+        repo.add_node(node(0x2, 1.0, 0.0, "two"), 7);
+
+        assert!(repo.undo());
+        assert!(repo.nodes().is_empty());
+
+        assert!(repo.redo());
+        assert_eq!(repo.nodes().len(), 2);
+    }
+
+    #[test]
+    fn adding_after_undo_clears_redo_history() {
+        let mut repo = NodeRepository::new();
+        repo.add_node(node(0x1, 0.0, 0.0, "one"), 1);
+        assert!(repo.undo());
+
+        repo.add_node(node(0x2, 0.0, 0.0, "two"), 2);
+
+        assert!(!repo.redo());
+        let nodes = repo.nodes();
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id, Id::from(0x2));
+    }
+
+    #[test]
+    fn parses_text_format_and_rejects_invalid_ids() {
+        let repo = NodeRepository::try_from("000000000000000a\tosc\nnot a node\n000000000000000b\t+\n")
+            .expect("valid text repository");
+
+        assert_eq!(repo.nodes().len(), 2);
+        assert_eq!(repo.text(), "000000000000000a\tosc\n000000000000000b\t+\n");
+        assert!(NodeRepository::try_from("not-hex\tbad\n").is_err());
+    }
+}
