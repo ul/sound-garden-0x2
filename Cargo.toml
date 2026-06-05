@@ -13,7 +13,7 @@ members = [
     "audio_vm",
     "play_program",
     "render_program",
-    "sound_garden_druid",
+    "sound_garden_egui",
     "sound_garden_format",
     "sound_garden_program",
     "sound_garden_types",
