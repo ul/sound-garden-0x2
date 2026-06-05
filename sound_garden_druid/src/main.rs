@@ -4,14 +4,12 @@ use audio_program::TextOp;
 use audio_vm::Frame;
 use chrono::Local;
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
-use crdt_engine::Patch;
 use crossbeam_channel::{Receiver, Sender};
 use druid::{
     widget::{Flex, Scroll},
     AppDelegate, AppLauncher, Command, DelegateCtx, Env, Event, Handled, Lens, Point, Size, Target,
     Vec2, Widget, WidgetExt, WindowDesc, WindowId,
 };
-use serde::{Deserialize, Serialize};
 use sound_garden_format::{NodeEdit, NodeRepository};
 use sound_garden_types::*;
 use std::{
@@ -29,14 +27,12 @@ mod theme;
 /// Application business logic is associated with this structure,
 /// we implement druid's AppDelegate for it.
 struct App {
-    /// Distributed state.
+    /// Local document state.
     node_repo: Arc<Mutex<NodeRepository>>,
     /// Persistence location for the Tree.
     filename: String,
     /// Channel to control audio server.
     audio_tx: Sender<audio_server::Message>,
-    /// Channel to communicate to peer.
-    peer_tx: Option<Sender<Patch<MetaKey, MetaValue>>>,
     /// Edits in the same undo group are undone in one go.
     undo_group: u64,
     /// Last known node id to text map to detect draft nodes.
@@ -49,11 +45,6 @@ impl Drop for App {
     fn drop(&mut self) {
         println!("DROP APP");
     }
-}
-
-#[derive(Serialize, Deserialize)]
-enum JamMessage {
-    SyncNodes(Patch<MetaKey, MetaValue>),
 }
 
 #[derive(Clone, druid::Data, Default, Lens)]
@@ -85,22 +76,6 @@ fn main() -> Result<()> {
                 .value_name("PORT")
                 .help("Port to send programs to"),
         )
-        .arg(
-            Arg::with_name("jam-local-port")
-                .short("i")
-                .long("jam-local-port")
-                .value_name("PORT")
-                .requires("jam-remote-address")
-                .help("Port to expect the peer to connect to for a jam"),
-        )
-        .arg(
-            Arg::with_name("jam-remote-address")
-                .short("o")
-                .long("jam-remote-address")
-                .value_name("ADDRESS:PORT")
-                .requires("jam-local-port")
-                .help("Address of the peer to connect to for a jam"),
-        )
         .get_matches();
 
     // Load or create Tree and start building the app.
@@ -112,52 +87,6 @@ fn main() -> Result<()> {
     let main_window = WindowDesc::new(build_ui()).title("Sound Garden");
     let main_window_id = main_window.id;
     let launcher = AppLauncher::with_window(main_window);
-
-    // Jam mode.
-    // Start a thread to listen to the peer updates.
-    if let Some(jam_port) = matches.value_of("jam-local-port") {
-        let socket = nng::Socket::new(nng::Protocol::Bus0)?;
-        let url = format!("tcp://:{}", jam_port);
-        socket.listen(&url)?;
-        let event_sink = launcher.get_external_handle();
-        let node_repo = Arc::clone(&node_repo);
-        std::thread::spawn(move || {
-            while let Ok(msg) = socket.recv() {
-                if let Ok(msg) = serde_cbor::from_reader::<JamMessage, _>(
-                    snap::read::FrameDecoder::new(&msg[..]),
-                ) {
-                    let mut node_repo = node_repo.lock().unwrap();
-                    match msg {
-                        JamMessage::SyncNodes(patch) => {
-                            node_repo.apply(patch);
-                        }
-                    }
-                    event_sink.submit_command(SAVE, (), Target::Auto).ok();
-                }
-            }
-        });
-    }
-
-    // Start a worker to send updates to the peer.
-    let peer = matches.value_of("jam-remote-address").map(|address| {
-        let socket = nng::Socket::new(nng::Protocol::Bus0).unwrap();
-        let url = format!("tcp://{}", address);
-        socket.dial_async(&url).unwrap();
-        Worker::spawn(
-            "Send to peer",
-            1024,
-            move |rx: Receiver<Patch<MetaKey, MetaValue>>, _: Sender<()>| {
-                for patch in rx {
-                    let mut msg = nng::Message::new();
-                    let stream = snap::write::FrameEncoder::new(&mut msg);
-                    serde_cbor::to_writer(stream, &JamMessage::SyncNodes(patch))
-                        .ok()
-                        .and_then(|_| socket.send(msg).ok())
-                        .or_else(|| None);
-                }
-            },
-        )
-    });
 
     // Start a worker to send messages to the audio server.
     let audio_control = {
@@ -199,7 +128,6 @@ fn main() -> Result<()> {
         node_repo: Arc::clone(&node_repo),
         filename: String::from(filename),
         audio_tx: audio_control.sender().clone(),
-        peer_tx: peer.as_ref().map(|x| x.sender().clone()),
         undo_group: 0,
         last_known_node_texts: Default::default(),
         oscilloscope: None,
@@ -225,29 +153,19 @@ impl App {
     }
 
     fn edit(&mut self, edits: HashMap<Id, Vec<NodeEdit>>) {
-        let patch = self
-            .node_repo
+        self.node_repo
             .lock()
             .unwrap()
             .edit_nodes(edits, self.undo_group);
-        self.sync(patch);
         self.save();
     }
 
     fn set_cursor(&mut self, cursor: &Cursor) {
-        let patch = self
-            .node_repo
+        self.node_repo
             .lock()
             .unwrap()
             .set_cursor(cursor, self.undo_group);
-        self.sync(patch);
         self.save();
-    }
-
-    fn sync(&self, patch: Patch<MetaKey, MetaValue>) {
-        if let Some(tx) = self.peer_tx.as_ref() {
-            tx.send(patch).ok();
-        }
     }
 }
 
@@ -308,7 +226,7 @@ impl AppDelegate<Data> for App {
                     })
                     .or_else(|| {
                         let id = Id::random();
-                        let patch = self.node_repo.lock().unwrap().add_node(
+                        self.node_repo.lock().unwrap().add_node(
                             Node {
                                 id,
                                 position: data.cursor.position,
@@ -316,7 +234,6 @@ impl AppDelegate<Data> for App {
                             },
                             self.undo_group,
                         );
-                        self.sync(patch);
                         Some(id)
                     })
                     .map(|_| {
@@ -407,16 +324,12 @@ impl AppDelegate<Data> for App {
                 Handled::No
             }
             _ if cmd.is(UNDO) => {
-                if let Some(patch) = self.node_repo.lock().unwrap().undo() {
-                    self.sync(patch);
-                }
+                self.node_repo.lock().unwrap().undo();
                 self.save();
                 Handled::No
             }
             _ if cmd.is(REDO) => {
-                if let Some(patch) = self.node_repo.lock().unwrap().redo() {
-                    self.sync(patch);
-                }
+                self.node_repo.lock().unwrap().redo();
                 self.save();
                 Handled::No
             }
@@ -459,12 +372,10 @@ impl AppDelegate<Data> for App {
             }
             _ if cmd.is(DELETE_NODE) => {
                 if let Some((node, _)) = data.node_at_cursor() {
-                    let patch = self
-                        .node_repo
+                    self.node_repo
                         .lock()
                         .unwrap()
                         .delete_nodes(&[node.id], self.undo_group);
-                    self.sync(patch);
                     self.save();
                 }
                 Handled::No
@@ -482,12 +393,10 @@ impl AppDelegate<Data> for App {
                         }
                     })
                     .collect::<Vec<_>>();
-                let patch = self
-                    .node_repo
+                self.node_repo
                     .lock()
                     .unwrap()
                     .delete_nodes(&ids, self.undo_group);
-                self.sync(patch);
                 self.save();
                 Handled::No
             }

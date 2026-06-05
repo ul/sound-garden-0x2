@@ -1,6 +1,6 @@
+use ahash::RandomState;
 use audio_ops::*;
 use audio_vm::{AtomicFrame, AtomicSample, Frame, Op, Program, Sample, Statement};
-use fasthash::sea::Hash64;
 use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -14,8 +14,8 @@ pub const PARAMETERS: usize = 16;
 pub struct Context {
     pub input: Arc<AtomicFrame>,
     pub params: [Arc<AtomicSample>; PARAMETERS],
-    pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, Hash64>,
-    pub variables: HashMap<String, Arc<AtomicFrame>, Hash64>,
+    pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, RandomState>,
+    pub variables: HashMap<String, Arc<AtomicFrame>, RandomState>,
 }
 
 impl Context {
@@ -23,8 +23,8 @@ impl Context {
         Context {
             input: Default::default(),
             params: Default::default(),
-            tables: HashMap::with_hasher(Hash64),
-            variables: HashMap::with_hasher(Hash64),
+            tables: HashMap::with_hasher(RandomState::new()),
+            variables: HashMap::with_hasher(RandomState::new()),
         }
     }
 }

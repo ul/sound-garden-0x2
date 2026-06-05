@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 smallvec = "1.6.1"
-fasthash = "0.4.0"
+ahash = "0.8.11"
 log = "0.4.11"
 regex = "1.5.5"
 

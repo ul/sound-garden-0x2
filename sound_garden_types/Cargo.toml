@@ -14,5 +14,3 @@ rand = "0.8.1"
 version = "1.0.118"
 features = ["derive"]
 
-[dependencies.crdt_engine]
-path = "../crdt_engine"

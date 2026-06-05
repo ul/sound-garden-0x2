@@ -1,4 +1,3 @@
-use crdt_engine::SessionId;
 use druid::{Data, Point};
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, num::ParseIntError};
@@ -8,8 +7,9 @@ pub struct Id(u64);
 
 impl TryFrom<&str> for Id {
     type Error = ParseIntError;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let id = u64::from_str_radix(value, 16)?;
+
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        let id = u64::from_str_radix(val, 16)?;
         Ok(Id(id))
     }
 }
@@ -62,7 +62,7 @@ pub struct Node {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MetaKey {
     Position(Id),
-    Cursor(SessionId),
+    Cursor,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
