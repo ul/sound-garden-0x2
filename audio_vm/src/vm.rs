@@ -27,11 +27,13 @@ pub struct VM {
     /// Reused stack for the previous program during crossfade.
     previous_stack: Stack,
     /// How many frames left before crossfade end.
-    xfade_countdown: Sample,
+    xfade_countdown: usize,
     /// Total duration of crossfade in frames.
-    xfade_duration: Sample,
+    xfade_duration: usize,
+    /// Reciprocal of crossfade duration, cached to avoid per-frame division.
+    xfade_duration_recip: Sample,
     /// Crossfade duration left on pause toggle.
-    pause_countdown: Sample,
+    pause_countdown: usize,
     status: Status,
     /// For oscilloscope-like feedback to the client.
     monitor: Arc<AtomicFrame>,
@@ -53,9 +55,10 @@ impl VM {
             previous_program: Default::default(),
             active_stack: Stack::new(),
             previous_stack: Stack::new(),
-            xfade_countdown: 0.0,
-            xfade_duration: 2048.0,
-            pause_countdown: 0.0,
+            xfade_countdown: 0,
+            xfade_duration: 2048,
+            xfade_duration_recip: 1.0 / 2048.0,
+            pause_countdown: 0,
             status: Status::Pause,
             monitor: Default::default(),
             monitor_id: 0,
@@ -85,7 +88,12 @@ impl VM {
     }
 
     pub fn set_xfade_duration(&mut self, frames: Sample) {
-        self.xfade_duration = frames;
+        self.xfade_duration = frames.max(0.0) as usize;
+        self.xfade_duration_recip = if self.xfade_duration > 0 {
+            (self.xfade_duration as Sample).recip()
+        } else {
+            0.0
+        };
     }
 
     /// Load the new program and crossfade to it from the previous one.
@@ -98,7 +106,11 @@ impl VM {
 
         migrate_program_state(&mut self.active_program, &self.previous_program);
 
-        self.xfade_countdown = self.xfade_duration;
+        self.xfade_countdown = if self.previous_program.is_empty() {
+            0
+        } else {
+            self.xfade_duration
+        };
         garbage
     }
 
@@ -125,7 +137,7 @@ impl VM {
                 self.play_xfade(frame)
             }
             Status::Pause => {
-                if self.pause_countdown > 0.0 {
+                if self.pause_countdown > 0 {
                     let frame = perform(&mut self.active_program, &mut self.active_stack);
                     let frame = self.xfade(frame);
                     self.pause_xfade(frame)
@@ -146,9 +158,9 @@ impl VM {
 
     #[inline]
     fn xfade(&mut self, mut frame: Frame) -> Frame {
-        if self.xfade_countdown > 0.0 {
-            let progress = self.xfade_countdown / self.xfade_duration;
-            self.xfade_countdown -= 1.0;
+        if self.xfade_countdown > 0 {
+            let progress = self.xfade_countdown as Sample * self.xfade_duration_recip;
+            self.xfade_countdown -= 1;
             let previous = perform(&mut self.previous_program, &mut self.previous_stack);
 
             for (x, &p) in frame.iter_mut().zip(previous.iter()) {
@@ -161,9 +173,9 @@ impl VM {
     }
 
     fn play_xfade(&mut self, mut frame: Frame) -> Frame {
-        if self.pause_countdown > 0.0 {
-            let progress = 1.0 - (self.pause_countdown / self.xfade_duration);
-            self.pause_countdown -= 1.0;
+        if self.pause_countdown > 0 {
+            let progress = 1.0 - (self.pause_countdown as Sample * self.xfade_duration_recip);
+            self.pause_countdown -= 1;
             for x in frame.iter_mut() {
                 *x *= progress;
             }
@@ -173,8 +185,8 @@ impl VM {
     }
 
     fn pause_xfade(&mut self, mut frame: Frame) -> Frame {
-        let progress = self.pause_countdown / self.xfade_duration;
-        self.pause_countdown -= 1.0;
+        let progress = self.pause_countdown as Sample * self.xfade_duration_recip;
+        self.pause_countdown -= 1;
         for x in frame.iter_mut() {
             *x *= progress;
         }
