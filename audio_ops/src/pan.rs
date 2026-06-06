@@ -9,6 +9,12 @@ pub struct Pan1;
 
 /// Pan left and right channels of input signal.
 /// Left channel of position signal is used as position value for both.
+impl Default for Pan1 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pan1 {
     pub fn new() -> Self {
         Pan1 {}
@@ -27,6 +33,12 @@ impl Op for Pan1 {
 /// Pan left channel of one signal with left channel of another.
 /// Left channel of position signal is used as position value for both.
 pub struct Pan2;
+
+impl Default for Pan2 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Pan2 {
     pub fn new() -> Self {
@@ -48,6 +60,12 @@ impl Op for Pan2 {
 /// and then output left channel of lefts' pan as left, and right channel
 /// of rights' pan as right.
 pub struct Pan3;
+
+impl Default for Pan3 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Pan3 {
     pub fn new() -> Self {

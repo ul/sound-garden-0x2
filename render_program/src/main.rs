@@ -37,7 +37,7 @@ fn main() {
     let t = Instant::now();
     for _ in 0..((duration * (sample_rate as f64)) as _) {
         for &sample in &vm.next_frame() {
-            let sample = (clip(sample) * std::i16::MAX as Sample) as i16;
+            let sample = (clip(sample) * i16::MAX as Sample) as i16;
             writer
                 .write_sample(sample)
                 .expect("Failed to write sample.");

@@ -44,7 +44,7 @@ where
     let channels = config.channels as usize;
 
     let mut vm = VM::new();
-    vm.load_program(parse_program(&text, config.sample_rate));
+    vm.load_program(parse_program(text, config.sample_rate));
     vm.play();
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);

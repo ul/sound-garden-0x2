@@ -273,8 +273,8 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                         },
                         "ft" | "ftab" | "filetable" => match tokens.get(1) {
                             Some(path) => {
-                                if !ctx.tables.contains_key(*path) {
-                                    if let Ok(mut r) = audrey::read::open(path) {
+                                if !ctx.tables.contains_key(*path)
+                                    && let Ok(mut r) = audrey::read::open(path) {
                                         let mut table: Vec<AtomicFrame> = Vec::new();
                                         for frame in r.frames() {
                                             let frame: Frame = frame.unwrap_or_default();
@@ -287,7 +287,6 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                         let table = Arc::new(table);
                                         ctx.tables.insert(path.to_string(), table);
                                     }
-                                }
                                 if let Some(table) = ctx.tables.get(*path) {
                                     push_args!(id, TableReader, sample_rate, Arc::clone(table));
                                 }
@@ -403,8 +402,8 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
                 result.push(group);
             }
             current_group = Some((m.get(1).unwrap().as_str().to_owned(), Vec::new()));
-        } else if let Some(m) = item_re.captures(line) {
-            if let Some(group) = &mut current_group {
+        } else if let Some(m) = item_re.captures(line)
+            && let Some(group) = &mut current_group {
                 group.1.extend(
                     m.name("term")
                         .unwrap()
@@ -413,7 +412,6 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
                         .map(|x| x.to_owned()),
                 );
             }
-        }
     }
     result
 }
@@ -468,11 +466,10 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                 });
             }
         } else if stmt.op == "]" {
-            if let Some(term) = new_term.take() {
-                if let Some(op) = stack.pop() {
+            if let Some(term) = new_term.take()
+                && let Some(op) = stack.pop() {
                     terms.insert(op.op, term);
                 }
-            }
         } else if stmt.op.ends_with("]") {
             if new_term.is_some() {
                 stack.push(TextOp {
@@ -511,8 +508,7 @@ mod tests {
     #[test]
     fn rewrite_terms_does_its_thing() {
         assert_eq!(
-            rewrite_terms(&vec![
-                TextOp {
+            rewrite_terms(&[TextOp {
                     id: 1,
                     op: "[?".to_string()
                 },
@@ -555,8 +551,7 @@ mod tests {
                 TextOp {
                     id: 10000000000,
                     op: "bar".to_string()
-                },
-            ]),
+                }]),
             vec![
                 TextOp {
                     id: 10000000,

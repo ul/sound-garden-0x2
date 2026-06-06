@@ -5,6 +5,12 @@ pub struct SampleAndHold {
     hold: Frame,
 }
 
+impl Default for SampleAndHold {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SampleAndHold {
     pub fn new() -> Self {
         SampleAndHold {
@@ -34,6 +40,12 @@ impl Op for SampleAndHold {
 
 pub struct SmoothSampleAndHold {
     output: Frame,
+}
+
+impl Default for SmoothSampleAndHold {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SmoothSampleAndHold {

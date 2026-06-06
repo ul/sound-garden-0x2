@@ -5,6 +5,12 @@ pub struct WhiteNoise {
     rng: SmallRng,
 }
 
+impl Default for WhiteNoise {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WhiteNoise {
     pub fn new() -> Self {
         WhiteNoise {

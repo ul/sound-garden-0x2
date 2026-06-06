@@ -14,13 +14,13 @@
 //! ```text
 //! wah4_demo = ba.bypass1(bp, ve.wah4(fr))
 //! with{
-//! 	wah4_group(x) = hgroup("WAH4 [tooltip: Fourth-order wah effect made using moog_vcf]", x);
-//! 	bp = wah4_group(checkbox("[0] Bypass [tooltip: When this is checked, the wah pedal has
-//! 		no effect]"));
-//! 	fr = wah4_group(hslider("[1] Resonance Frequency [scale:log] [tooltip: wah resonance
-//! 		frequency in Hz]", 200,100,2000,1));
-//! 	// Avoid dc with the moog_vcf (amplitude too high when freq comes up from dc)
-//! 	// Also, avoid very high resonance frequencies (e.g., 5kHz or above).
+//!     wah4_group(x) = hgroup("WAH4 [tooltip: Fourth-order wah effect made using moog_vcf]", x);
+//!     bp = wah4_group(checkbox("[0] Bypass [tooltip: When this is checked, the wah pedal has
+//!         no effect]"));
+//!     fr = wah4_group(hslider("[1] Resonance Frequency [scale:log] [tooltip: wah resonance
+//!         frequency in Hz]", 200,100,2000,1));
+//!     // Avoid dc with the moog_vcf (amplitude too high when freq comes up from dc)
+//!     // Also, avoid very high resonance frequencies (e.g., 5kHz or above).
 //! };
 //! ```
 
@@ -32,12 +32,12 @@ use audio_vm::{CHANNELS, Op, Stack};
 use itertools::izip;
 
 pub struct WahPedal {
-    dsp: DSP,
+    dsp: Dsp,
 }
 
 impl WahPedal {
     pub fn new(sample_rate: u32) -> Self {
-        let mut dsp = DSP::new();
+        let mut dsp = Dsp::new();
         dsp.init(sample_rate as _);
         WahPedal { dsp }
     }
@@ -72,7 +72,7 @@ impl Op for WahPedal {
     }
 }
 
-struct DSP {
+struct Dsp {
     fCheckbox0: f32,
     fSampleRate: i32,
     fConst0: f32,
@@ -85,7 +85,7 @@ struct DSP {
     fRec0: [f32; 2],
 }
 
-impl DSP {
+impl Dsp {
     fn new() -> Self {
         Self {
             fCheckbox0: 0.0,
@@ -129,7 +129,7 @@ impl DSP {
 
     fn instance_constants(&mut self, sample_rate: i32) {
         self.fSampleRate = sample_rate;
-        self.fConst0 = 6.28318548 / f32::min(192000.0, f32::max(1.0, self.fSampleRate as f32))
+        self.fConst0 = 6.283_185_5 / (self.fSampleRate as f32).clamp(1.0, 192000.0)
     }
 
     fn instance_init(&mut self, sample_rate: i32) {
@@ -143,25 +143,25 @@ impl DSP {
     }
 
     fn compute(&mut self, count: i32, inputs: &[[f32; 1]], outputs: &mut [[f32; 1]]) {
-        let mut iSlow0: i32 = ((self.fCheckbox0 as f32) as i32);
-        let mut fSlow1: f32 = (0.00100000005 * (self.fHslider0 as f32));
+        let mut iSlow0: i32 = (self.fCheckbox0 as i32);
+        let mut fSlow1: f32 = (0.001 * self.fHslider0);
         for i in 0..count {
-            let mut fTemp0: f32 = (inputs[0][i as usize] as f32);
-            self.fRec5[0] = (fSlow1 + (0.999000013 * self.fRec5[1]));
+            let mut fTemp0: f32 = inputs[0][i as usize];
+            self.fRec5[0] = (fSlow1 + (0.999 * self.fRec5[1]));
             let mut fTemp1: f32 = (self.fConst0 * self.fRec5[0]);
             let mut fTemp2: f32 = (1.0 - fTemp1);
-            self.fRec4[0] = ((if (iSlow0 as i32 == 1) { 0.0 } else { fTemp0 }
+            self.fRec4[0] = ((if (iSlow0 == 1) { 0.0 } else { fTemp0 }
                 + (fTemp2 * self.fRec4[1]))
-                - (3.20000005 * self.fRec0[1]));
+                - (3.2 * self.fRec0[1]));
             self.fRec3[0] = (self.fRec4[0] + (fTemp2 * self.fRec3[1]));
             self.fRec2[0] = (self.fRec3[0] + (fTemp2 * self.fRec2[1]));
             self.fRec1[0] = (self.fRec2[0] + (self.fRec1[1] * fTemp2));
             self.fRec0[0] = (self.fRec1[0] * f32::powf(fTemp1, 4.0));
-            outputs[0][i as usize] = (if (iSlow0 as i32 == 1) {
+            outputs[0][i as usize] = if (iSlow0 == 1) {
                 fTemp0
             } else {
                 (4.0 * self.fRec0[0])
-            } as f32);
+            };
             self.fRec5[1] = self.fRec5[0];
             self.fRec4[1] = self.fRec4[0];
             self.fRec3[1] = self.fRec3[0];

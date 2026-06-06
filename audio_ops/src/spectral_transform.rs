@@ -14,6 +14,8 @@ use rustfft::{
 };
 use std::collections::VecDeque;
 
+type TransformFn = Box<dyn FnMut(&mut Vec<Complex<Sample>>) + Send>;
+
 pub struct SpectralTransform {
     input_buffers: Vec<VecDeque<Complex<Sample>>>,
     scratch: Vec<Complex<Sample>>,
@@ -24,7 +26,7 @@ pub struct SpectralTransform {
     period_offset: usize,
     window: Vec<Complex<Sample>>,
     frame_number: usize,
-    transform: Box<dyn FnMut(&mut Vec<Complex<Sample>>) + Send>,
+    transform: TransformFn,
 }
 
 impl SpectralTransform {
@@ -35,12 +37,11 @@ impl SpectralTransform {
         window_size: usize,
         // Must be power of two!
         period: usize,
-        transform: Box<dyn FnMut(&mut Vec<Complex<Sample>>) + Send>,
+        transform: TransformFn,
     ) -> Self {
         SpectralTransform {
             input_buffers: vec![
-                std::iter::repeat(Complex::zero())
-                    .take(window_size)
+                std::iter::repeat_n(Complex::zero(), window_size)
                     .collect();
                 CHANNELS
             ],

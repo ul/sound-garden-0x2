@@ -36,7 +36,7 @@ pub fn main(
             Err(TryRecvError::Empty) => {}
         }
         let mut write = |sample: Sample| {
-            let sample = (sample * std::i16::MAX as Sample) as i16;
+            let sample = (sample * i16::MAX as Sample) as i16;
             writer.as_mut().map(|w| w.write_sample(sample));
             true
         };

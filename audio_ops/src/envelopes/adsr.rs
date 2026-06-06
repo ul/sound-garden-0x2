@@ -13,7 +13,7 @@ impl ADSR {
     pub fn new(sample_rate: u32) -> Self {
         ADSR {
             frame: 0,
-            gate_frame_on: [std::u64::MAX; CHANNELS],
+            gate_frame_on: [u64::MAX; CHANNELS],
             gate_frame_off: [0; CHANNELS],
             last_gate: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),

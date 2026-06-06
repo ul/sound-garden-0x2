@@ -2,6 +2,12 @@ use audio_vm::{Frame, Op, Stack};
 
 pub struct Dup;
 
+impl Default for Dup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Dup {
     pub fn new() -> Self {
         Dup {}
@@ -15,6 +21,12 @@ impl Op for Dup {
 }
 
 pub struct Swap;
+
+impl Default for Swap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Swap {
     pub fn new() -> Self {
@@ -32,6 +44,12 @@ impl Op for Swap {
 }
 
 pub struct Rot;
+
+impl Default for Rot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Rot {
     pub fn new() -> Self {
@@ -51,6 +69,12 @@ impl Op for Rot {
 }
 
 pub struct Pop;
+
+impl Default for Pop {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Pop {
     pub fn new() -> Self {
@@ -82,13 +106,10 @@ impl Op for Dig {
             *x = stack.pop();
         }
         for x in self.t.iter_mut().rev().skip(1) {
-            stack.push(&std::mem::replace(x, Default::default()));
+            stack.push(&std::mem::take(x));
         }
         let depth = self.t.len();
-        stack.push(&std::mem::replace(
-            &mut self.t[depth - 1],
-            Default::default(),
-        ));
+        stack.push(&std::mem::take(&mut self.t[depth - 1]));
     }
 }
 
@@ -109,9 +130,9 @@ impl Op for Bury {
         for x in self.t.iter_mut() {
             *x = stack.pop();
         }
-        stack.push(&std::mem::replace(&mut self.t[0], Default::default()));
+        stack.push(&std::mem::take(&mut self.t[0]));
         for x in self.t[1..].iter_mut().rev() {
-            stack.push(&std::mem::replace(x, Default::default()));
+            stack.push(&std::mem::take(x));
         }
     }
 }

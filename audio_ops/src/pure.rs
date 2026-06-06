@@ -273,13 +273,7 @@ pub fn max(x: Sample, y: Sample) -> Sample {
 
 #[inline]
 pub fn clip(x: Sample) -> Sample {
-    if x < -1.0 {
-        -1.0
-    } else if 1.0 < x {
-        1.0
-    } else {
-        x
-    }
+    x.clamp(-1.0, 1.0)
 }
 
 #[inline]

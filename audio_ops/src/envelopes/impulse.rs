@@ -14,7 +14,7 @@ impl Impulse {
             frame: 0,
             last_trigger: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            trigger_frame: [std::u64::MAX; CHANNELS],
+            trigger_frame: [u64::MAX; CHANNELS],
         }
     }
 }

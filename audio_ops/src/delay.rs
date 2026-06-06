@@ -55,6 +55,12 @@ pub struct Prime {
     previous: Frame,
 }
 
+impl Default for Prime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Prime {
     pub fn new() -> Self {
         Prime {

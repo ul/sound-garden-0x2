@@ -107,7 +107,7 @@ impl NodeRepository {
             .ok()
             .map(snap::read::FrameDecoder::new)
             .and_then(|f| serde_cbor::from_reader::<Self, _>(f).ok())
-            .unwrap_or_else(Self::new)
+            .unwrap_or_default()
     }
 
     // TODO Atomic write.

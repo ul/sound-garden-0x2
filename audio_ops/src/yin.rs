@@ -56,7 +56,9 @@ impl Yin {
         // The first two positions in yinBuffer are always so start at the third (index 2).
         let mut tau = 2;
         let buffer_len = self.buffer.len();
-        while tau < buffer_len && !(self.buffer[tau] < self.threshold) {
+        while tau < buffer_len
+            && self.buffer[tau].partial_cmp(&self.threshold) != Some(std::cmp::Ordering::Less)
+        {
             tau += 1;
         }
         while tau + 1 < buffer_len && self.buffer[tau + 1] < self.buffer[tau] {
@@ -92,11 +94,11 @@ impl Op for Yin {
         let mut frame = [0.0; CHANNELS];
         let input = stack.pop();
         self.window.push_back(input);
-        if self.frame_number % self.period == 0 {
-            for channel in 0..CHANNELS {
+        if self.frame_number.is_multiple_of(self.period) {
+            for (channel, output) in frame.iter_mut().enumerate().take(CHANNELS) {
                 self.difference(channel);
                 self.cumulative_mean_normalized_difference();
-                frame[channel] = match self.absolute_threshold() {
+                *output = match self.absolute_threshold() {
                     Some(tau_estimate) => {
                         self.sample_rate / self.parabolic_interpolation(tau_estimate)
                     }

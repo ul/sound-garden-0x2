@@ -8,7 +8,7 @@ fn main() {
     }
     println!(
         "{}",
-        NodeRepository::load(&path)
+        NodeRepository::load(path)
             .nodes()
             .into_iter()
             .map(|node| node.text)

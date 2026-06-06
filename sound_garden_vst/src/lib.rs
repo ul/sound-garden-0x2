@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 #[macro_use]
 extern crate vst;
 
@@ -29,12 +31,12 @@ struct Params {
 enum ServerInput {
     Param { index: usize, value: Sample },
     SampleRate(u32),
-    Garbage(Program),
+    Garbage(Box<Program>),
 }
 
 enum ServerOutput {
     Port(u16),
-    Program(Program),
+    Program(Box<Program>),
 }
 
 impl Default for SoundGarden {
@@ -42,8 +44,10 @@ impl Default for SoundGarden {
         let input = Default::default();
         let input_for_ctx = Arc::clone(&input);
         let server = Worker::spawn("TCP Server", 1, move |rx, tx| {
-            let mut ctx: Context = Default::default();
-            ctx.input = input_for_ctx;
+            let mut ctx = Context {
+                input: input_for_ctx,
+                ..Default::default()
+            };
             let sample_rate = Arc::new(AtomicU32::new(48_000));
 
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -52,7 +56,7 @@ impl Default for SoundGarden {
 
             {
                 let sample_rate = Arc::clone(&sample_rate);
-                let parameters = ctx.params.iter().map(|x| Arc::clone(x)).collect::<Vec<_>>();
+                let parameters = ctx.params.iter().map(Arc::clone).collect::<Vec<_>>();
                 std::thread::spawn(move || {
                     for msg in rx {
                         use ServerInput::*;
@@ -82,7 +86,7 @@ impl Default for SoundGarden {
                                 sample_rate.load(Ordering::Relaxed),
                                 &mut ctx,
                             );
-                            tx.send(ServerOutput::Program(program)).ok();
+                            tx.send(ServerOutput::Program(Box::new(program))).ok();
                         }
                         Message::Monitor(_) => {}
                         Message::Quit => {}
@@ -142,15 +146,14 @@ impl Plugin for SoundGarden {
 
     #[no_alloc]
     fn process(&mut self, buffer: &mut vst::buffer::AudioBuffer<f32>) {
-        if let Ok(msg) = self.server.receiver().try_recv() {
-            if let ServerOutput::Program(program) = msg {
-                let garbage = self.vm.load_program(program);
+        if let Ok(msg) = self.server.receiver().try_recv()
+            && let ServerOutput::Program(program) = msg {
+                let garbage = self.vm.load_program(*program);
                 self.server
                     .sender()
-                    .send(ServerInput::Garbage(garbage))
+                    .send(ServerInput::Garbage(Box::new(garbage)))
                     .ok();
             }
-        }
 
         let (inputs, outputs) = buffer.split();
 
@@ -174,15 +177,14 @@ impl Plugin for SoundGarden {
 
     #[no_alloc]
     fn process_f64(&mut self, buffer: &mut vst::buffer::AudioBuffer<f64>) {
-        if let Ok(msg) = self.server.receiver().try_recv() {
-            if let ServerOutput::Program(program) = msg {
-                let garbage = self.vm.load_program(program);
+        if let Ok(msg) = self.server.receiver().try_recv()
+            && let ServerOutput::Program(program) = msg {
+                let garbage = self.vm.load_program(*program);
                 self.server
                     .sender()
-                    .send(ServerInput::Garbage(garbage))
+                    .send(ServerInput::Garbage(Box::new(garbage)))
                     .ok();
             }
-        }
 
         let (inputs, outputs) = buffer.split();
 

@@ -675,15 +675,14 @@ impl SoundGardenApp {
         let content_size = self.canvas_content_size(ui.available_size());
         egui::ScrollArea::both().show(ui, |ui| {
             let (rect, response) = ui.allocate_exact_size(content_size, Sense::click());
-            if response.clicked() {
-                if let Some(pos) = response.interact_pointer_pos() {
+            if response.clicked()
+                && let Some(pos) = response.interact_pointer_pos() {
                     let local = pos - rect.min;
                     self.handle_action(Action::SetCursor(Point::new(
                         (local.x / GRID_WIDTH - 0.5).round() as f64,
                         (local.y / GRID_HEIGHT - 0.5).round() as f64,
                     )));
                 }
-            }
 
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 0.0, BACKGROUND_COLOR);
@@ -743,9 +742,9 @@ impl SoundGardenApp {
     fn draw_modeline(&mut self, ui: &mut egui::Ui) {
         let rect = ui.max_rect();
         let response = ui.allocate_rect(rect, Sense::click());
-        if response.clicked_by(egui::PointerButton::Primary) {
-            if let Some(pos) = response.interact_pointer_pos() {
-                if Rect::from_min_max(
+        if response.clicked_by(egui::PointerButton::Primary)
+            && let Some(pos) = response.interact_pointer_pos()
+                && Rect::from_min_max(
                     Pos2::new(rect.min.x + 11.0, rect.min.y + 5.0),
                     Pos2::new(rect.min.x + 31.0, rect.min.y + 23.0),
                 )
@@ -753,8 +752,6 @@ impl SoundGardenApp {
                 {
                     self.handle_action(Action::PlayPause);
                 }
-            }
-        }
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, BACKGROUND_COLOR);
 
@@ -773,7 +770,7 @@ impl SoundGardenApp {
             Stroke::new(4.0, color),
         );
 
-        let transport_color = if self.state.record && ui.input(|input| (input.time as u64) % 2 == 0)
+        let transport_color = if self.state.record && ui.input(|input| (input.time as u64).is_multiple_of(2))
         {
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_secs(1));
@@ -831,7 +828,7 @@ impl SoundGardenApp {
             .vscroll(true)
             .show(ctx, |ui| {
                 let mut help = self.op_help.iter().collect::<Vec<_>>();
-                help.sort_by(|(a, _), (b, _)| a.cmp(b));
+                help.sort_by_key(|(a, _)| *a);
                 for (op, description) in help {
                     ui.horizontal_wrapped(|ui| {
                         ui.monospace(op);
