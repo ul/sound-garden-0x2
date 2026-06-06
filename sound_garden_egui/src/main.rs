@@ -10,7 +10,7 @@ use rkyv::{rancor::Error as RkyvError, to_bytes};
 use sound_garden_format::{NodeEdit, NodeRepository};
 use sound_garden_types::*;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 use thread_worker::Worker;
@@ -136,7 +136,7 @@ struct SoundGardenApp {
     audio_tx: Sender<audio_server::Message>,
     monitor_rx: Receiver<Frame>,
     undo_group: u64,
-    last_known_node_texts: HashMap<Id, String>,
+    last_committed_program: Vec<(Id, String)>,
     state: UiState,
     dragging_node: Option<NodeDrag>,
     op_help: HashMap<String, String>,
@@ -170,7 +170,7 @@ impl SoundGardenApp {
             audio_tx,
             monitor_rx,
             undo_group: 0,
-            last_known_node_texts: HashMap::new(),
+            last_committed_program: Vec::new(),
             state: UiState::default(),
             dragging_node: None,
             op_help: get_help(),
@@ -210,30 +210,36 @@ impl SoundGardenApp {
         self.state.cursor = repo.get_cursor();
         drop(repo);
 
+        let current_program = self.current_program_signature();
+        self.state.draft = current_program != self.last_committed_program;
+
+        let last_committed_texts = self
+            .last_committed_program
+            .iter()
+            .cloned()
+            .collect::<HashMap<_, _>>();
         let mut new_draft_nodes = Vec::new();
-        for node in self.state.nodes.iter() {
-            match self.last_known_node_texts.get(&node.id) {
-                Some(text) if *text == node.text => {}
-                _ => new_draft_nodes.push(node.id),
+        for (index, node) in self.state.nodes.iter().enumerate() {
+            let text_changed = last_committed_texts
+                .get(&node.id)
+                .is_none_or(|text| *text != node.text);
+            let sequence_changed = self
+                .last_committed_program
+                .get(index)
+                .is_none_or(|(id, _)| *id != node.id);
+            if text_changed || sequence_changed {
+                new_draft_nodes.push(node.id);
             }
         }
+        self.state.draft_nodes = Arc::new(new_draft_nodes);
+    }
 
-        let current_ids = self
-            .state
+    fn current_program_signature(&self) -> Vec<(Id, String)> {
+        self.state
             .nodes
             .iter()
-            .map(|node| node.id)
-            .collect::<HashSet<_>>();
-        let known_ids = self
-            .last_known_node_texts
-            .keys()
-            .copied()
-            .collect::<HashSet<_>>();
-        self.state.draft = !current_ids
-            .symmetric_difference(&known_ids)
-            .collect::<Vec<_>>()
-            .is_empty();
-        self.state.draft_nodes = Arc::new(new_draft_nodes);
+            .map(|node| (node.id, node.text.to_owned()))
+            .collect()
     }
 
     fn node_at_cursor(&self) -> Option<(Node, usize)> {
@@ -662,12 +668,7 @@ impl SoundGardenApp {
         self.audio_tx
             .send(audio_server::Message::LoadProgram(ops))
             .ok();
-        self.last_known_node_texts = self
-            .state
-            .nodes
-            .iter()
-            .map(|node| (node.id, node.text.to_owned()))
-            .collect();
+        self.last_committed_program = self.current_program_signature();
         self.undo_group += 1;
     }
 
@@ -743,11 +744,7 @@ impl SoundGardenApp {
             {
                 let target = position - drag.grab_offset;
                 if node.position != target
-                    && !self.node_position_is_blocked(
-                        drag.id,
-                        target,
-                        node.text.chars().count(),
-                    )
+                    && !self.node_position_is_blocked(drag.id, target, node.text.chars().count())
                 {
                     let mut edits = HashMap::new();
                     edits.insert(drag.id, vec![NodeEdit::Move(target)]);
@@ -1299,5 +1296,38 @@ mod tests {
         assert_eq!(position(&app, 1), Point::new(-1.0, 0.0));
         assert_eq!(position(&app, 2), Point::new(3.0, 0.0));
         assert_eq!(app.state.cursor.position, Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn moving_node_before_another_node_marks_program_as_draft() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "first"), node(2, -10.0, 1.0, "second")],
+            Point::new(-10.0, 1.0),
+        );
+        app.commit_program();
+        app.sync_from_repo();
+        assert!(!app.state.draft);
+        assert!(app.state.draft_nodes.is_empty());
+
+        app.handle_action(Action::MoveNode(Vec2::new(0.0, -1.0)));
+
+        assert!(app.state.draft);
+        assert!(app.state.draft_nodes.contains(&Id::from(1)));
+        assert!(app.state.draft_nodes.contains(&Id::from(2)));
+    }
+
+    #[test]
+    fn moving_node_without_changing_program_order_does_not_mark_draft() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "first"), node(2, 10.0, 1.0, "second")],
+            Point::new(10.0, 1.0),
+        );
+        app.commit_program();
+        app.sync_from_repo();
+
+        app.handle_action(Action::MoveNode(Vec2::new(0.0, -1.0)));
+
+        assert!(!app.state.draft);
+        assert!(app.state.draft_nodes.is_empty());
     }
 }
