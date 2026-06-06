@@ -49,11 +49,13 @@ impl Default for SoundGarden {
         let input_for_ctx = Arc::clone(&input);
         let (program_tx, program_rx) = RingBuffer::<Box<Program>>::new(8);
         let (garbage_tx, mut garbage_rx) = RingBuffer::<Box<Program>>::new(8);
-        std::thread::spawn(move || loop {
-            while let Ok(program) = garbage_rx.pop() {
-                drop(program);
+        std::thread::spawn(move || {
+            loop {
+                while let Ok(program) = garbage_rx.pop() {
+                    drop(program);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
         });
         let mut program_tx = program_tx;
         let server = Worker::spawn("TCP Server", 1, move |rx, tx| {
@@ -78,7 +80,6 @@ impl Default for SoundGarden {
                                 parameters[index].store(value.to_bits(), Ordering::Relaxed)
                             }
                             SampleRate(sr) => sample_rate.store(sr, Ordering::Relaxed),
-                            
                         }
                     }
                 });

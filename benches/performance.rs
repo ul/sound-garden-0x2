@@ -50,19 +50,34 @@ fn convolution_ops(window_size: usize) -> Vec<TextOp> {
     let mut ops = vec![text_op(1, "0.25")];
 
     for i in 0..window_size {
-        ops.push(text_op((i + 2) as u64, (1.0 / window_size as f64).to_string()));
+        ops.push(text_op(
+            (i + 2) as u64,
+            (1.0 / window_size as f64).to_string(),
+        ));
     }
 
-    ops.push(text_op((window_size + 2) as u64, format!("convm:{window_size}")));
+    ops.push(text_op(
+        (window_size + 2) as u64,
+        format!("convm:{window_size}"),
+    ));
     ops
 }
 
 fn delay_ops() -> Vec<TextOp> {
-    vec![text_op(1, "0.25"), text_op(2, "0.125"), text_op(3, "delay:1")]
+    vec![
+        text_op(1, "0.25"),
+        text_op(2, "0.125"),
+        text_op(3, "delay:1"),
+    ]
 }
 
 fn biquad_lpf_ops() -> Vec<TextOp> {
-    vec![text_op(1, "110"), text_op(2, "s'"), text_op(3, "1000"), text_op(4, "l")]
+    vec![
+        text_op(1, "110"),
+        text_op(2, "s'"),
+        text_op(3, "1000"),
+        text_op(4, "l"),
+    ]
 }
 
 fn constant_arithmetic_ops(terms: usize) -> Vec<TextOp> {

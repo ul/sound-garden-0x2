@@ -1,8 +1,8 @@
 use ahash::RandomState;
 use audio_ops::*;
-use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
 #[cfg(test)]
 use audio_vm::Frame;
+use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
 use rand::{rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
@@ -13,8 +13,8 @@ use std::fs::File;
 use std::sync::{Arc, atomic::Ordering};
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 
@@ -97,21 +97,49 @@ impl Waveform {
 #[derive(Clone, Debug, PartialEq)]
 enum OptimizedOp {
     Text(TextOp),
-    Constant { id: u64, value: Sample },
-    FixedOsc { id: u64, waveform: Waveform, frequency: Sample },
-    AddConst { id: u64, value: Sample },
-    MulConst { id: u64, value: Sample },
-    SubConst { id: u64, value: Sample },
-    RSubConst { id: u64, value: Sample },
-    DivConst { id: u64, value: Sample },
-    RDivConst { id: u64, value: Sample },
+    Constant {
+        id: u64,
+        value: Sample,
+    },
+    FixedOsc {
+        id: u64,
+        waveform: Waveform,
+        frequency: Sample,
+    },
+    AddConst {
+        id: u64,
+        value: Sample,
+    },
+    MulConst {
+        id: u64,
+        value: Sample,
+    },
+    SubConst {
+        id: u64,
+        value: Sample,
+    },
+    RSubConst {
+        id: u64,
+        value: Sample,
+    },
+    DivConst {
+        id: u64,
+        value: Sample,
+    },
+    RDivConst {
+        id: u64,
+        value: Sample,
+    },
 }
 
 fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
     let file = File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();
-    if let Some(extension) = std::path::Path::new(path).extension().and_then(|s| s.to_str()) {
+    if let Some(extension) = std::path::Path::new(path)
+        .extension()
+        .and_then(|s| s.to_str())
+    {
         hint.with_extension(extension);
     }
 
@@ -137,7 +165,9 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
     loop {
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
-            Ok(None) | Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::ResetRequired) => break,
+            Ok(None) | Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::ResetRequired) => {
+                break;
+            }
             Err(_) => continue,
         };
         if packet.track_id != track_id {
@@ -437,10 +467,11 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                         "ft" | "ftab" | "filetable" => match tokens.get(1) {
                             Some(path) => {
                                 if !ctx.tables.contains_key(*path)
-                                    && let Some(table) = load_table(path) {
-                                        let table = Arc::new(table);
-                                        ctx.tables.insert(path.to_string(), table);
-                                    }
+                                    && let Some(table) = load_table(path)
+                                {
+                                    let table = Arc::new(table);
+                                    ctx.tables.insert(path.to_string(), table);
+                                }
                                 if let Some(table) = ctx.tables.get(*path) {
                                     push_args!(id, TableReader, sample_rate, Arc::clone(table));
                                 }
@@ -557,15 +588,16 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
             }
             current_group = Some((m.get(1).unwrap().as_str().to_owned(), Vec::new()));
         } else if let Some(m) = item_re.captures(line)
-            && let Some(group) = &mut current_group {
-                group.1.extend(
-                    m.name("term")
-                        .unwrap()
-                        .as_str()
-                        .split(", ")
-                        .map(|x| x.to_owned()),
-                );
-            }
+            && let Some(group) = &mut current_group
+        {
+            group.1.extend(
+                m.name("term")
+                    .unwrap()
+                    .as_str()
+                    .split(", ")
+                    .map(|x| x.to_owned()),
+            );
+        }
     }
     result
 }
@@ -621,9 +653,10 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
             }
         } else if stmt.op == "]" {
             if let Some(term) = new_term.take()
-                && let Some(op) = stack.pop() {
-                    terms.insert(op.op, term);
-                }
+                && let Some(op) = stack.pop()
+            {
+                terms.insert(op.op, term);
+            }
         } else if stmt.op.ends_with("]") {
             if new_term.is_some() {
                 stack.push(TextOp {
@@ -692,14 +725,30 @@ fn fold_tail_binary_const_terms(stmts: &[OptimizedOp]) -> Option<[OptimizedOp; 2
     };
 
     match (op.op.as_str(), const_value(a), const_value(b)) {
-        ("+" | "add", _, Some(value)) => Some([a.clone(), OptimizedOp::AddConst { id: op.id, value }]),
-        ("+" | "add", Some(value), _) => Some([b.clone(), OptimizedOp::AddConst { id: op.id, value }]),
-        ("*" | "mul", _, Some(value)) => Some([a.clone(), OptimizedOp::MulConst { id: op.id, value }]),
-        ("*" | "mul", Some(value), _) => Some([b.clone(), OptimizedOp::MulConst { id: op.id, value }]),
-        ("-" | "sub", _, Some(value)) => Some([a.clone(), OptimizedOp::SubConst { id: op.id, value }]),
-        ("-" | "sub", Some(value), _) => Some([b.clone(), OptimizedOp::RSubConst { id: op.id, value }]),
-        ("/" | "div", _, Some(value)) => Some([a.clone(), OptimizedOp::DivConst { id: op.id, value }]),
-        ("/" | "div", Some(value), _) => Some([b.clone(), OptimizedOp::RDivConst { id: op.id, value }]),
+        ("+" | "add", _, Some(value)) => {
+            Some([a.clone(), OptimizedOp::AddConst { id: op.id, value }])
+        }
+        ("+" | "add", Some(value), _) => {
+            Some([b.clone(), OptimizedOp::AddConst { id: op.id, value }])
+        }
+        ("*" | "mul", _, Some(value)) => {
+            Some([a.clone(), OptimizedOp::MulConst { id: op.id, value }])
+        }
+        ("*" | "mul", Some(value), _) => {
+            Some([b.clone(), OptimizedOp::MulConst { id: op.id, value }])
+        }
+        ("-" | "sub", _, Some(value)) => {
+            Some([a.clone(), OptimizedOp::SubConst { id: op.id, value }])
+        }
+        ("-" | "sub", Some(value), _) => {
+            Some([b.clone(), OptimizedOp::RSubConst { id: op.id, value }])
+        }
+        ("/" | "div", _, Some(value)) => {
+            Some([a.clone(), OptimizedOp::DivConst { id: op.id, value }])
+        }
+        ("/" | "div", Some(value), _) => {
+            Some([b.clone(), OptimizedOp::RDivConst { id: op.id, value }])
+        }
         _ => None,
     }
 }
@@ -785,7 +834,8 @@ mod tests {
     #[test]
     fn rewrite_terms_does_its_thing() {
         assert_eq!(
-            rewrite_terms(&[TextOp {
+            rewrite_terms(&[
+                TextOp {
                     id: 1,
                     op: "[?".to_string()
                 },
@@ -828,7 +878,8 @@ mod tests {
                 TextOp {
                     id: 10000000000,
                     op: "bar".to_string()
-                }]),
+                }
+            ]),
             vec![
                 TextOp {
                     id: 10000000,
@@ -876,13 +927,7 @@ mod tests {
     #[test]
     fn optimize_terms_folds_constant_arithmetic() {
         assert_eq!(
-            optimize_terms(&[
-                op(1, "2"),
-                op(2, "3"),
-                op(3, "+"),
-                op(4, "4"),
-                op(5, "*"),
-            ]),
+            optimize_terms(&[op(1, "2"), op(2, "3"), op(3, "+"), op(4, "4"), op(5, "*"),]),
             vec![constant(5, 20.0)]
         );
     }
@@ -911,31 +956,52 @@ mod tests {
     fn optimize_terms_specializes_binary_ops_with_constants() {
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "0.5"), op(3, "*")]),
-            vec![text(1, "input"), OptimizedOp::MulConst { id: 3, value: 0.5 }]
+            vec![
+                text(1, "input"),
+                OptimizedOp::MulConst { id: 3, value: 0.5 }
+            ]
         );
         assert_eq!(
             optimize_terms(&[op(1, "0.5"), op(2, "input"), op(3, "*")]),
-            vec![text(2, "input"), OptimizedOp::MulConst { id: 3, value: 0.5 }]
+            vec![
+                text(2, "input"),
+                OptimizedOp::MulConst { id: 3, value: 0.5 }
+            ]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "+")]),
-            vec![text(1, "input"), OptimizedOp::AddConst { id: 3, value: 2.0 }]
+            vec![
+                text(1, "input"),
+                OptimizedOp::AddConst { id: 3, value: 2.0 }
+            ]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "-")]),
-            vec![text(1, "input"), OptimizedOp::SubConst { id: 3, value: 2.0 }]
+            vec![
+                text(1, "input"),
+                OptimizedOp::SubConst { id: 3, value: 2.0 }
+            ]
         );
         assert_eq!(
             optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "-")]),
-            vec![text(2, "input"), OptimizedOp::RSubConst { id: 3, value: 2.0 }]
+            vec![
+                text(2, "input"),
+                OptimizedOp::RSubConst { id: 3, value: 2.0 }
+            ]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "/")]),
-            vec![text(1, "input"), OptimizedOp::DivConst { id: 3, value: 2.0 }]
+            vec![
+                text(1, "input"),
+                OptimizedOp::DivConst { id: 3, value: 2.0 }
+            ]
         );
         assert_eq!(
             optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "/")]),
-            vec![text(2, "input"), OptimizedOp::RDivConst { id: 3, value: 2.0 }]
+            vec![
+                text(2, "input"),
+                OptimizedOp::RDivConst { id: 3, value: 2.0 }
+            ]
         );
     }
 

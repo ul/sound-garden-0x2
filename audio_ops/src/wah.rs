@@ -150,8 +150,7 @@ impl Dsp {
             self.fRec5[0] = (fSlow1 + (0.999 * self.fRec5[1]));
             let mut fTemp1: f32 = (self.fConst0 * self.fRec5[0]);
             let mut fTemp2: f32 = (1.0 - fTemp1);
-            self.fRec4[0] = ((if (iSlow0 == 1) { 0.0 } else { fTemp0 }
-                + (fTemp2 * self.fRec4[1]))
+            self.fRec4[0] = ((if (iSlow0 == 1) { 0.0 } else { fTemp0 } + (fTemp2 * self.fRec4[1]))
                 - (3.2 * self.fRec0[1]));
             self.fRec3[0] = (self.fRec4[0] + (fTemp2 * self.fRec3[1]));
             self.fRec2[0] = (self.fRec3[0] + (fTemp2 * self.fRec2[1]));

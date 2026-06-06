@@ -41,8 +41,7 @@ impl SpectralTransform {
     ) -> Self {
         SpectralTransform {
             input_buffers: vec![
-                std::iter::repeat_n(Complex::zero(), window_size)
-                    .collect();
+                std::iter::repeat_n(Complex::zero(), window_size).collect();
                 CHANNELS
             ],
             scratch: vec![Complex::zero(); window_size],

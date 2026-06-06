@@ -335,12 +335,17 @@ impl SoundGardenApp {
             Action::CycleUp => self.cycle(true),
             Action::CycleDown => self.cycle(false),
             Action::MoveNode(delta) => {
-                if let Some((Node { id, position, .. }, _)) = self.node_at_cursor() {
-                    let mut edits = HashMap::new();
-                    edits.insert(id, vec![NodeEdit::Move(position + delta)]);
-                    self.edit(edits);
+                if let Some((Node { id, position, text }, index)) = self.node_at_cursor()
+                    && index < text.chars().count()
+                {
+                    let target = position + delta;
+                    if !self.node_position_is_blocked(id, target, text.chars().count()) {
+                        let mut edits = HashMap::new();
+                        edits.insert(id, vec![NodeEdit::Move(target)]);
+                        self.edit(edits);
+                        self.state.cursor.position += delta;
+                    }
                 }
-                self.state.cursor.position += delta;
             }
             Action::MoveLine(delta) => {
                 let cursor = self.state.cursor.position;
@@ -548,6 +553,19 @@ impl SoundGardenApp {
         }
     }
 
+    fn node_position_is_blocked(&self, moving_id: Id, position: Point, text_len: usize) -> bool {
+        let width = text_len.max(1) as f64;
+        let end = position.x + width;
+        self.state.nodes.iter().any(|node| {
+            if node.id == moving_id || node.position.y != position.y {
+                return false;
+            }
+            let node_width = node.text.chars().count().max(1) as f64;
+            let node_end = node.position.x + node_width;
+            position.x <= node_end && node.position.x <= end
+        })
+    }
+
     fn move_nodes_on_cursor_line(&mut self, dx: f64, predicate: impl Fn(&Node, Point) -> bool) {
         let cursor = self.state.cursor.position;
         let edits = self
@@ -679,13 +697,14 @@ impl SoundGardenApp {
         egui::ScrollArea::both().show(ui, |ui| {
             let (rect, response) = ui.allocate_exact_size(content_size, Sense::click());
             if response.clicked()
-                && let Some(pos) = response.interact_pointer_pos() {
-                    let local = pos - rect.min;
-                    self.handle_action(Action::SetCursor(Point::new(
-                        (local.x / GRID_WIDTH - 0.5).round() as f64,
-                        (local.y / GRID_HEIGHT - 0.5).round() as f64,
-                    )));
-                }
+                && let Some(pos) = response.interact_pointer_pos()
+            {
+                let local = pos - rect.min;
+                self.handle_action(Action::SetCursor(Point::new(
+                    (local.x / GRID_WIDTH - 0.5).round() as f64,
+                    (local.y / GRID_HEIGHT - 0.5).round() as f64,
+                )));
+            }
 
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 0.0, BACKGROUND_COLOR);
@@ -747,14 +766,14 @@ impl SoundGardenApp {
         let response = ui.allocate_rect(rect, Sense::click());
         if response.clicked_by(egui::PointerButton::Primary)
             && let Some(pos) = response.interact_pointer_pos()
-                && Rect::from_min_max(
-                    Pos2::new(rect.min.x + 11.0, rect.min.y + 5.0),
-                    Pos2::new(rect.min.x + 31.0, rect.min.y + 23.0),
-                )
-                .contains(pos)
-                {
-                    self.handle_action(Action::PlayPause);
-                }
+            && Rect::from_min_max(
+                Pos2::new(rect.min.x + 11.0, rect.min.y + 5.0),
+                Pos2::new(rect.min.x + 31.0, rect.min.y + 23.0),
+            )
+            .contains(pos)
+        {
+            self.handle_action(Action::PlayPause);
+        }
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, BACKGROUND_COLOR);
 
@@ -773,14 +792,14 @@ impl SoundGardenApp {
             Stroke::new(4.0, color),
         );
 
-        let transport_color = if self.state.record && ui.input(|input| (input.time as u64).is_multiple_of(2))
-        {
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_secs(1));
-            MODELINE_RECORD_COLOR
-        } else {
-            FOREGROUND_COLOR
-        };
+        let transport_color =
+            if self.state.record && ui.input(|input| (input.time as u64).is_multiple_of(2)) {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_secs(1));
+                MODELINE_RECORD_COLOR
+            } else {
+                FOREGROUND_COLOR
+            };
         if self.state.play {
             painter.rect_filled(
                 Rect::from_min_max(
@@ -1092,4 +1111,123 @@ fn default_cycles() -> Vec<Vec<String>> {
 
 fn remap(x: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
     to_min + (x - from_min) * (to_max - to_min) / (from_max - from_min)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: u64, x: f64, y: f64, text: &str) -> Node {
+        Node {
+            id: Id::from(id),
+            position: Point::new(x, y),
+            text: text.to_owned(),
+        }
+    }
+
+    fn app_with_nodes(nodes: Vec<Node>, cursor: Point) -> SoundGardenApp {
+        let mut repo = NodeRepository::new();
+        for node in nodes {
+            repo.add_node(node, 0);
+        }
+        repo.set_cursor(&Cursor { position: cursor }, 0);
+
+        let filename = std::env::temp_dir()
+            .join(format!("sound-garden-egui-test-{:?}.sg", Id::random()))
+            .to_string_lossy()
+            .into_owned();
+        let (audio_tx, _audio_rx) = crossbeam_channel::unbounded();
+        let (_monitor_tx, monitor_rx) = crossbeam_channel::unbounded();
+
+        SoundGardenApp::new(filename, Arc::new(Mutex::new(repo)), audio_tx, monitor_rx)
+    }
+
+    fn position(app: &SoundGardenApp, id: u64) -> Point {
+        app.state
+            .nodes
+            .iter()
+            .find(|node| node.id == Id::from(id))
+            .unwrap()
+            .position
+    }
+
+    #[test]
+    fn move_node_moves_node_and_cursor_when_target_has_room() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "abc"), node(2, 5.0, 0.0, "x")],
+            Point::new(1.0, 0.0),
+        );
+
+        app.handle_action(Action::MoveNode(Vec2::new(1.0, 0.0)));
+
+        assert_eq!(position(&app, 1), Point::new(1.0, 0.0));
+        assert_eq!(position(&app, 2), Point::new(5.0, 0.0));
+        assert_eq!(app.state.cursor.position, Point::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn move_node_rejects_overlap_with_another_node() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "abc"), node(2, 3.0, 1.0, "x")],
+            Point::new(1.0, 0.0),
+        );
+
+        app.handle_action(Action::MoveNode(Vec2::new(3.0, 1.0)));
+
+        assert_eq!(position(&app, 1), Point::new(0.0, 0.0));
+        assert_eq!(position(&app, 2), Point::new(3.0, 1.0));
+        assert_eq!(app.state.cursor.position, Point::new(1.0, 0.0));
+    }
+
+    #[test]
+    fn move_node_rejects_direct_adjacency_without_empty_cell() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "abc"), node(2, 4.0, 0.0, "x")],
+            Point::new(1.0, 0.0),
+        );
+
+        app.handle_action(Action::MoveNode(Vec2::new(1.0, 0.0)));
+
+        assert_eq!(position(&app, 1), Point::new(0.0, 0.0));
+        assert_eq!(position(&app, 2), Point::new(4.0, 0.0));
+        assert_eq!(app.state.cursor.position, Point::new(1.0, 0.0));
+    }
+
+    #[test]
+    fn move_node_allows_one_empty_cell_between_nodes() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "abc"), node(2, 5.0, 0.0, "x")],
+            Point::new(1.0, 0.0),
+        );
+
+        app.handle_action(Action::MoveNode(Vec2::new(1.0, 0.0)));
+
+        assert_eq!(position(&app, 1), Point::new(1.0, 0.0));
+        assert_eq!(position(&app, 2), Point::new(5.0, 0.0));
+        assert_eq!(app.state.cursor.position, Point::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn move_node_does_not_select_node_when_cursor_is_after_text() {
+        let mut app = app_with_nodes(vec![node(1, 0.0, 0.0, "abc")], Point::new(3.0, 0.0));
+
+        app.handle_action(Action::MoveNode(Vec2::new(1.0, 0.0)));
+
+        assert_eq!(position(&app, 1), Point::new(0.0, 0.0));
+        assert_eq!(app.state.cursor.position, Point::new(3.0, 0.0));
+    }
+
+    #[test]
+    fn move_node_can_move_away_from_existing_adjacency() {
+        let mut app = app_with_nodes(
+            vec![node(1, 0.0, 0.0, "abc"), node(2, 3.0, 0.0, "x")],
+            Point::new(1.0, 0.0),
+        );
+
+        app.handle_action(Action::MoveNode(Vec2::new(-1.0, 0.0)));
+
+        assert_eq!(position(&app, 1), Point::new(-1.0, 0.0));
+        assert_eq!(position(&app, 2), Point::new(3.0, 0.0));
+        assert_eq!(app.state.cursor.position, Point::new(0.0, 0.0));
+    }
 }
