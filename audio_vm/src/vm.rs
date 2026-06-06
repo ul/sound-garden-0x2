@@ -96,15 +96,7 @@ impl VM {
             std::mem::replace(&mut self.active_program, program),
         );
 
-        for stmt in &mut self.active_program {
-            if let Some(prev_stmt) = self
-                .previous_program
-                .iter()
-                .find(|prev_stmt| prev_stmt.id == stmt.id)
-            {
-                stmt.op.migrate(prev_stmt.op.as_ref());
-            }
-        }
+        migrate_program_state(&mut self.active_program, &self.previous_program);
 
         self.xfade_countdown = self.xfade_duration;
         garbage
@@ -188,6 +180,24 @@ impl VM {
         }
 
         frame
+    }
+}
+
+fn migrate_program_state(active_program: &mut Program, previous_program: &Program) {
+    if active_program.is_empty() || previous_program.is_empty() {
+        return;
+    }
+
+    let mut previous_by_id: SmallVec<[(u64, &dyn Op); FAST_PROGRAM_SIZE]> = previous_program
+        .iter()
+        .map(|stmt| (stmt.id, stmt.op.as_ref()))
+        .collect();
+    previous_by_id.sort_unstable_by_key(|(id, _)| *id);
+
+    for stmt in active_program {
+        if let Ok(index) = previous_by_id.binary_search_by_key(&stmt.id, |(id, _)| *id) {
+            stmt.op.migrate(previous_by_id[index].1);
+        }
     }
 }
 
