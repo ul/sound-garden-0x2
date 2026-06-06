@@ -4,32 +4,20 @@ version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+allocation-checks = ["dep:alloc_counter"]
 
 [dependencies]
-vst = "0.4.0"
-alloc_counter = "0.0.4"
-serde_json = "1.0.150"
-crossbeam-channel = "0.5.15"
-
-[dependencies.serde]
-version = "1.0.228"
-features = ["derive"]
-
-[dependencies.audio_ops]
-path = "../audio_ops"
-
-[dependencies.audio_program]
-path = "../audio_program"
-
-[dependencies.audio_server]
-path = "../audio_server"
-
-[dependencies.audio_vm]
-path = "../audio_vm"
-
-[dependencies.thread_worker]
-path = "../thread_worker"
+vst.workspace = true
+alloc_counter = { workspace = true, optional = true }
+bincode.workspace = true
+crossbeam-channel.workspace = true
+serde.workspace = true
+audio_ops = { path = "../audio_ops" }
+audio_program = { path = "../audio_program" }
+audio_server = { path = "../audio_server" }
+audio_vm = { path = "../audio_vm" }
+thread_worker = { path = "../thread_worker" }
 
 [lib]
 name = "soundgarden"

@@ -6,33 +6,19 @@ edition = "2024"
 description = "Sound Garden egui"
 
 [dependencies]
-anyhow = "1.0.102"
-chrono = "0.4.45"
-clap = { version = "4.6.1", features = ["cargo"] }
-crossbeam-channel = "0.5.15"
-eframe = "0.34.3"
-egui = "0.34.3"
-log = "0.4.32"
-serde_json = "1.0.150"
-simple_logger = "5.2.0"
-
-[dependencies.audio_ops]
-path = "../audio_ops"
-
-[dependencies.audio_program]
-path = "../audio_program"
-
-[dependencies.audio_server]
-path = "../audio_server"
-
-[dependencies.audio_vm]
-path = "../audio_vm"
-
-[dependencies.sound_garden_format]
-path = "../sound_garden_format"
-
-[dependencies.sound_garden_types]
-path = "../sound_garden_types"
-
-[dependencies.thread_worker]
-path = "../thread_worker"
+anyhow.workspace = true
+bincode.workspace = true
+chrono.workspace = true
+clap.workspace = true
+crossbeam-channel.workspace = true
+eframe.workspace = true
+egui.workspace = true
+log.workspace = true
+simple_logger.workspace = true
+audio_ops = { path = "../audio_ops" }
+audio_program = { path = "../audio_program" }
+audio_server = { path = "../audio_server" }
+audio_vm = { path = "../audio_vm" }
+sound_garden_format = { path = "../sound_garden_format" }
+sound_garden_types = { path = "../sound_garden_types" }
+thread_worker = { path = "../thread_worker" }

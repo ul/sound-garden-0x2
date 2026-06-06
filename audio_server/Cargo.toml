@@ -5,36 +5,25 @@ authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2024"
 description = "Sound Garden Audio Synth Server"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 name = "audio_server"
 path = "./src/lib.rs"
 
+[features]
+allocation-checks = ["dep:alloc_counter"]
+
 [dependencies]
-alloc_counter = "0.0.4"
-anyhow = "1.0.102"
-chrono = "0.4.45"
-cpal = "0.17.3"
-clap = { version = "4.6.1", features = ["cargo"] }
-crossbeam-channel = "0.5.15"
-hound = "3.5.1"
-ringbuf = "0.5.0"
-serde_json = "1.0.150"
-nng = "1.0.1"
-
-[dependencies.serde]
-version = "1.0.228"
-features = ["derive"]
-
-[dependencies.audio_ops]
-path = "../audio_ops"
-
-[dependencies.audio_program]
-path = "../audio_program"
-
-[dependencies.audio_vm]
-path = "../audio_vm"
-
-[dependencies.thread_worker]
-path = "../thread_worker"
+alloc_counter = { workspace = true, optional = true }
+anyhow.workspace = true
+bincode.workspace = true
+chrono.workspace = true
+cpal.workspace = true
+clap.workspace = true
+crossbeam-channel.workspace = true
+hound.workspace = true
+ringbuf.workspace = true
+serde.workspace = true
+audio_ops = { path = "../audio_ops" }
+audio_program = { path = "../audio_program" }
+audio_vm = { path = "../audio_vm" }
+thread_worker = { path = "../thread_worker" }

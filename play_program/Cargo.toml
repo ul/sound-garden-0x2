@@ -4,18 +4,10 @@ version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-cpal = "0.17.3"
-rand = "0.10.1"
-anyhow = "1.0.102"
-
-[dependencies.audio_ops]
-path = "../audio_ops"
-
-[dependencies.audio_program]
-path = "../audio_program"
-
-[dependencies.audio_vm]
-path = "../audio_vm"
+cpal.workspace = true
+rand.workspace = true
+anyhow.workspace = true
+audio_ops = { path = "../audio_ops" }
+audio_program = { path = "../audio_program" }
+audio_vm = { path = "../audio_vm" }

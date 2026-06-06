@@ -106,7 +106,7 @@ impl NodeRepository {
         std::fs::File::open(filename)
             .ok()
             .map(snap::read::FrameDecoder::new)
-            .and_then(|f| serde_cbor::from_reader::<Self, _>(f).ok())
+            .and_then(|f| ciborium::from_reader::<Self, _>(f).ok())
             .unwrap_or_default()
     }
 
@@ -115,7 +115,7 @@ impl NodeRepository {
         std::fs::File::create(filename)
             .or_else(|e| anyhow::bail!(e))
             .and_then(|f| {
-                serde_cbor::to_writer(snap::write::FrameEncoder::new(f), self)
+                ciborium::into_writer(self, snap::write::FrameEncoder::new(f))
                     .or_else(|e| anyhow::bail!(e))
             })
             .map(|_| ())

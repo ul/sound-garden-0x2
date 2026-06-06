@@ -3,6 +3,7 @@ use audio_server::{Message, run};
 use audio_vm::Frame;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
+use std::io::Write;
 use thread_worker::Worker;
 
 const CHANNEL_CAPACITY: usize = 64;
@@ -32,21 +33,29 @@ fn main() -> Result<()> {
     let scope_port = matches
         .get_one::<String>("scope-port")
         .and_then(|s| s.parse::<u16>().ok());
-
     let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, run);
 
     let oscilloscope = if let Some(port) = scope_port {
         Worker::spawn(
-            "Oscilloscope (pub)",
+            "Oscilloscope (tcp)",
             CHANNEL_CAPACITY,
             move |rx: Receiver<Frame>, _: Sender<()>| {
-                let socket = nng::Socket::new(nng::Protocol::Pub0).unwrap();
-                let url = format!("tcp://127.0.0.1:{}", port);
-                socket.dial_async(&url).unwrap();
+                let address = format!("127.0.0.1:{port}");
+                let mut stream = std::net::TcpStream::connect(&address).ok();
                 for frame in rx {
-                    socket
-                        .send(&[frame[0].to_le_bytes(), frame[1].to_le_bytes()].concat())
-                        .ok();
+                    if stream.is_none() {
+                        stream = std::net::TcpStream::connect(&address).ok();
+                    }
+                    let mut failed = false;
+                    if let Some(stream) = &mut stream {
+                        let mut bytes = [0; 16];
+                        bytes[..8].copy_from_slice(&frame[0].to_le_bytes());
+                        bytes[8..].copy_from_slice(&frame[1].to_le_bytes());
+                        failed = stream.write_all(&bytes).is_err();
+                    }
+                    if failed {
+                        stream = None;
+                    }
                 }
             },
         )
@@ -54,24 +63,25 @@ fn main() -> Result<()> {
         Worker::spawn(
             "Oscilloscope (void)",
             CHANNEL_CAPACITY,
-            move |rx: Receiver<Frame>, _: Sender<()>| {
-                for _ in rx {}
-            },
+            move |rx: Receiver<Frame>, _: Sender<()>| for _ in rx {},
         )
     };
 
     let port = matches.get_one::<String>("port").unwrap();
-    let address = format!("127.0.0.1:{}", port);
+    let address = format!("127.0.0.1:{port}");
     let listener = std::net::TcpListener::bind(address).unwrap();
     for msg in listener.incoming().filter_map(|stream| {
-        stream
+        stream.ok().and_then(|mut stream| {
+            bincode::serde::decode_from_std_read::<Message, _, _>(
+                &mut stream,
+                bincode::config::standard(),
+            )
             .ok()
-            .and_then(|stream| serde_json::from_reader::<_, Message>(stream).ok())
+        })
     }) {
         worker.sender().send(msg).unwrap();
     }
 
     drop(oscilloscope);
-
     Ok(())
 }

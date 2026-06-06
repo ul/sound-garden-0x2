@@ -1,6 +1,7 @@
 use crate::op::Op;
 use crate::sample::{AtomicFrame, Frame, Sample};
 use crate::stack::Stack;
+#[cfg(feature = "allocation-checks")]
 use alloc_counter::no_alloc;
 use smallvec::SmallVec;
 use std::sync::{Arc, atomic::Ordering};
@@ -103,7 +104,7 @@ impl VM {
         garbage
     }
 
-    #[no_alloc]
+    #[cfg_attr(feature = "allocation-checks", no_alloc)]
     pub fn next_frame(&mut self) -> Frame {
         match self.status {
             Status::Play => {

@@ -3,6 +3,7 @@
 #[macro_use]
 extern crate vst;
 
+#[cfg(feature = "allocation-checks")]
 use alloc_counter::no_alloc;
 use audio_program::{Context, PARAMETERS, compile_program};
 use audio_server::Message;
@@ -75,7 +76,11 @@ impl Default for SoundGarden {
                 for msg in listener.incoming().filter_map(|stream| {
                     stream
                         .ok()
-                        .and_then(|stream| serde_json::from_reader::<_, Message>(stream).ok())
+                        .and_then(|mut stream| bincode::serde::decode_from_std_read::<Message, _, _>(
+                            &mut stream,
+                            bincode::config::standard(),
+                        )
+                        .ok())
                 }) {
                     match msg {
                         Message::Play(_x) => {}
@@ -144,7 +149,7 @@ impl Plugin for SoundGarden {
             .ok();
     }
 
-    #[no_alloc]
+    #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process(&mut self, buffer: &mut vst::buffer::AudioBuffer<f32>) {
         if let Ok(msg) = self.server.receiver().try_recv()
             && let ServerOutput::Program(program) = msg {
@@ -175,7 +180,7 @@ impl Plugin for SoundGarden {
         }
     }
 
-    #[no_alloc]
+    #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process_f64(&mut self, buffer: &mut vst::buffer::AudioBuffer<f64>) {
         if let Ok(msg) = self.server.receiver().try_recv()
             && let ServerOutput::Program(program) = msg {

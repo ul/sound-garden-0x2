@@ -1,12 +1,22 @@
 use ahash::RandomState;
 use audio_ops::*;
-use audio_vm::{AtomicFrame, AtomicSample, Frame, Op, Program, Sample, Statement};
+use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
+#[cfg(test)]
+use audio_vm::Frame;
 use rand::{rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
+use std::fs::File;
 use std::sync::{Arc, atomic::Ordering};
+use symphonia::core::audio::SampleBuffer;
+use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::errors::Error as SymphoniaError;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
 
 pub const HELP: &str = include_str!("help.adoc");
 pub const PARAMETERS: usize = 16;
@@ -39,6 +49,66 @@ impl Default for Context {
 pub struct TextOp {
     pub id: u64,
     pub op: String,
+}
+
+fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
+    let file = File::open(path).ok()?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(extension) = std::path::Path::new(path).extension().and_then(|s| s.to_str()) {
+        hint.with_extension(extension);
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let mut format = probed.format;
+    let track = format
+        .tracks()
+        .iter()
+        .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)?;
+    let track_id = track.id;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .ok()?;
+    let mut sample_buffer = None;
+    let mut table = Vec::new();
+
+    loop {
+        let packet = match format.next_packet() {
+            Ok(packet) => packet,
+            Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::ResetRequired) => break,
+            Err(_) => continue,
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(decoded) => decoded,
+            Err(SymphoniaError::DecodeError(_)) => continue,
+            Err(_) => break,
+        };
+        let spec = *decoded.spec();
+        let duration = decoded.capacity() as u64;
+        let sample_buffer = sample_buffer
+            .get_or_insert_with(|| SampleBuffer::<Sample>::new(duration, spec));
+        sample_buffer.copy_interleaved_ref(decoded);
+        let channels = spec.channels.count();
+        for samples in sample_buffer.samples().chunks(channels) {
+            let mut frame: AtomicFrame = Default::default();
+            for (a, &x) in frame.iter_mut().zip(samples) {
+                a.store(x.to_bits(), Ordering::Relaxed);
+            }
+            table.push(frame);
+        }
+    }
+
+    Some(table)
 }
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
@@ -274,16 +344,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                         "ft" | "ftab" | "filetable" => match tokens.get(1) {
                             Some(path) => {
                                 if !ctx.tables.contains_key(*path)
-                                    && let Ok(mut r) = audrey::read::open(path) {
-                                        let mut table: Vec<AtomicFrame> = Vec::new();
-                                        for frame in r.frames() {
-                                            let frame: Frame = frame.unwrap_or_default();
-                                            let mut f: AtomicFrame = Default::default();
-                                            for (a, &x) in f.iter_mut().zip(&frame) {
-                                                a.store(x.to_bits(), Ordering::Relaxed);
-                                            }
-                                            table.push(f);
-                                        }
+                                    && let Some(table) = load_table(path) {
                                         let table = Arc::new(table);
                                         ctx.tables.insert(path.to_string(), table);
                                     }

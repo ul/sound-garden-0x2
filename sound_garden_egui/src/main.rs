@@ -66,8 +66,13 @@ fn main() -> Result<()> {
             1,
             move |rx: Receiver<audio_server::Message>, _: Sender<Frame>| {
                 for msg in rx {
-                    if let Ok(stream) = std::net::TcpStream::connect(&address) {
-                        serde_json::to_writer(stream, &msg).ok();
+                    if let Ok(mut stream) = std::net::TcpStream::connect(&address) {
+                        bincode::serde::encode_into_std_write(
+                            &msg,
+                            &mut stream,
+                            bincode::config::standard(),
+                        )
+                        .ok();
                     }
                 }
             },
