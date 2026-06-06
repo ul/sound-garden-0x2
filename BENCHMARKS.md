@@ -1,9 +1,15 @@
 # Performance benchmarks
 
-Sound Garden uses Criterion for repeatable microbenchmarks of the current critical paths:
+Sound Garden uses Criterion for repeatable microbenchmarks of critical paths.
+
+Benchmark groups:
 
 - `compile_program/*`: text-operation compilation into an executable audio VM program.
-- `vm_next_frame/*`: audio-thread frame generation through `VM::next_frame`.
+- `vm_next_frame/*`: single-frame audio-thread generation through `VM::next_frame`.
+- `stack/*`: hot `Stack` push/pop/peek operations.
+- `program_lifecycle/*`: `VM::load_program` migration paths with matching and non-matching statement ids.
+- `vm_state_paths/*`: monitor, active crossfade, and pause-fade paths.
+- `vm_render_block/*`: 128-frame block rendering throughput.
 
 Run all benchmarks:
 
