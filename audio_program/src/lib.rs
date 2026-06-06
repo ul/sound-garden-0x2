@@ -62,6 +62,51 @@ pub struct TextOp {
     pub op: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Waveform {
+    Cosine,
+    CosineFast,
+    Sine,
+    SineFast,
+    Triangle,
+}
+
+impl Waveform {
+    fn from_oscillator(op: &str) -> Option<Self> {
+        match op {
+            "c" => Some(Self::Cosine),
+            "c'" => Some(Self::CosineFast),
+            "s" => Some(Self::Sine),
+            "s'" => Some(Self::SineFast),
+            "t" => Some(Self::Triangle),
+            _ => None,
+        }
+    }
+
+    fn function(self) -> fn(Sample) -> Sample {
+        match self {
+            Self::Cosine => pure::cosine,
+            Self::CosineFast => pure::cosine_fast,
+            Self::Sine => pure::sine,
+            Self::SineFast => pure::sine_fast,
+            Self::Triangle => pure::triangle,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum OptimizedOp {
+    Text(TextOp),
+    Constant { id: u64, value: Sample },
+    FixedOsc { id: u64, waveform: Waveform, frequency: Sample },
+    AddConst { id: u64, value: Sample },
+    MulConst { id: u64, value: Sample },
+    SubConst { id: u64, value: Sample },
+    RSubConst { id: u64, value: Sample },
+    DivConst { id: u64, value: Sample },
+    RDivConst { id: u64, value: Sample },
+}
+
 fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
     let file = File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -135,7 +180,47 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             program.push(Statement { id: $id, op: Box::new($class::new($($rest)*)) as Box<dyn Op> })
         };
     }
-    for TextOp { id, op } in ops {
+    for optimized_op in ops {
+        let TextOp { id, op } = match optimized_op {
+            OptimizedOp::Text(text_op) => text_op,
+            OptimizedOp::Constant { id, value } => {
+                push_args!(id, Constant, value);
+                continue;
+            }
+            OptimizedOp::FixedOsc {
+                id,
+                waveform,
+                frequency,
+            } => {
+                push_args!(id, FixedOsc, sample_rate, frequency, waveform.function());
+                continue;
+            }
+            OptimizedOp::AddConst { id, value } => {
+                push_args!(id, AddConst, value);
+                continue;
+            }
+            OptimizedOp::MulConst { id, value } => {
+                push_args!(id, MulConst, value);
+                continue;
+            }
+            OptimizedOp::SubConst { id, value } => {
+                push_args!(id, SubConst, value);
+                continue;
+            }
+            OptimizedOp::RSubConst { id, value } => {
+                push_args!(id, RSubConst, value);
+                continue;
+            }
+            OptimizedOp::DivConst { id, value } => {
+                push_args!(id, DivConst, value);
+                continue;
+            }
+            OptimizedOp::RDivConst { id, value } => {
+                push_args!(id, RDivConst, value);
+                continue;
+            }
+        };
+
         match op.as_str() {
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
             "+" | "add" => push_args!(id, Fn2, pure::add),
@@ -268,44 +353,6 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                 Err(_) => {
                     let tokens = op.split(':').collect::<Vec<_>>();
                     match tokens[0] {
-                        "__fixed_osc" => {
-                            if let (Some(waveform), Some(frequency)) = (
-                                tokens.get(1).and_then(|waveform| fixed_osc_function(waveform)),
-                                tokens.get(2).and_then(|frequency| frequency.parse::<Sample>().ok()),
-                            ) {
-                                push_args!(id, FixedOsc, sample_rate, frequency, waveform);
-                            }
-                        }
-                        "__add_const" => {
-                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
-                                push_args!(id, AddConst, value);
-                            }
-                        }
-                        "__mul_const" => {
-                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
-                                push_args!(id, MulConst, value);
-                            }
-                        }
-                        "__sub_const" => {
-                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
-                                push_args!(id, SubConst, value);
-                            }
-                        }
-                        "__rsub_const" => {
-                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
-                                push_args!(id, RSubConst, value);
-                            }
-                        }
-                        "__div_const" => {
-                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
-                                push_args!(id, DivConst, value);
-                            }
-                        }
-                        "__rdiv_const" => {
-                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
-                                push_args!(id, RDivConst, value);
-                            }
-                        }
                         "" | "dig" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Dig, n),
@@ -602,11 +649,11 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     result
 }
 
-fn optimize_terms(stmts: &[TextOp]) -> Vec<TextOp> {
+fn optimize_terms(stmts: &[TextOp]) -> Vec<OptimizedOp> {
     let mut result = Vec::with_capacity(stmts.len());
 
     for stmt in stmts {
-        result.push(stmt.clone());
+        result.push(optimized_op(stmt));
 
         loop {
             if let Some(folded) = fold_tail_constants(&result) {
@@ -627,54 +674,66 @@ fn optimize_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     result
 }
 
-fn fold_tail_binary_const_terms(stmts: &[TextOp]) -> Option<[TextOp; 2]> {
+fn optimized_op(stmt: &TextOp) -> OptimizedOp {
+    match stmt.op.parse::<Sample>() {
+        Ok(value) => OptimizedOp::Constant { id: stmt.id, value },
+        Err(_) => OptimizedOp::Text(stmt.clone()),
+    }
+}
+
+fn fold_tail_binary_const_terms(stmts: &[OptimizedOp]) -> Option<[OptimizedOp; 2]> {
     let [rest @ .., a, b, op] = stmts else {
         return None;
     };
     let _ = rest;
 
-    let a_is_const = a.op.parse::<Sample>().is_ok();
-    let b_is_const = b.op.parse::<Sample>().is_ok();
+    let OptimizedOp::Text(op) = op else {
+        return None;
+    };
 
-    match op.op.as_str() {
-        "+" | "add" if b_is_const => Some([a.clone(), const_op(op.id, "__add_const", &b.op)]),
-        "+" | "add" if a_is_const => Some([b.clone(), const_op(op.id, "__add_const", &a.op)]),
-        "*" | "mul" if b_is_const => Some([a.clone(), const_op(op.id, "__mul_const", &b.op)]),
-        "*" | "mul" if a_is_const => Some([b.clone(), const_op(op.id, "__mul_const", &a.op)]),
-        "-" | "sub" if b_is_const => Some([a.clone(), const_op(op.id, "__sub_const", &b.op)]),
-        "-" | "sub" if a_is_const => Some([b.clone(), const_op(op.id, "__rsub_const", &a.op)]),
-        "/" | "div" if b_is_const => Some([a.clone(), const_op(op.id, "__div_const", &b.op)]),
-        "/" | "div" if a_is_const => Some([b.clone(), const_op(op.id, "__rdiv_const", &a.op)]),
+    match (op.op.as_str(), const_value(a), const_value(b)) {
+        ("+" | "add", _, Some(value)) => Some([a.clone(), OptimizedOp::AddConst { id: op.id, value }]),
+        ("+" | "add", Some(value), _) => Some([b.clone(), OptimizedOp::AddConst { id: op.id, value }]),
+        ("*" | "mul", _, Some(value)) => Some([a.clone(), OptimizedOp::MulConst { id: op.id, value }]),
+        ("*" | "mul", Some(value), _) => Some([b.clone(), OptimizedOp::MulConst { id: op.id, value }]),
+        ("-" | "sub", _, Some(value)) => Some([a.clone(), OptimizedOp::SubConst { id: op.id, value }]),
+        ("-" | "sub", Some(value), _) => Some([b.clone(), OptimizedOp::RSubConst { id: op.id, value }]),
+        ("/" | "div", _, Some(value)) => Some([a.clone(), OptimizedOp::DivConst { id: op.id, value }]),
+        ("/" | "div", Some(value), _) => Some([b.clone(), OptimizedOp::RDivConst { id: op.id, value }]),
         _ => None,
     }
 }
 
-fn const_op(id: u64, op: &str, value: &str) -> TextOp {
-    TextOp {
-        id,
-        op: format!("{op}:{value}"),
-    }
-}
-
-fn fold_tail_fixed_osc_terms(stmts: &[TextOp]) -> Option<TextOp> {
+fn fold_tail_fixed_osc_terms(stmts: &[OptimizedOp]) -> Option<OptimizedOp> {
     let [rest @ .., frequency, oscillator] = stmts else {
         return None;
     };
     let _ = rest;
 
-    let folded = fold_tail_fixed_osc(frequency, oscillator)?;
-    frequency.op.parse::<Sample>().ok()?;
-    Some(folded)
+    let frequency = const_value(frequency)?;
+    let OptimizedOp::Text(oscillator) = oscillator else {
+        return None;
+    };
+    let waveform = Waveform::from_oscillator(&oscillator.op)?;
+
+    Some(OptimizedOp::FixedOsc {
+        id: oscillator.id,
+        waveform,
+        frequency,
+    })
 }
 
-fn fold_tail_constants(stmts: &[TextOp]) -> Option<TextOp> {
+fn fold_tail_constants(stmts: &[OptimizedOp]) -> Option<OptimizedOp> {
     let [rest @ .., a, b, op] = stmts else {
         return None;
     };
     let _ = rest;
 
-    let a = a.op.parse::<Sample>().ok()?;
-    let b = b.op.parse::<Sample>().ok()?;
+    let a = const_value(a)?;
+    let b = const_value(b)?;
+    let OptimizedOp::Text(op) = op else {
+        return None;
+    };
 
     let value = match op.op.as_str() {
         "+" | "add" => a + b,
@@ -700,32 +759,15 @@ fn fold_tail_constants(stmts: &[TextOp]) -> Option<TextOp> {
     };
 
     if value.is_finite() {
-        Some(TextOp {
-            id: op.id,
-            op: value.to_string(),
-        })
+        Some(OptimizedOp::Constant { id: op.id, value })
     } else {
         None
     }
 }
 
-fn fold_tail_fixed_osc(frequency: &TextOp, oscillator: &TextOp) -> Option<TextOp> {
-    match oscillator.op.as_str() {
-        "c" | "c'" | "s" | "s'" | "t" => Some(TextOp {
-            id: oscillator.id,
-            op: format!("__fixed_osc:{}:{}", oscillator.op, frequency.op),
-        }),
-        _ => None,
-    }
-}
-
-fn fixed_osc_function(waveform: &str) -> Option<fn(Sample) -> Sample> {
-    match waveform {
-        "c" => Some(pure::cosine),
-        "c'" => Some(pure::cosine_fast),
-        "s" => Some(pure::sine),
-        "s'" => Some(pure::sine_fast),
-        "t" => Some(pure::triangle),
+fn const_value(op: &OptimizedOp) -> Option<Sample> {
+    match op {
+        OptimizedOp::Constant { value, .. } => Some(*value),
         _ => None,
     }
 }
@@ -823,6 +865,14 @@ mod tests {
         }
     }
 
+    fn text(id: u64, token: &str) -> OptimizedOp {
+        OptimizedOp::Text(op(id, token))
+    }
+
+    fn constant(id: u64, value: Sample) -> OptimizedOp {
+        OptimizedOp::Constant { id, value }
+    }
+
     #[test]
     fn optimize_terms_folds_constant_arithmetic() {
         assert_eq!(
@@ -833,7 +883,7 @@ mod tests {
                 op(4, "4"),
                 op(5, "*"),
             ]),
-            vec![op(5, "20")]
+            vec![constant(5, 20.0)]
         );
     }
 
@@ -841,7 +891,7 @@ mod tests {
     fn optimize_terms_leaves_dynamic_stack_arithmetic_alone() {
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "param:1"), op(3, "+")]),
-            vec![op(1, "input"), op(2, "param:1"), op(3, "+")]
+            vec![text(1, "input"), text(2, "param:1"), text(3, "+")]
         );
     }
 
@@ -849,7 +899,11 @@ mod tests {
     fn optimize_terms_specializes_fixed_frequency_oscillators() {
         assert_eq!(
             optimize_terms(&[op(1, "440"), op(2, "s'")]),
-            vec![op(2, "__fixed_osc:s':440")]
+            vec![OptimizedOp::FixedOsc {
+                id: 2,
+                waveform: Waveform::SineFast,
+                frequency: 440.0,
+            }]
         );
     }
 
@@ -857,31 +911,31 @@ mod tests {
     fn optimize_terms_specializes_binary_ops_with_constants() {
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "0.5"), op(3, "*")]),
-            vec![op(1, "input"), op(3, "__mul_const:0.5")]
+            vec![text(1, "input"), OptimizedOp::MulConst { id: 3, value: 0.5 }]
         );
         assert_eq!(
             optimize_terms(&[op(1, "0.5"), op(2, "input"), op(3, "*")]),
-            vec![op(2, "input"), op(3, "__mul_const:0.5")]
+            vec![text(2, "input"), OptimizedOp::MulConst { id: 3, value: 0.5 }]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "+")]),
-            vec![op(1, "input"), op(3, "__add_const:2")]
+            vec![text(1, "input"), OptimizedOp::AddConst { id: 3, value: 2.0 }]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "-")]),
-            vec![op(1, "input"), op(3, "__sub_const:2")]
+            vec![text(1, "input"), OptimizedOp::SubConst { id: 3, value: 2.0 }]
         );
         assert_eq!(
             optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "-")]),
-            vec![op(2, "input"), op(3, "__rsub_const:2")]
+            vec![text(2, "input"), OptimizedOp::RSubConst { id: 3, value: 2.0 }]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "/")]),
-            vec![op(1, "input"), op(3, "__div_const:2")]
+            vec![text(1, "input"), OptimizedOp::DivConst { id: 3, value: 2.0 }]
         );
         assert_eq!(
             optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "/")]),
-            vec![op(2, "input"), op(3, "__rdiv_const:2")]
+            vec![text(2, "input"), OptimizedOp::RDivConst { id: 3, value: 2.0 }]
         );
     }
 
