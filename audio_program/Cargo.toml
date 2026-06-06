@@ -11,6 +11,7 @@ log.workspace = true
 regex = "1.12.3"
 rand.workspace = true
 serde.workspace = true
+rkyv.workspace = true
 symphonia.workspace = true
 audio_ops = { path = "../audio_ops" }
 audio_vm = { path = "../audio_vm" }

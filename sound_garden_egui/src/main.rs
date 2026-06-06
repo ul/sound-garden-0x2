@@ -6,6 +6,7 @@ use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_ver
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2 as EVec2};
 use log::LevelFilter;
+use rkyv::{rancor::Error as RkyvError, to_bytes};
 use sound_garden_format::{NodeEdit, NodeRepository};
 use sound_garden_types::*;
 use std::{
@@ -67,12 +68,9 @@ fn main() -> Result<()> {
             move |rx: Receiver<audio_server::Message>, _: Sender<Frame>| {
                 for msg in rx {
                     if let Ok(mut stream) = std::net::TcpStream::connect(&address) {
-                        bincode::serde::encode_into_std_write(
-                            &msg,
-                            &mut stream,
-                            bincode::config::standard(),
-                        )
-                        .ok();
+                        if let Ok(bytes) = to_bytes::<RkyvError>(&msg) {
+                            std::io::Write::write_all(&mut stream, &bytes).ok();
+                        }
                     }
                 }
             },

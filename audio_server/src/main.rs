@@ -3,7 +3,8 @@ use audio_server::{Message, run};
 use audio_vm::Frame;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
-use std::io::Write;
+use rkyv::{from_bytes, rancor::Error};
+use std::io::{Read, Write};
 use thread_worker::Worker;
 
 const CHANNEL_CAPACITY: usize = 64;
@@ -72,11 +73,9 @@ fn main() -> Result<()> {
     let listener = std::net::TcpListener::bind(address).unwrap();
     for msg in listener.incoming().filter_map(|stream| {
         stream.ok().and_then(|mut stream| {
-            bincode::serde::decode_from_std_read::<Message, _, _>(
-                &mut stream,
-                bincode::config::standard(),
-            )
-            .ok()
+            let mut bytes = Vec::new();
+            stream.read_to_end(&mut bytes).ok()?;
+            from_bytes::<Message, Error>(&bytes).ok()
         })
     }) {
         worker.sender().send(msg).unwrap();

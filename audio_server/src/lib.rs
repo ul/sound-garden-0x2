@@ -2,6 +2,7 @@ use audio_program::{Context, TextOp, compile_program};
 use audio_vm::{CHANNELS, Frame, Sample, VM};
 use crossbeam_channel::{Receiver, Sender};
 use ringbuf::{HeapRb, traits::Split};
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{Arc, Mutex, atomic::Ordering},
@@ -17,7 +18,7 @@ const CHANNEL_CAPACITY: usize = 64;
 const RECORD_BUFFER_CAPACITY: usize = 48000;
 const OSCILLOSCOPE_POLL_MS: u64 = 10;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Archive, RkyvSerialize, RkyvDeserialize, Serialize, Deserialize)]
 pub enum Message {
     Play(bool),
     Record(bool),

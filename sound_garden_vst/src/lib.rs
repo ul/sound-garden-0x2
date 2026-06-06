@@ -9,6 +9,8 @@ use audio_program::{Context, PARAMETERS, compile_program};
 use audio_server::Message;
 use audio_vm::{AtomicFrame, AtomicSample, CHANNELS, Program, Sample, VM};
 use crossbeam_channel::Sender;
+use rkyv::{from_bytes, rancor::Error as RkyvError};
+use std::io::Read;
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
@@ -74,13 +76,11 @@ impl Default for SoundGarden {
 
             std::thread::spawn(move || {
                 for msg in listener.incoming().filter_map(|stream| {
-                    stream
-                        .ok()
-                        .and_then(|mut stream| bincode::serde::decode_from_std_read::<Message, _, _>(
-                            &mut stream,
-                            bincode::config::standard(),
-                        )
-                        .ok())
+                    stream.ok().and_then(|mut stream| {
+                        let mut bytes = Vec::new();
+                        stream.read_to_end(&mut bytes).ok()?;
+                        from_bytes::<Message, RkyvError>(&bytes).ok()
+                    })
                 }) {
                     match msg {
                         Message::Play(_x) => {}

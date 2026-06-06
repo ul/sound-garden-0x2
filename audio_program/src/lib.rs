@@ -5,18 +5,18 @@ use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
 use audio_vm::Frame;
 use rand::{rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fs::File;
 use std::sync::{Arc, atomic::Ordering};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, TrackType};
+use symphonia::core::formats::probe::Hint;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 
 pub const HELP: &str = include_str!("help.adoc");
 pub const PARAMETERS: usize = 16;
@@ -45,7 +45,18 @@ impl Default for Context {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Archive,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    RkyvSerialize,
+    RkyvDeserialize,
+    Serialize,
+    Deserialize,
+)]
 pub struct TextOp {
     pub id: u64,
     pub op: String,
@@ -59,33 +70,32 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
         hint.with_extension(extension);
     }
 
-    let probed = symphonia::default::get_probe()
-        .format(
+    let mut format = symphonia::default::get_probe()
+        .probe(
             &hint,
             mss,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
         .ok()?;
-    let mut format = probed.format;
-    let track = format
-        .tracks()
-        .iter()
-        .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)?;
+    let track = format.default_track(TrackType::Audio)?;
     let track_id = track.id;
     let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &DecoderOptions::default())
+        .make_audio_decoder(
+            track.codec_params.as_ref()?.audio()?,
+            &AudioDecoderOptions::default(),
+        )
         .ok()?;
-    let mut sample_buffer = None;
+    let mut samples = Vec::<Sample>::new();
     let mut table = Vec::new();
 
     loop {
         let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::ResetRequired) => break,
+            Ok(Some(packet)) => packet,
+            Ok(None) | Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::ResetRequired) => break,
             Err(_) => continue,
         };
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
         let decoded = match decoder.decode(&packet) {
@@ -93,13 +103,11 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
             Err(SymphoniaError::DecodeError(_)) => continue,
             Err(_) => break,
         };
-        let spec = *decoded.spec();
-        let duration = decoded.capacity() as u64;
-        let sample_buffer = sample_buffer
-            .get_or_insert_with(|| SampleBuffer::<Sample>::new(duration, spec));
-        sample_buffer.copy_interleaved_ref(decoded);
-        let channels = spec.channels.count();
-        for samples in sample_buffer.samples().chunks(channels) {
+        let spec = decoded.spec();
+        samples.resize(decoded.samples_interleaved(), 0.0);
+        decoded.copy_to_slice_interleaved(&mut samples);
+        let channels = spec.channels().count();
+        for samples in samples.chunks(channels) {
             let mut frame: AtomicFrame = Default::default();
             for (a, &x) in frame.iter_mut().zip(samples) {
                 a.store(x.to_bits(), Ordering::Relaxed);

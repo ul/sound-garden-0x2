@@ -26,7 +26,7 @@ members = [
 ahash = "0.8.12"
 anyhow = "1.0.102"
 apodize = "1.0.0"
-bincode = { version = "2.0.1", features = ["serde"] }
+rkyv = "0.8.16"
 chrono = "0.4.45"
 ciborium = "0.2.2"
 clap = { version = "4.6.1", features = ["cargo"] }
@@ -46,7 +46,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 simple_logger = "5.2.0"
 smallvec = "1.15.1"
 snap = "1.1.1"
-symphonia = { version = "0.5.5", features = ["all"] }
+symphonia = { version = "0.6.0", features = ["all"] }
 vst = "0.4.0"
 
 alloc_counter = "0.0.4"
