@@ -22,6 +22,15 @@ members = [
     "thread_worker"
 ]
 
+[dev-dependencies]
+audio_program = { path = "audio_program" }
+audio_vm = { path = "audio_vm" }
+criterion = "0.8.2"
+
+[[bench]]
+name = "performance"
+harness = false
+
 [profile.release]
 # lto = true
 panic = "abort"
