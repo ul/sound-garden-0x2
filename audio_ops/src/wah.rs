@@ -28,7 +28,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_mut)]
 
-use audio_vm::{Op, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Op, Stack};
 use itertools::izip;
 
 pub struct WahPedal {
@@ -60,7 +60,7 @@ impl Op for WahPedal {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.dsp.fRec0 = other.dsp.fRec0;
             self.dsp.fRec1 = other.dsp.fRec1;

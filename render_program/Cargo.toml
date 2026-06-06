@@ -2,13 +2,13 @@
 name = "render_program"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hound = "3.4.0"
-rand = "0.8.1"
+hound = "3.5.1"
+rand = "0.10.1"
 
 [dependencies.audio_ops]
 path = "../audio_ops"

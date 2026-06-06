@@ -6,7 +6,7 @@
 //!
 //! TODO use FFT and avoid O(n^2)
 use crate::buffer::Buffer;
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 
 pub struct Yin {
     buffer: Vec<Sample>,

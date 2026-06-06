@@ -1,14 +1,14 @@
 use anyhow::Result;
 use audio_ops::pure::clip;
-use audio_vm::{Sample, CHANNELS, VM};
+use audio_vm::{CHANNELS, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
-use ringbuf::Producer;
+use ringbuf::{HeapProd, traits::Producer};
 use std::sync::{Arc, Mutex};
 
 pub fn main(
     vm: Arc<Mutex<VM>>,
-    producer: Producer<Sample>,
+    producer: HeapProd<Sample>,
     rx: Receiver<()>,
     tx: Sender<u32>,
 ) -> Result<()> {
@@ -26,13 +26,16 @@ pub fn main(
             channels
         ));
     }
-    let sample_rate = config.sample_rate().0;
+    let sample_rate = config.sample_rate();
     tx.send(sample_rate)?;
 
     match config.sample_format() {
         cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), vm, producer, rx),
         cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), vm, producer, rx),
         cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), vm, producer, rx),
+        sample_format => Err(anyhow::anyhow!(
+            "Unsupported sample format: {sample_format:?}"
+        )),
     }
 }
 
@@ -40,11 +43,11 @@ fn run<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     vm: Arc<Mutex<VM>>,
-    mut producer: Producer<Sample>,
+    mut producer: HeapProd<Sample>,
     rx: Receiver<()>,
 ) -> Result<(), anyhow::Error>
 where
-    T: cpal::Sample,
+    T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
     let channels = config.channels as usize;
 
@@ -56,6 +59,7 @@ where
             write_data(data, channels, &vm, &mut producer)
         },
         err_fn,
+        None,
     )?;
     stream.play()?;
 
@@ -68,16 +72,16 @@ fn write_data<T>(
     output: &mut [T],
     channels: usize,
     vm: &Arc<Mutex<VM>>,
-    producer: &mut Producer<Sample>,
+    producer: &mut HeapProd<Sample>,
 ) where
-    T: cpal::Sample,
+    T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
     let mut vm = vm.lock().unwrap();
     for frame in output.chunks_mut(channels) {
         for (sample, &value) in frame.iter_mut().zip(vm.next_frame().iter()) {
             let value = clip(value);
-            *sample = cpal::Sample::from::<f32>(&(value as f32));
-            producer.push(value).ok();
+            *sample = T::from_sample(value as f32);
+            producer.try_push(value).ok();
         }
     }
 }

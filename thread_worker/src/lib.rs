@@ -3,7 +3,7 @@
 
 use std::thread;
 
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 
 /// Like `std::thread::JoinHandle<()>`, but joins thread in drop automatically.
 pub struct ScopedThread {
@@ -24,10 +24,10 @@ impl Drop for ScopedThread {
         );
 
         // escalate panic, but avoid aborting the process
-        if let Err(e) = res {
-            if !thread::panicking() {
-                panic!("{:?}", e)
-            }
+        if let Err(e) = res
+            && !thread::panicking()
+        {
+            panic!("{:?}", e)
         }
     }
 }

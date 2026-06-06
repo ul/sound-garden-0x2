@@ -1,15 +1,15 @@
 use anyhow::Result;
-use audio_vm::{Sample, CHANNELS};
+use audio_vm::{CHANNELS, Sample};
 use chrono::Local;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use hound::{SampleFormat, WavSpec, WavWriter};
-use ringbuf::Consumer;
+use ringbuf::{HeapCons, traits::Consumer};
 
 const POLL_INTERVAL_MS: u64 = 10;
 
 pub fn main(
     sample_rate: u32,
-    mut consumer: Consumer<Sample>,
+    mut consumer: HeapCons<Sample>,
     rx: Receiver<bool>,
     _tx: Sender<()>,
 ) -> Result<()> {
@@ -24,7 +24,7 @@ pub fn main(
         match rx.try_recv() {
             Ok(on) => {
                 writer.take().and_then(|w| w.finalize().ok());
-                consumer.pop_each(|_| true, None);
+                while consumer.try_pop().is_some() {}
                 if on {
                     let filename = format!("{}.wav", Local::now().to_rfc3339());
                     writer = Some(WavWriter::create(filename, spec)?);
@@ -35,12 +35,14 @@ pub fn main(
             }
             Err(TryRecvError::Empty) => {}
         }
-        let write = |sample: Sample| {
+        let mut write = |sample: Sample| {
             let sample = (sample * std::i16::MAX as Sample) as i16;
             writer.as_mut().map(|w| w.write_sample(sample));
             true
         };
-        consumer.pop_each(write, None);
+        while let Some(sample) = consumer.try_pop() {
+            write(sample);
+        }
         std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS));
     }
 }

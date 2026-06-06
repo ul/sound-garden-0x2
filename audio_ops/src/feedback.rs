@@ -1,5 +1,5 @@
 use crate::delay::Delay;
-use audio_vm::{Frame, Op, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Stack};
 use itertools::izip;
 
 pub struct Feedback {
@@ -37,7 +37,7 @@ impl Op for Feedback {
         stack.push(&self.delay_input);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.delay.migrate_same(&other.delay);
             self.delay_input = other.delay_input;

@@ -163,16 +163,11 @@ impl Default for MetaValue {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum Mode {
+    #[default]
     Normal,
     Insert,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Normal
-    }
 }
 
 #[derive(Clone, Default, PartialEq)]

@@ -1,5 +1,5 @@
-use audio_vm::{AtomicFrame, Op, Stack, CHANNELS};
-use std::sync::{atomic::Ordering, Arc};
+use audio_vm::{AtomicFrame, CHANNELS, Op, Stack};
+use std::sync::{Arc, atomic::Ordering};
 
 pub struct WriteVariable {
     cell: Arc<AtomicFrame>,

@@ -2,14 +2,14 @@
 name = "play_program"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = "0.13.1"
-rand = "0.8.1"
-anyhow = "1.0.37"
+cpal = "0.17.3"
+rand = "0.10.1"
+anyhow = "1.0.102"
 
 [dependencies.audio_ops]
 path = "../audio_ops"

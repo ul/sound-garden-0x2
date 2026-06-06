@@ -1,5 +1,5 @@
 use crate::buffer::Buffer;
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Delay {
@@ -44,7 +44,7 @@ impl Op for Delay {
         self.buffer.push_front(input);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.migrate_same(other);
         }
@@ -70,7 +70,7 @@ impl Op for Prime {
         self.previous = current;
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.previous = other.previous;
         }

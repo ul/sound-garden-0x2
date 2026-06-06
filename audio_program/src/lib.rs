@@ -1,12 +1,12 @@
 use ahash::RandomState;
 use audio_ops::*;
 use audio_vm::{AtomicFrame, AtomicSample, Frame, Op, Program, Sample, Statement};
-use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
+use rand::{rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 pub const HELP: &str = include_str!("help.adoc");
 pub const PARAMETERS: usize = 16;
@@ -131,7 +131,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "sine'" => push_args!(id, OscPhase, sample_rate, pure::sine_fast),
             "sinh" => push_args!(id, Fn1, pure::sinh),
             "spectral_shuffle" => {
-                let mut rng = Box::new(SmallRng::from_entropy());
+                let mut rng = Box::new(rand::make_rng::<SmallRng>());
                 push_args!(
                     id,
                     SpectralTransform,
@@ -505,38 +505,92 @@ struct Term {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::Context;
+    use super::*;
 
     #[test]
     fn rewrite_terms_does_its_thing() {
         assert_eq!(
             rewrite_terms(&vec![
-                TextOp { id: 1, op: "[?".to_string() },
-                TextOp { id: 10, op: "s]".to_string() },
-                TextOp { id: 100, op: "foo".to_string() },
-                TextOp { id: 1000, op: "[?".to_string() },
-                TextOp { id: 10000, op: "foo".to_string() },
-                TextOp { id: 100000, op: "+]".to_string() },
-                TextOp { id: 1000000, op: "bar".to_string() },
-                TextOp { id: 10000000, op: "1".to_string() },
-                TextOp { id: 100000000, op: "bar".to_string() },
-                TextOp { id: 1000000000, op: "2".to_string() },
-                TextOp { id: 10000000000, op: "bar".to_string() },
+                TextOp {
+                    id: 1,
+                    op: "[?".to_string()
+                },
+                TextOp {
+                    id: 10,
+                    op: "s]".to_string()
+                },
+                TextOp {
+                    id: 100,
+                    op: "foo".to_string()
+                },
+                TextOp {
+                    id: 1000,
+                    op: "[?".to_string()
+                },
+                TextOp {
+                    id: 10000,
+                    op: "foo".to_string()
+                },
+                TextOp {
+                    id: 100000,
+                    op: "+]".to_string()
+                },
+                TextOp {
+                    id: 1000000,
+                    op: "bar".to_string()
+                },
+                TextOp {
+                    id: 10000000,
+                    op: "1".to_string()
+                },
+                TextOp {
+                    id: 100000000,
+                    op: "bar".to_string()
+                },
+                TextOp {
+                    id: 1000000000,
+                    op: "2".to_string()
+                },
+                TextOp {
+                    id: 10000000000,
+                    op: "bar".to_string()
+                },
             ]),
             vec![
-                TextOp { id: 10000000, op: "1".to_string() },
-                TextOp { id: 100010010, op: "s".to_string() },
-                TextOp { id: 100100000, op: "+".to_string() },
-                TextOp { id: 1000000000, op: "2".to_string() },
-                TextOp { id: 10000010010, op: "s".to_string() },
-                TextOp { id: 10000100000, op: "+".to_string() },
+                TextOp {
+                    id: 10000000,
+                    op: "1".to_string()
+                },
+                TextOp {
+                    id: 100010010,
+                    op: "s".to_string()
+                },
+                TextOp {
+                    id: 100100000,
+                    op: "+".to_string()
+                },
+                TextOp {
+                    id: 1000000000,
+                    op: "2".to_string()
+                },
+                TextOp {
+                    id: 10000010010,
+                    op: "s".to_string()
+                },
+                TextOp {
+                    id: 10000100000,
+                    op: "+".to_string()
+                },
             ]
         );
     }
 
     fn op(id: u64, op: &str) -> TextOp {
-        TextOp { id, op: op.to_owned() }
+        TextOp {
+            id,
+            op: op.to_owned(),
+        }
     }
 
     fn run_once(ops: &[TextOp], context: &mut Context) -> Frame {
@@ -552,7 +606,16 @@ mod tests {
         let mut context = Context::new();
 
         assert_eq!(
-            run_once(&[op(1, "2"), op(2, "3"), op(3, "add"), op(4, "4"), op(5, "mul")], &mut context),
+            run_once(
+                &[
+                    op(1, "2"),
+                    op(2, "3"),
+                    op(3, "add"),
+                    op(4, "4"),
+                    op(5, "mul")
+                ],
+                &mut context
+            ),
             [20.0, 20.0]
         );
     }
@@ -565,7 +628,10 @@ mod tests {
         context.params[2].store(4.0f64.to_bits(), Ordering::Relaxed);
 
         assert_eq!(
-            run_once(&[op(1, "input"), op(2, "param:2"), op(3, "*")], &mut context),
+            run_once(
+                &[op(1, "input"), op(2, "param:2"), op(3, "*")],
+                &mut context
+            ),
             [1.0, -2.0]
         );
     }
@@ -575,7 +641,15 @@ mod tests {
         let mut context = Context::new();
 
         assert_eq!(
-            run_once(&[op(1, "7"), op(2, "set:answer"), op(3, "get:answer"), op(4, "+")], &mut context),
+            run_once(
+                &[
+                    op(1, "7"),
+                    op(2, "set:answer"),
+                    op(3, "get:answer"),
+                    op(4, "+")
+                ],
+                &mut context
+            ),
             [14.0, 14.0]
         );
         assert!(context.variables.contains_key("answer"));
@@ -586,7 +660,10 @@ mod tests {
         let mut context = Context::new();
 
         assert_eq!(
-            run_once(&[op(1, "0.75"), op(2, "1"), op(3, "wt:loop:0.01")], &mut context),
+            run_once(
+                &[op(1, "0.75"), op(2, "1"), op(3, "wt:loop:0.01")],
+                &mut context
+            ),
             [0.75, 0.75]
         );
 
@@ -604,12 +681,14 @@ mod tests {
     #[test]
     fn help_index_contains_aliases_and_grouped_terms() {
         let help = get_help();
-        assert_eq!(help.get("+").map(String::as_str), help.get("add").map(String::as_str));
+        assert_eq!(
+            help.get("+").map(String::as_str),
+            help.get("add").map(String::as_str)
+        );
         assert!(help.contains_key("metro"));
 
         let groups = get_op_groups();
-        assert!(groups.iter().any(|(group, terms)|
-            group == "Triggers" && terms.iter().any(|term| term.starts_with("metro"))
-        ));
+        assert!(groups.iter().any(|(group, terms)| group == "Triggers"
+            && terms.iter().any(|term| term.starts_with("metro"))));
     }
 }

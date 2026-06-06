@@ -1,10 +1,10 @@
-use audio_program::{compile_program, Context, TextOp};
-use audio_vm::{Frame, Sample, CHANNELS, VM};
+use audio_program::{Context, TextOp, compile_program};
+use audio_vm::{CHANNELS, Frame, Sample, VM};
 use crossbeam_channel::{Receiver, Sender};
-use ringbuf::RingBuffer;
+use ringbuf::{HeapRb, traits::Split};
 use serde::{Deserialize, Serialize};
 use std::{
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{Arc, Mutex, atomic::Ordering},
     time::Duration,
 };
 use thread_worker::Worker;
@@ -29,7 +29,7 @@ pub enum Message {
 pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
     let vm = Arc::new(Mutex::new(VM::new()));
 
-    let rb = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
+    let rb = HeapRb::<Sample>::new(RECORD_BUFFER_CAPACITY);
     let (producer, consumer) = rb.split();
 
     let player = {

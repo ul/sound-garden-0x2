@@ -16,7 +16,7 @@
 //! themselves anymore.
 //!
 //! Sources to connect: frequency.
-use audio_vm::{Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Phasor {
@@ -46,7 +46,7 @@ impl Op for Phasor {
         stack.push(&self.phases);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.migrate_same(other);
         }
@@ -82,7 +82,7 @@ impl Op for Phasor0 {
         stack.push(&self.phases);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.migrate_same(other);
         }

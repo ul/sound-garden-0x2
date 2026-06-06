@@ -3,14 +3,14 @@
 //! Do a Fft of the input signal, transform bins, and produce an output signal with IFft.
 //!
 //! Source to connect: input.
-use audio_vm::{Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
+use rustfft::Fft;
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
-use rustfft::Fft;
 use rustfft::{
-    algorithm::Radix4,
     FftDirection::{Forward, Inverse},
+    algorithm::Radix4,
 };
 use std::collections::VecDeque;
 
@@ -63,8 +63,9 @@ impl Op for SpectralTransform {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
         let index = self.frame_number & self.period_mask;
+        let input_frame = stack.pop();
         for (output, input, input_buffer) in
-            izip!(&mut frame, &stack.pop(), &mut self.input_buffers,)
+            izip!(&mut frame, &input_frame, &mut self.input_buffers,)
         {
             if index == 0 {
                 let input_slices = input_buffer.as_slices();

@@ -3,7 +3,7 @@
 //! Basic IIR low/high-pass filters.
 //!
 //! Sources to connect: input, cut-off frequency.
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct LPF {
@@ -33,7 +33,7 @@ impl Op for LPF {
         stack.push(&self.output);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.output = other.output;
         }
@@ -72,7 +72,7 @@ impl Op for HPF {
         stack.push(&self.output);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.output = other.output;
             self.x_prime = other.x_prime;

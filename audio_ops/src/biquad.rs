@@ -1,7 +1,7 @@
 //! BiQuad Filters
 //!
 //! Sources to connect: input, cut-off frequency, Q.
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 type MakeCoefficients =
@@ -81,7 +81,7 @@ impl Op for BiQuad {
         stack.push(&self.y1);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.x1 = other.x1;
             self.y1 = other.y1;

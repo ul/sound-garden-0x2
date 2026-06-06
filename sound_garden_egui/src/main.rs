@@ -1,8 +1,8 @@
 use anyhow::Result;
-use audio_program::{get_help, TextOp};
+use audio_program::{TextOp, get_help};
 use audio_vm::Frame;
 use chrono::Local;
-use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
+use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2 as EVec2};
 use log::LevelFilter;
@@ -38,11 +38,14 @@ fn main() -> Result<()> {
         .init()
         .unwrap();
 
-    let matches = app_from_crate!()
-        .arg(Arg::with_name("FILENAME").index(1).help("Path to the tree"))
+    let matches = Command::new(crate_name!())
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
+        .arg(Arg::new("FILENAME").index(1).help("Path to the tree"))
         .arg(
-            Arg::with_name("audio-port")
-                .short("p")
+            Arg::new("audio-port")
+                .short('p')
                 .long("audio-port")
                 .value_name("PORT")
                 .help("Port to send programs to"),
@@ -50,13 +53,13 @@ fn main() -> Result<()> {
         .get_matches();
 
     let filename = matches
-        .value_of("FILENAME")
-        .map(|s| s.to_owned())
+        .get_one::<String>("FILENAME")
+        .cloned()
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
 
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
 
-    let audio_control = if let Some(port) = matches.value_of("audio-port") {
+    let audio_control = if let Some(port) = matches.get_one::<String>("audio-port") {
         let address = format!("127.0.0.1:{}", port);
         Worker::spawn(
             "Audio",

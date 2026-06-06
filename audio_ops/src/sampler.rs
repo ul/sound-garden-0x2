@@ -1,6 +1,6 @@
-use audio_vm::{AtomicFrame, Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{AtomicFrame, CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 pub struct TableReader {
     sample_rate: Sample,
@@ -76,7 +76,7 @@ impl Op for TableWriter {
         self.frame += 1;
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.frame = other.frame;
             self.last_trigger = other.last_trigger;

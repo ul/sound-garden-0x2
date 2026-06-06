@@ -2,16 +2,16 @@
 extern crate vst;
 
 use alloc_counter::no_alloc;
-use audio_program::{compile_program, Context, PARAMETERS};
+use audio_program::{Context, PARAMETERS, compile_program};
 use audio_server::Message;
-use audio_vm::{AtomicFrame, AtomicSample, Program, Sample, CHANNELS, VM};
+use audio_vm::{AtomicFrame, AtomicSample, CHANNELS, Program, Sample, VM};
 use crossbeam_channel::Sender;
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
     Arc,
+    atomic::{AtomicU32, Ordering},
 };
 use thread_worker::Worker;
-use vst::plugin::{Info, Plugin, PluginParameters};
+use vst::plugin::{HostCallback, Info, Plugin, PluginParameters};
 
 struct SoundGarden {
     input: Arc<AtomicFrame>,
@@ -110,6 +110,10 @@ impl Default for SoundGarden {
 }
 
 impl Plugin for SoundGarden {
+    fn new(_host: HostCallback) -> Self {
+        Self::default()
+    }
+
     fn get_info(&self) -> Info {
         Info {
             name: "Sound Garden".to_string(),

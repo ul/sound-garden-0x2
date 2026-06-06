@@ -1,25 +1,28 @@
 use anyhow::Result;
-use audio_server::{run, Message};
+use audio_server::{Message, run};
 use audio_vm::Frame;
-use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
+use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use thread_worker::Worker;
 
 const CHANNEL_CAPACITY: usize = 64;
 
 fn main() -> Result<()> {
-    let matches = app_from_crate!()
+    let matches = Command::new(crate_name!())
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
         .arg(
-            Arg::with_name("port")
-                .short("p")
+            Arg::new("port")
+                .short('p')
                 .long("port")
                 .value_name("PORT")
                 .default_value("31337")
                 .help("Port to listen to for programs."),
         )
         .arg(
-            Arg::with_name("scope-port")
-                .short("o")
+            Arg::new("scope-port")
+                .short('o')
                 .long("scope-port")
                 .value_name("SCOPE_PORT")
                 .help("Port to send oscilloscope samples."),
@@ -27,7 +30,7 @@ fn main() -> Result<()> {
         .get_matches();
 
     let scope_port = matches
-        .value_of("scope-port")
+        .get_one::<String>("scope-port")
         .and_then(|s| s.parse::<u16>().ok());
 
     let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, run);
@@ -57,7 +60,7 @@ fn main() -> Result<()> {
         )
     };
 
-    let port = matches.value_of("port").unwrap();
+    let port = matches.get_one::<String>("port").unwrap();
     let address = format!("127.0.0.1:{}", port);
     let listener = std::net::TcpListener::bind(address).unwrap();
     for msg in listener.incoming().filter_map(|stream| {

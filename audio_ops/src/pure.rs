@@ -29,11 +29,7 @@ pub fn div(x: Sample, y: Sample) -> Sample {
 
 #[inline]
 pub fn safe_div(x: Sample, y: Sample) -> Sample {
-    if y != 0.0 {
-        x / y
-    } else {
-        0.0
-    }
+    if y != 0.0 { x / y } else { 0.0 }
 }
 
 #[inline]
@@ -53,11 +49,7 @@ pub fn recip(x: Sample) -> Sample {
 
 #[inline]
 pub fn safe_recip(x: Sample) -> Sample {
-    if x != 0.0 {
-        x.recip()
-    } else {
-        0.0
-    }
+    if x != 0.0 { x.recip() } else { 0.0 }
 }
 
 /// Round `x` to the nearest `step` multiplicative.
@@ -169,22 +161,14 @@ pub fn cosine_fast(phase: Sample) -> Sample {
 #[inline]
 pub fn triangle(phase: Sample) -> Sample {
     let x = 2.0 * phase;
-    if x > 0.0 {
-        1.0 - x
-    } else {
-        1.0 + x
-    }
+    if x > 0.0 { 1.0 - x } else { 1.0 + x }
 }
 
 /// Connect Phasor and module which outputs pulse width (e.g. Constant(0.5))
 /// to Fn2(rectangle) to generate rectangle wave
 #[inline]
 pub fn rectangle(phase: Sample, width: Sample) -> Sample {
-    if unit(phase) <= width {
-        1.0
-    } else {
-        -1.0
-    }
+    if unit(phase) <= width { 1.0 } else { -1.0 }
 }
 
 /// Round to the nearest integer value
@@ -320,18 +304,10 @@ pub fn quadratic_curve(a: Sample, dx: Sample) -> Sample {
 
 #[inline]
 pub fn sinc(x: Sample) -> Sample {
-    if x != 0.0 {
-        x.sin() / x
-    } else {
-        1.0
-    }
+    if x != 0.0 { x.sin() / x } else { 1.0 }
 }
 
 #[inline]
 pub fn sinc_fast(x: Sample) -> Sample {
-    if x != 0.0 {
-        sin_fast(x) / x
-    } else {
-        1.0
-    }
+    if x != 0.0 { sin_fast(x) / x } else { 1.0 }
 }

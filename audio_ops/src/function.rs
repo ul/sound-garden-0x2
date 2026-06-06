@@ -1,4 +1,4 @@
-use audio_vm::{Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Fn1 {

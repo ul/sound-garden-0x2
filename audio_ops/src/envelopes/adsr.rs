@@ -1,4 +1,4 @@
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct ADSR {
@@ -84,7 +84,7 @@ impl Op for ADSR {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.frame = other.frame;
             self.gate_frame_on = other.gate_frame_on;

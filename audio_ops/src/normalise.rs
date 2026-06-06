@@ -5,7 +5,7 @@
 //! Sources to connect: input.
 
 use crate::buffer::Buffer;
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Normalise {
@@ -50,7 +50,7 @@ impl Op for Normalise {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.window.copy_backward(&other.window);
             self.min = other.min;

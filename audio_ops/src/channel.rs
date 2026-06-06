@@ -1,4 +1,4 @@
-use audio_vm::{Op, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Op, Stack};
 
 pub struct Channel {
     channel: usize,

@@ -1,5 +1,5 @@
 use crate::stack::Stack;
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 
 /// (Potentially stateful) instance of operation over Stack.
 /// Corresponds to module/node in other systems.
@@ -12,7 +12,7 @@ pub trait Op: Send + Downcast {
     /// Smoothly transition from another Op.
     /// Usually just copy state from the Op of the same kind.
     /// Keep it efficient as it can block an audio thread.
-    fn migrate(&mut self, _other: &Box<dyn Op>) {}
+    fn migrate(&mut self, _other: &dyn Op) {}
 }
 
 impl_downcast!(Op);

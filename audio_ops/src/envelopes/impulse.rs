@@ -1,4 +1,4 @@
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Impulse {
@@ -48,7 +48,7 @@ impl Op for Impulse {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.frame = other.frame;
             self.last_trigger = other.last_trigger;

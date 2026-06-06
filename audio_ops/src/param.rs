@@ -1,5 +1,5 @@
-use audio_vm::{AtomicSample, Op, Stack, CHANNELS};
-use std::sync::{atomic::Ordering, Arc};
+use audio_vm::{AtomicSample, CHANNELS, Op, Stack};
+use std::sync::{Arc, atomic::Ordering};
 
 pub struct Param {
     cell: Arc<AtomicSample>,

@@ -2,7 +2,7 @@
 //!
 //! Sources to connect: left, right, position.
 use crate::pure;
-use audio_vm::{Op, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Op, Stack};
 use itertools::izip;
 
 pub struct Pan1;

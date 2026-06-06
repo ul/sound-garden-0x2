@@ -1,4 +1,4 @@
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Metro {
@@ -20,8 +20,8 @@ impl Metro {
 impl Op for Metro {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
-        for (output, &frequency, last_trigger) in
-            izip!(&mut frame, &stack.pop(), &mut self.last_trigger)
+        let input = stack.pop();
+        for (output, &frequency, last_trigger) in izip!(&mut frame, &input, &mut self.last_trigger)
         {
             let delta = self.sample_rate / frequency;
             *output = if delta as u64 <= self.frame_number - *last_trigger {
@@ -35,7 +35,7 @@ impl Op for Metro {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.last_trigger = other.last_trigger;
             self.frame_number = other.frame_number;
@@ -62,7 +62,8 @@ impl DMetro {
 impl Op for DMetro {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
-        for (output, &dt, last_trigger) in izip!(&mut frame, &stack.pop(), &mut self.last_trigger) {
+        let input = stack.pop();
+        for (output, &dt, last_trigger) in izip!(&mut frame, &input, &mut self.last_trigger) {
             let delta = self.sample_rate * dt;
             *output = if delta as u64 <= self.frame_number - *last_trigger {
                 *last_trigger = self.frame_number;
@@ -75,7 +76,7 @@ impl Op for DMetro {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.last_trigger = other.last_trigger;
             self.frame_number = other.frame_number;
@@ -104,9 +105,10 @@ impl MetroHold {
 impl Op for MetroHold {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
+        let input = stack.pop();
         for (output, &frequency, last_trigger, last_frequency) in izip!(
             &mut frame,
-            &stack.pop(),
+            &input,
             &mut self.last_trigger,
             &mut self.frequencies
         ) {
@@ -126,7 +128,7 @@ impl Op for MetroHold {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.frequencies = other.frequencies;
             self.last_trigger = other.last_trigger;
@@ -156,12 +158,10 @@ impl DMetroHold {
 impl Op for DMetroHold {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
-        for (output, &dt, last_trigger, last_dt) in izip!(
-            &mut frame,
-            &stack.pop(),
-            &mut self.last_trigger,
-            &mut self.dts
-        ) {
+        let input = stack.pop();
+        for (output, &dt, last_trigger, last_dt) in
+            izip!(&mut frame, &input, &mut self.last_trigger, &mut self.dts)
+        {
             if *last_dt == 0.0 {
                 *last_dt = dt
             }
@@ -178,7 +178,7 @@ impl Op for DMetroHold {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.dts = other.dts;
             self.last_trigger = other.last_trigger;
@@ -204,7 +204,8 @@ impl OneShot {
 impl Op for OneShot {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
-        for (output, &dt) in izip!(&mut frame, &stack.pop()) {
+        let input = stack.pop();
+        for (output, &dt) in izip!(&mut frame, &input) {
             let delta = self.sample_rate * dt;
             *output = if delta > 0.0 && delta as u64 == self.frame_number {
                 1.0
@@ -216,7 +217,7 @@ impl Op for OneShot {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.frame_number = other.frame_number;
         }

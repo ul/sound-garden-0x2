@@ -2,18 +2,18 @@
 name = "sound_garden_vst"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-vst = "0.2.1"
+vst = "0.4.0"
 alloc_counter = "0.0.4"
-serde_json = "1.0.61"
-crossbeam-channel = "0.5.0"
+serde_json = "1.0.150"
+crossbeam-channel = "0.5.15"
 
 [dependencies.serde]
-version = "1.0.118"
+version = "1.0.228"
 features = ["derive"]
 
 [dependencies.audio_ops]

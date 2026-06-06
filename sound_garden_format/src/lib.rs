@@ -377,8 +377,9 @@ mod tests {
 
     #[test]
     fn parses_text_format_and_rejects_invalid_ids() {
-        let repo = NodeRepository::try_from("000000000000000a\tosc\nnot a node\n000000000000000b\t+\n")
-            .expect("valid text repository");
+        let repo =
+            NodeRepository::try_from("000000000000000a\tosc\nnot a node\n000000000000000b\t+\n")
+                .expect("valid text repository");
 
         assert_eq!(repo.nodes().len(), 2);
         assert_eq!(repo.text(), "000000000000000a\tosc\n000000000000000b\t+\n");

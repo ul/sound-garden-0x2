@@ -3,7 +3,7 @@ use crate::sample::{AtomicFrame, Frame, Sample};
 use crate::stack::Stack;
 use alloc_counter::no_alloc;
 use smallvec::SmallVec;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 // Totally unscientific attempt to improve performance of small programs by using SmallVec.
 /// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur exetra indirection.
@@ -96,7 +96,7 @@ impl VM {
                 .iter()
                 .find(|prev_stmt| prev_stmt.id == stmt.id)
             {
-                stmt.op.migrate(&prev_stmt.op);
+                stmt.op.migrate(prev_stmt.op.as_ref());
             }
         }
         self.xfade_countdown = self.xfade_duration;
@@ -244,7 +244,7 @@ mod tests {
             stack.push(&[self.count; 2]);
         }
 
-        fn migrate(&mut self, other: &Box<dyn Op>) {
+        fn migrate(&mut self, other: &dyn Op) {
             if let Some(other) = other.downcast_ref::<Self>() {
                 self.count = other.count;
             }

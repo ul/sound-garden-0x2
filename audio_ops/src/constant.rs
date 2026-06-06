@@ -1,4 +1,4 @@
-use audio_vm::{Frame, Op, Sample, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 
 pub struct Constant {
     values: Frame,

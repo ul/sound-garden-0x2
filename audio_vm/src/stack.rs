@@ -1,4 +1,4 @@
-use crate::sample::{Frame, Sample, CHANNELS};
+use crate::sample::{CHANNELS, Frame, Sample};
 
 const STACK_SIZE: usize = 16;
 const STACK_CAPACITY: usize = CHANNELS * STACK_SIZE;

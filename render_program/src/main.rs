@@ -1,8 +1,7 @@
 use audio_ops::pure::clip;
-use audio_program::{compile_program, Context, TextOp};
-use audio_vm::{Program, Sample, CHANNELS, VM};
+use audio_program::{Context, TextOp, compile_program};
+use audio_vm::{CHANNELS, Program, Sample, VM};
 use hound::{SampleFormat, WavSpec, WavWriter};
-use rand::prelude::*;
 use std::io::Read;
 use std::time::Instant;
 
@@ -52,7 +51,7 @@ fn parse_program(s: &str, sample_rate: u32) -> Program {
     let ops = s
         .split_whitespace()
         .map(|op| TextOp {
-            id: random(),
+            id: rand::random(),
             op: op.to_string(),
         })
         .collect::<Vec<_>>();

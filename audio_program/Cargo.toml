@@ -2,15 +2,15 @@
 name = "audio_program"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-smallvec = "1.6.1"
-ahash = "0.8.11"
-log = "0.4.11"
-regex = "1.5.5"
+smallvec = "1.15.1"
+ahash = "0.8.12"
+log = "0.4.32"
+regex = "1.12.3"
 
 [dependencies.audrey]
 version = "0.2.0"
@@ -24,9 +24,8 @@ path = "../audio_ops"
 path = "../audio_vm"
 
 [dependencies.rand]
-version = "0.8.1"
-features = ["small_rng"]
+version = "0.10.1"
 
 [dependencies.serde]
-version = "1.0.118"
+version = "1.0.228"
 features = ["derive"]

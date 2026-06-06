@@ -27,7 +27,7 @@ impl Op for Pulse {
         self.osc.perform(stack);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.phasor.migrate_same(&other.phasor);
         }
@@ -57,7 +57,7 @@ impl Op for PulsePhase {
         self.osc.perform(stack);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.phasor.migrate_same(&other.phasor);
         }

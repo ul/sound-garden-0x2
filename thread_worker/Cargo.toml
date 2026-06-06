@@ -2,10 +2,10 @@
 name = "thread_worker"
 version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossbeam-channel = "0.5.0"
-log = "0.4.11"
+crossbeam-channel = "0.5.15"
+log = "0.4.32"

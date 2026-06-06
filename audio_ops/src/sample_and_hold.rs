@@ -1,4 +1,4 @@
-use audio_vm::{Frame, Op, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Stack};
 use itertools::izip;
 
 pub struct SampleAndHold {
@@ -25,7 +25,7 @@ impl Op for SampleAndHold {
         stack.push(&self.hold);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.hold = other.hold;
         }
@@ -54,7 +54,7 @@ impl Op for SmoothSampleAndHold {
         stack.push(&self.output);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.output = other.output;
         }

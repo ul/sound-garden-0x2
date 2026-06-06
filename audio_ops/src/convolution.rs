@@ -4,7 +4,7 @@
 //!
 //! Sources to connect: input and kernel, but roles are vague in this case.
 use crate::buffer::Buffer;
-use audio_vm::{Frame, Op, Stack, CHANNELS};
+use audio_vm::{CHANNELS, Frame, Op, Stack};
 use itertools::izip;
 
 pub struct Convolution {
@@ -38,7 +38,7 @@ impl Op for Convolution {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.window.copy_backward(&other.window);
         }
@@ -76,7 +76,7 @@ impl Op for ConvolutionM {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &Box<dyn Op>) {
+    fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.window.copy_backward(&other.window);
         }
