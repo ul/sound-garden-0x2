@@ -138,10 +138,17 @@ struct SoundGardenApp {
     undo_group: u64,
     last_known_node_texts: HashMap<Id, String>,
     state: UiState,
+    dragging_node: Option<NodeDrag>,
     op_help: HashMap<String, String>,
     oscilloscope_values: VecDeque<f64>,
     oscilloscope_min: f64,
     oscilloscope_max: f64,
+}
+
+#[derive(Clone, Copy)]
+struct NodeDrag {
+    id: Id,
+    grab_offset: Vec2,
 }
 
 impl Drop for SoundGardenApp {
@@ -165,6 +172,7 @@ impl SoundGardenApp {
             undo_group: 0,
             last_known_node_texts: HashMap::new(),
             state: UiState::default(),
+            dragging_node: None,
             op_help: get_help(),
             oscilloscope_values: VecDeque::new(),
             oscilloscope_min: -1.0,
@@ -238,6 +246,15 @@ impl SoundGardenApp {
             } else {
                 None
             }
+        })
+    }
+
+    fn node_at_position(&self, position: Point) -> Option<Node> {
+        self.state.nodes.iter().find_map(|node| {
+            let width = node.text.chars().count().max(1) as f64;
+            let end = node.position.x + width;
+            (node.position.y == position.y && node.position.x <= position.x && position.x < end)
+                .then(|| node.clone())
         })
     }
 
@@ -695,15 +712,60 @@ impl SoundGardenApp {
     fn draw_canvas(&mut self, ui: &mut egui::Ui) {
         let content_size = self.canvas_content_size(ui.available_size());
         egui::ScrollArea::both().show(ui, |ui| {
-            let (rect, response) = ui.allocate_exact_size(content_size, Sense::click());
-            if response.clicked()
-                && let Some(pos) = response.interact_pointer_pos()
+            let (rect, response) = ui.allocate_exact_size(content_size, Sense::click_and_drag());
+            let pointer_grid_position = response
+                .interact_pointer_pos()
+                .map(|pos| canvas_grid_position(rect, pos));
+
+            if response.drag_started()
+                && let Some(position) = pointer_grid_position
+                && let Some(node) = self.node_at_position(position)
             {
-                let local = pos - rect.min;
-                self.handle_action(Action::SetCursor(Point::new(
-                    (local.x / GRID_WIDTH - 0.5).round() as f64,
-                    (local.y / GRID_HEIGHT - 0.5).round() as f64,
-                )));
+                self.undo_group += 1;
+                self.dragging_node = Some(NodeDrag {
+                    id: node.id,
+                    grab_offset: Vec2::new(
+                        position.x - node.position.x,
+                        position.y - node.position.y,
+                    ),
+                });
+                self.handle_action(Action::SetCursor(position));
+            }
+
+            if response.dragged()
+                && let (Some(drag), Some(position)) = (self.dragging_node, pointer_grid_position)
+                && let Some(node) = self
+                    .state
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == drag.id)
+                    .cloned()
+            {
+                let target = position - drag.grab_offset;
+                if node.position != target
+                    && !self.node_position_is_blocked(
+                        drag.id,
+                        target,
+                        node.text.chars().count(),
+                    )
+                {
+                    let mut edits = HashMap::new();
+                    edits.insert(drag.id, vec![NodeEdit::Move(target)]);
+                    self.edit(edits);
+                    self.state.cursor.position = position;
+                    self.set_cursor();
+                    self.sync_from_repo();
+                }
+            }
+
+            if response.drag_stopped() {
+                self.dragging_node = None;
+            }
+
+            if response.clicked()
+                && let Some(position) = pointer_grid_position
+            {
+                self.handle_action(Action::SetCursor(position));
             }
 
             let painter = ui.painter_at(rect);
@@ -1107,6 +1169,14 @@ fn default_cycles() -> Vec<Vec<String>> {
     .iter()
     .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
     .collect()
+}
+
+fn canvas_grid_position(rect: Rect, pos: Pos2) -> Point {
+    let local = pos - rect.min;
+    Point::new(
+        (local.x / GRID_WIDTH - 0.5).round() as f64,
+        (local.y / GRID_HEIGHT - 0.5).round() as f64,
+    )
 }
 
 fn remap(x: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
