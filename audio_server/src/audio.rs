@@ -3,12 +3,12 @@ use audio_ops::pure::clip;
 use audio_vm::{CHANNELS, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
-use ringbuf::{HeapProd, traits::Producer};
+use rtrb::Producer;
 use std::sync::{Arc, Mutex};
 
 pub fn main(
     vm: Arc<Mutex<VM>>,
-    producer: HeapProd<Sample>,
+    producer: Producer<Sample>,
     rx: Receiver<()>,
     tx: Sender<u32>,
 ) -> Result<()> {
@@ -43,7 +43,7 @@ fn run<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     vm: Arc<Mutex<VM>>,
-    mut producer: HeapProd<Sample>,
+    mut producer: Producer<Sample>,
     rx: Receiver<()>,
 ) -> Result<(), anyhow::Error>
 where
@@ -72,7 +72,7 @@ fn write_data<T>(
     output: &mut [T],
     channels: usize,
     vm: &Arc<Mutex<VM>>,
-    producer: &mut HeapProd<Sample>,
+    producer: &mut Producer<Sample>,
 ) where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
@@ -81,7 +81,7 @@ fn write_data<T>(
         for (sample, &value) in frame.iter_mut().zip(vm.next_frame().iter()) {
             let value = clip(value);
             *sample = T::from_sample(value as f32);
-            producer.try_push(value).ok();
+            producer.push(value).ok();
         }
     }
 }

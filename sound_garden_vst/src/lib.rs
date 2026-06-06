@@ -10,6 +10,7 @@ use audio_server::Message;
 use audio_vm::{AtomicFrame, AtomicSample, CHANNELS, Program, Sample, VM};
 use crossbeam_channel::Sender;
 use rkyv::{from_bytes, rancor::Error as RkyvError};
+use rtrb::{Consumer, Producer, RingBuffer};
 use std::io::Read;
 use std::sync::{
     Arc,
@@ -22,6 +23,8 @@ struct SoundGarden {
     input: Arc<AtomicFrame>,
     params: Arc<Params>,
     server: Worker<ServerInput, ServerOutput>,
+    program_rx: Consumer<Box<Program>>,
+    garbage_tx: Producer<Box<Program>>,
     vm: VM,
 }
 
@@ -34,18 +37,25 @@ struct Params {
 enum ServerInput {
     Param { index: usize, value: Sample },
     SampleRate(u32),
-    Garbage(Box<Program>),
 }
 
 enum ServerOutput {
     Port(u16),
-    Program(Box<Program>),
 }
 
 impl Default for SoundGarden {
     fn default() -> Self {
         let input = Default::default();
         let input_for_ctx = Arc::clone(&input);
+        let (program_tx, program_rx) = RingBuffer::<Box<Program>>::new(8);
+        let (garbage_tx, mut garbage_rx) = RingBuffer::<Box<Program>>::new(8);
+        std::thread::spawn(move || loop {
+            while let Ok(program) = garbage_rx.pop() {
+                drop(program);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        });
+        let mut program_tx = program_tx;
         let server = Worker::spawn("TCP Server", 1, move |rx, tx| {
             let mut ctx = Context {
                 input: input_for_ctx,
@@ -68,7 +78,7 @@ impl Default for SoundGarden {
                                 parameters[index].store(value.to_bits(), Ordering::Relaxed)
                             }
                             SampleRate(sr) => sample_rate.store(sr, Ordering::Relaxed),
-                            Garbage(program) => drop(program),
+                            
                         }
                     }
                 });
@@ -91,7 +101,7 @@ impl Default for SoundGarden {
                                 sample_rate.load(Ordering::Relaxed),
                                 &mut ctx,
                             );
-                            tx.send(ServerOutput::Program(Box::new(program))).ok();
+                            program_tx.push(Box::new(program)).ok();
                         }
                         Message::Monitor(_) => {}
                         Message::Quit => {}
@@ -99,10 +109,7 @@ impl Default for SoundGarden {
                 }
             });
         });
-        let mut port = 0;
-        if let ServerOutput::Port(p) = server.receiver().recv().unwrap() {
-            port = p;
-        };
+        let ServerOutput::Port(port) = server.receiver().recv().unwrap();
         let mut vm: VM = Default::default();
         vm.play();
         SoundGarden {
@@ -113,6 +120,8 @@ impl Default for SoundGarden {
                 port,
             }),
             server,
+            program_rx,
+            garbage_tx,
             vm,
         }
     }
@@ -151,14 +160,14 @@ impl Plugin for SoundGarden {
 
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process(&mut self, buffer: &mut vst::buffer::AudioBuffer<f32>) {
-        if let Ok(msg) = self.server.receiver().try_recv()
-            && let ServerOutput::Program(program) = msg {
-                let garbage = self.vm.load_program(*program);
-                self.server
-                    .sender()
-                    .send(ServerInput::Garbage(Box::new(garbage)))
-                    .ok();
+        if let Ok(program) = self.program_rx.pop() {
+            let garbage = self.vm.load_program(*program);
+            if let Err(err) = self.garbage_tx.push(Box::new(garbage)) {
+                // Avoid deallocating the old program on the audio thread if the
+                // background garbage queue is full.
+                std::mem::forget(err);
             }
+        }
 
         let (inputs, outputs) = buffer.split();
 
@@ -182,14 +191,14 @@ impl Plugin for SoundGarden {
 
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process_f64(&mut self, buffer: &mut vst::buffer::AudioBuffer<f64>) {
-        if let Ok(msg) = self.server.receiver().try_recv()
-            && let ServerOutput::Program(program) = msg {
-                let garbage = self.vm.load_program(*program);
-                self.server
-                    .sender()
-                    .send(ServerInput::Garbage(Box::new(garbage)))
-                    .ok();
+        if let Ok(program) = self.program_rx.pop() {
+            let garbage = self.vm.load_program(*program);
+            if let Err(err) = self.garbage_tx.push(Box::new(garbage)) {
+                // Avoid deallocating the old program on the audio thread if the
+                // background garbage queue is full.
+                std::mem::forget(err);
             }
+        }
 
         let (inputs, outputs) = buffer.split();
 

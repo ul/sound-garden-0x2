@@ -1,7 +1,7 @@
 use audio_program::{Context, TextOp, compile_program};
 use audio_vm::{CHANNELS, Frame, Sample, VM};
 use crossbeam_channel::{Receiver, Sender};
-use ringbuf::{HeapRb, traits::Split};
+use rtrb::RingBuffer;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -30,8 +30,7 @@ pub enum Message {
 pub fn run(rx: Receiver<Message>, tx: Sender<Frame>) {
     let vm = Arc::new(Mutex::new(VM::new()));
 
-    let rb = HeapRb::<Sample>::new(RECORD_BUFFER_CAPACITY);
-    let (producer, consumer) = rb.split();
+    let (producer, consumer) = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
 
     let player = {
         let vm = Arc::clone(&vm);

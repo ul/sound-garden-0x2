@@ -11,6 +11,7 @@ allocation-checks = ["dep:alloc_counter"]
 vst.workspace = true
 alloc_counter = { workspace = true, optional = true }
 rkyv.workspace = true
+rtrb.workspace = true
 crossbeam-channel.workspace = true
 serde.workspace = true
 audio_ops = { path = "../audio_ops" }
