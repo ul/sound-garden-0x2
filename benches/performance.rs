@@ -65,6 +65,18 @@ fn biquad_lpf_ops() -> Vec<TextOp> {
     vec![text_op(1, "110"), text_op(2, "s'"), text_op(3, "1000"), text_op(4, "l")]
 }
 
+fn constant_arithmetic_ops(terms: usize) -> Vec<TextOp> {
+    let mut ops = vec![text_op(1, "1")];
+
+    for i in 0..terms {
+        let id = 2 + (i as u64 * 2);
+        ops.push(text_op(id, (i + 2).to_string()));
+        ops.push(text_op(id + 1, "+"));
+    }
+
+    ops
+}
+
 fn pitch_detection_ops() -> Vec<TextOp> {
     vec![text_op(1, "110"), text_op(2, "s'"), text_op(3, "pitch")]
 }
@@ -88,6 +100,7 @@ fn compile_benchmarks(c: &mut Criterion) {
         ("convolution_m_64_taps", convolution_ops(64)),
         ("delay_1_second", delay_ops()),
         ("biquad_lpf", biquad_lpf_ops()),
+        ("constant_arithmetic_64_terms", constant_arithmetic_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
     ] {
         group.bench_function(name, |b| {
@@ -137,6 +150,7 @@ fn audio_frame_benchmarks(c: &mut Criterion) {
         ("convolution_m_64_taps", convolution_ops(64)),
         ("delay_1_second", delay_ops()),
         ("biquad_lpf", biquad_lpf_ops()),
+        ("constant_arithmetic_64_terms", constant_arithmetic_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
     ] {
         group.bench_function(name, |b| {

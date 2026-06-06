@@ -120,7 +120,7 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
 }
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
-    let ops = rewrite_terms(ops);
+    let ops = optimize_terms(&rewrite_terms(ops));
     let mut program = SmallVec::new();
     macro_rules! push {
         ( $id:ident, $class:ident ) => {
@@ -564,6 +564,62 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     result
 }
 
+fn optimize_terms(stmts: &[TextOp]) -> Vec<TextOp> {
+    let mut result = Vec::with_capacity(stmts.len());
+
+    for stmt in stmts {
+        result.push(stmt.clone());
+
+        while let Some(folded) = fold_tail_constants(&result) {
+            result.truncate(result.len() - 3);
+            result.push(folded);
+        }
+    }
+
+    result
+}
+
+fn fold_tail_constants(stmts: &[TextOp]) -> Option<TextOp> {
+    let [rest @ .., a, b, op] = stmts else {
+        return None;
+    };
+    let _ = rest;
+
+    let a = a.op.parse::<Sample>().ok()?;
+    let b = b.op.parse::<Sample>().ok()?;
+    let value = match op.op.as_str() {
+        "+" | "add" => a + b,
+        "*" | "mul" => a * b,
+        "-" | "sub" => a - b,
+        "/" | "div" => {
+            if b != 0.0 {
+                a / b
+            } else {
+                0.0
+            }
+        }
+        "^" | "pow" => a.powf(b),
+        "%" | "mod" => a % b,
+        "q" | "quantize" => {
+            if b != 0.0 {
+                (a / b).round() * b
+            } else {
+                0.0
+            }
+        }
+        _ => return None,
+    };
+
+    if value.is_finite() {
+        Some(TextOp {
+            id: op.id,
+            op: value.to_string(),
+        })
+    } else {
+        None
+    }
+}
+
 struct Term {
     holes: usize,
     ops: Vec<TextOp>,
@@ -655,6 +711,28 @@ mod tests {
             id,
             op: op.to_owned(),
         }
+    }
+
+    #[test]
+    fn optimize_terms_folds_constant_arithmetic() {
+        assert_eq!(
+            optimize_terms(&[
+                op(1, "2"),
+                op(2, "3"),
+                op(3, "+"),
+                op(4, "4"),
+                op(5, "*"),
+            ]),
+            vec![op(5, "20")]
+        );
+    }
+
+    #[test]
+    fn optimize_terms_leaves_dynamic_stack_arithmetic_alone() {
+        assert_eq!(
+            optimize_terms(&[op(1, "input"), op(2, "3"), op(3, "+")]),
+            vec![op(1, "input"), op(2, "3"), op(3, "+")]
+        );
     }
 
     fn run_once(ops: &[TextOp], context: &mut Context) -> Frame {
