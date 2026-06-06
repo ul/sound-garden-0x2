@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 use std::sync::{Arc, atomic::Ordering};
 
 // Totally unscientific attempt to improve performance of small programs by using SmallVec.
-/// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur exetra indirection.
+/// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur extra indirection.
 pub const FAST_PROGRAM_SIZE: usize = 64;
 
 pub struct Statement {
@@ -22,13 +22,16 @@ pub struct VM {
     active_program: Program,
     /// Previous program stored to provide crossfade.
     previous_program: Program,
+    /// Reused stack for the active program hot path.
+    active_stack: Stack,
+    /// Reused stack for the previous program during crossfade.
+    previous_stack: Stack,
     /// How many frames left before crossfade end.
     xfade_countdown: Sample,
     /// Total duration of crossfade in frames.
     xfade_duration: Sample,
     /// Crossfade duration left on pause toggle.
     pause_countdown: Sample,
-    /// |> / ||
     status: Status,
     /// For oscilloscope-like feedback to the client.
     monitor: Arc<AtomicFrame>,
@@ -45,9 +48,11 @@ impl Default for VM {
 
 impl VM {
     pub fn new() -> Self {
-        VM {
+        Self {
             active_program: Default::default(),
             previous_program: Default::default(),
+            active_stack: Stack::new(),
+            previous_stack: Stack::new(),
             xfade_countdown: 0.0,
             xfade_duration: 2048.0,
             pause_countdown: 0.0,
@@ -84,13 +89,13 @@ impl VM {
     }
 
     /// Load the new program and crossfade to it from the previous one.
-    /// Returns previous value of previous program so it could be deallocated
-    /// somewhere else.
+    /// Returns previous value of previous program so it can be deallocated somewhere else.
     pub fn load_program(&mut self, program: Program) -> Program {
         let garbage = std::mem::replace(
             &mut self.previous_program,
             std::mem::replace(&mut self.active_program, program),
         );
+
         for stmt in &mut self.active_program {
             if let Some(prev_stmt) = self
                 .previous_program
@@ -100,6 +105,7 @@ impl VM {
                 stmt.op.migrate(prev_stmt.op.as_ref());
             }
         }
+
         self.xfade_countdown = self.xfade_duration;
         garbage
     }
@@ -108,17 +114,27 @@ impl VM {
     pub fn next_frame(&mut self) -> Frame {
         match self.status {
             Status::Play => {
-                let (frame, monitor_frame) =
-                    perform_and_monitor(&mut self.active_program, self.monitor_id);
+                let (frame, monitor_frame) = if self.monitor_id == 0 {
+                    let frame = perform(&mut self.active_program, &mut self.active_stack);
+                    (frame, frame)
+                } else {
+                    perform_and_monitor(
+                        &mut self.active_program,
+                        &mut self.active_stack,
+                        self.monitor_id,
+                    )
+                };
+
                 for (a, &x) in self.monitor.iter().zip(&monitor_frame) {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
+
                 let frame = self.xfade(frame);
                 self.play_xfade(frame)
             }
             Status::Pause => {
                 if self.pause_countdown > 0.0 {
-                    let frame = perform(&mut self.active_program);
+                    let frame = perform(&mut self.active_program, &mut self.active_stack);
                     let frame = self.xfade(frame);
                     self.pause_xfade(frame)
                 } else {
@@ -141,18 +157,17 @@ impl VM {
         if self.xfade_countdown > 0.0 {
             let progress = self.xfade_countdown / self.xfade_duration;
             self.xfade_countdown -= 1.0;
-            for (x, &p) in frame
-                .iter_mut()
-                .zip(perform(&mut self.previous_program).iter())
-            {
+            let previous = perform(&mut self.previous_program, &mut self.previous_stack);
+
+            for (x, &p) in frame.iter_mut().zip(previous.iter()) {
                 *x *= 1.0 - progress;
                 *x += p * progress;
             }
         }
+
         frame
     }
 
-    #[inline]
     fn play_xfade(&mut self, mut frame: Frame) -> Frame {
         if self.pause_countdown > 0.0 {
             let progress = 1.0 - (self.pause_countdown / self.xfade_duration);
@@ -161,49 +176,49 @@ impl VM {
                 *x *= progress;
             }
         }
+
         frame
     }
 
-    #[inline]
     fn pause_xfade(&mut self, mut frame: Frame) -> Frame {
         let progress = self.pause_countdown / self.xfade_duration;
         self.pause_countdown -= 1.0;
         for x in frame.iter_mut() {
             *x *= progress;
         }
+
         frame
     }
 }
 
 #[inline]
-fn perform(program: &mut Program) -> Frame {
-    let mut stack = Stack::new();
+fn perform(program: &mut Program, stack: &mut Stack) -> Frame {
+    stack.reset();
     for stmt in program {
-        stmt.op.perform(&mut stack);
+        stmt.op.perform(stack);
     }
     stack.peek()
 }
 
 #[inline]
-fn perform_and_monitor(program: &mut Program, scope_id: u64) -> (Frame, Frame) {
+fn perform_and_monitor(program: &mut Program, stack: &mut Stack, scope_id: u64) -> (Frame, Frame) {
+    debug_assert_ne!(scope_id, 0);
+
     let mut scope = Default::default();
-    let mut stack = Stack::new();
+    stack.reset();
     for stmt in program {
-        stmt.op.perform(&mut stack);
+        stmt.op.perform(stack);
         if scope_id == stmt.id {
             scope = stack.peek();
         }
     }
-    let frame = stack.peek();
-    if scope_id == 0 {
-        scope = frame;
-    }
-    (frame, scope)
+
+    (stack.peek(), scope)
 }
 
 enum Status {
-    Play,
     Pause,
+    Play,
 }
 
 #[cfg(test)]
@@ -268,7 +283,6 @@ mod tests {
         assert_eq!(vm.next_frame(), [0.0, 0.0]);
 
         vm.play();
-
         assert_eq!(vm.next_frame(), [1.0, -1.0]);
     }
 
@@ -312,11 +326,9 @@ mod tests {
         vm.set_xfade_duration(0.0);
         vm.load_program(smallvec![statement(42, Counter::new())]);
         vm.play();
-
         assert_eq!(vm.next_frame(), [1.0, 1.0]);
 
         vm.load_program(smallvec![statement(42, Counter::new())]);
-
         assert_eq!(vm.next_frame(), [2.0, 2.0]);
     }
 
