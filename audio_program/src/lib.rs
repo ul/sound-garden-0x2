@@ -276,6 +276,36 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                                 push_args!(id, FixedOsc, sample_rate, frequency, waveform);
                             }
                         }
+                        "__add_const" => {
+                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
+                                push_args!(id, AddConst, value);
+                            }
+                        }
+                        "__mul_const" => {
+                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
+                                push_args!(id, MulConst, value);
+                            }
+                        }
+                        "__sub_const" => {
+                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
+                                push_args!(id, SubConst, value);
+                            }
+                        }
+                        "__rsub_const" => {
+                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
+                                push_args!(id, RSubConst, value);
+                            }
+                        }
+                        "__div_const" => {
+                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
+                                push_args!(id, DivConst, value);
+                            }
+                        }
+                        "__rdiv_const" => {
+                            if let Some(value) = tokens.get(1).and_then(|value| value.parse::<Sample>().ok()) {
+                                push_args!(id, RDivConst, value);
+                            }
+                        }
                         "" | "dig" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Dig, n),
@@ -585,6 +615,9 @@ fn optimize_terms(stmts: &[TextOp]) -> Vec<TextOp> {
             } else if let Some(folded) = fold_tail_fixed_osc_terms(&result) {
                 result.truncate(result.len() - 2);
                 result.push(folded);
+            } else if let Some(folded) = fold_tail_binary_const_terms(&result) {
+                result.truncate(result.len() - 3);
+                result.extend(folded);
             } else {
                 break;
             }
@@ -592,6 +625,35 @@ fn optimize_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     }
 
     result
+}
+
+fn fold_tail_binary_const_terms(stmts: &[TextOp]) -> Option<[TextOp; 2]> {
+    let [rest @ .., a, b, op] = stmts else {
+        return None;
+    };
+    let _ = rest;
+
+    let a_is_const = a.op.parse::<Sample>().is_ok();
+    let b_is_const = b.op.parse::<Sample>().is_ok();
+
+    match op.op.as_str() {
+        "+" | "add" if b_is_const => Some([a.clone(), const_op(op.id, "__add_const", &b.op)]),
+        "+" | "add" if a_is_const => Some([b.clone(), const_op(op.id, "__add_const", &a.op)]),
+        "*" | "mul" if b_is_const => Some([a.clone(), const_op(op.id, "__mul_const", &b.op)]),
+        "*" | "mul" if a_is_const => Some([b.clone(), const_op(op.id, "__mul_const", &a.op)]),
+        "-" | "sub" if b_is_const => Some([a.clone(), const_op(op.id, "__sub_const", &b.op)]),
+        "-" | "sub" if a_is_const => Some([b.clone(), const_op(op.id, "__rsub_const", &a.op)]),
+        "/" | "div" if b_is_const => Some([a.clone(), const_op(op.id, "__div_const", &b.op)]),
+        "/" | "div" if a_is_const => Some([b.clone(), const_op(op.id, "__rdiv_const", &a.op)]),
+        _ => None,
+    }
+}
+
+fn const_op(id: u64, op: &str, value: &str) -> TextOp {
+    TextOp {
+        id,
+        op: format!("{op}:{value}"),
+    }
 }
 
 fn fold_tail_fixed_osc_terms(stmts: &[TextOp]) -> Option<TextOp> {
@@ -778,8 +840,8 @@ mod tests {
     #[test]
     fn optimize_terms_leaves_dynamic_stack_arithmetic_alone() {
         assert_eq!(
-            optimize_terms(&[op(1, "input"), op(2, "3"), op(3, "+")]),
-            vec![op(1, "input"), op(2, "3"), op(3, "+")]
+            optimize_terms(&[op(1, "input"), op(2, "param:1"), op(3, "+")]),
+            vec![op(1, "input"), op(2, "param:1"), op(3, "+")]
         );
     }
 
@@ -788,6 +850,38 @@ mod tests {
         assert_eq!(
             optimize_terms(&[op(1, "440"), op(2, "s'")]),
             vec![op(2, "__fixed_osc:s':440")]
+        );
+    }
+
+    #[test]
+    fn optimize_terms_specializes_binary_ops_with_constants() {
+        assert_eq!(
+            optimize_terms(&[op(1, "input"), op(2, "0.5"), op(3, "*")]),
+            vec![op(1, "input"), op(3, "__mul_const:0.5")]
+        );
+        assert_eq!(
+            optimize_terms(&[op(1, "0.5"), op(2, "input"), op(3, "*")]),
+            vec![op(2, "input"), op(3, "__mul_const:0.5")]
+        );
+        assert_eq!(
+            optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "+")]),
+            vec![op(1, "input"), op(3, "__add_const:2")]
+        );
+        assert_eq!(
+            optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "-")]),
+            vec![op(1, "input"), op(3, "__sub_const:2")]
+        );
+        assert_eq!(
+            optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "-")]),
+            vec![op(2, "input"), op(3, "__rsub_const:2")]
+        );
+        assert_eq!(
+            optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "/")]),
+            vec![op(1, "input"), op(3, "__div_const:2")]
+        );
+        assert_eq!(
+            optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "/")]),
+            vec![op(2, "input"), op(3, "__rdiv_const:2")]
         );
     }
 
