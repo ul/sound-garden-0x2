@@ -268,6 +268,14 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                 Err(_) => {
                     let tokens = op.split(':').collect::<Vec<_>>();
                     match tokens[0] {
+                        "__fixed_osc" => {
+                            if let (Some(waveform), Some(frequency)) = (
+                                tokens.get(1).and_then(|waveform| fixed_osc_function(waveform)),
+                                tokens.get(2).and_then(|frequency| frequency.parse::<Sample>().ok()),
+                            ) {
+                                push_args!(id, FixedOsc, sample_rate, frequency, waveform);
+                            }
+                        }
                         "" | "dig" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Dig, n),
@@ -570,13 +578,31 @@ fn optimize_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     for stmt in stmts {
         result.push(stmt.clone());
 
-        while let Some(folded) = fold_tail_constants(&result) {
-            result.truncate(result.len() - 3);
-            result.push(folded);
+        loop {
+            if let Some(folded) = fold_tail_constants(&result) {
+                result.truncate(result.len() - 3);
+                result.push(folded);
+            } else if let Some(folded) = fold_tail_fixed_osc_terms(&result) {
+                result.truncate(result.len() - 2);
+                result.push(folded);
+            } else {
+                break;
+            }
         }
     }
 
     result
+}
+
+fn fold_tail_fixed_osc_terms(stmts: &[TextOp]) -> Option<TextOp> {
+    let [rest @ .., frequency, oscillator] = stmts else {
+        return None;
+    };
+    let _ = rest;
+
+    let folded = fold_tail_fixed_osc(frequency, oscillator)?;
+    frequency.op.parse::<Sample>().ok()?;
+    Some(folded)
 }
 
 fn fold_tail_constants(stmts: &[TextOp]) -> Option<TextOp> {
@@ -587,6 +613,7 @@ fn fold_tail_constants(stmts: &[TextOp]) -> Option<TextOp> {
 
     let a = a.op.parse::<Sample>().ok()?;
     let b = b.op.parse::<Sample>().ok()?;
+
     let value = match op.op.as_str() {
         "+" | "add" => a + b,
         "*" | "mul" => a * b,
@@ -617,6 +644,27 @@ fn fold_tail_constants(stmts: &[TextOp]) -> Option<TextOp> {
         })
     } else {
         None
+    }
+}
+
+fn fold_tail_fixed_osc(frequency: &TextOp, oscillator: &TextOp) -> Option<TextOp> {
+    match oscillator.op.as_str() {
+        "c" | "c'" | "s" | "s'" | "t" => Some(TextOp {
+            id: oscillator.id,
+            op: format!("__fixed_osc:{}:{}", oscillator.op, frequency.op),
+        }),
+        _ => None,
+    }
+}
+
+fn fixed_osc_function(waveform: &str) -> Option<fn(Sample) -> Sample> {
+    match waveform {
+        "c" => Some(pure::cosine),
+        "c'" => Some(pure::cosine_fast),
+        "s" => Some(pure::sine),
+        "s'" => Some(pure::sine_fast),
+        "t" => Some(pure::triangle),
+        _ => None,
     }
 }
 
@@ -732,6 +780,14 @@ mod tests {
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "3"), op(3, "+")]),
             vec![op(1, "input"), op(2, "3"), op(3, "+")]
+        );
+    }
+
+    #[test]
+    fn optimize_terms_specializes_fixed_frequency_oscillators() {
+        assert_eq!(
+            optimize_terms(&[op(1, "440"), op(2, "s'")]),
+            vec![op(2, "__fixed_osc:s':440")]
         );
     }
 

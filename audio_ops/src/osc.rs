@@ -1,9 +1,9 @@
 //! # Oscillator
-//!
 //! Sources to connect: frequency.
+
 use crate::function::Fn1;
 use crate::phasor::{Phasor, Phasor0};
-use audio_vm::{Op, Sample, Stack};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 
 pub struct Osc {
     phasor: Phasor,
@@ -27,6 +27,44 @@ impl Op for Osc {
     fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.phasor.migrate_same(&other.phasor);
+        }
+    }
+}
+
+pub struct FixedOsc {
+    phases: Frame,
+    frequency: Sample,
+    sample_period: Sample,
+    f: fn(Sample) -> Sample,
+}
+
+impl FixedOsc {
+    pub fn new(sample_rate: u32, frequency: Sample, f: fn(Sample) -> Sample) -> Self {
+        Self {
+            phases: [0.0; CHANNELS],
+            frequency,
+            sample_period: Sample::from(sample_rate).recip(),
+            f,
+        }
+    }
+}
+
+impl Op for FixedOsc {
+    fn perform(&mut self, stack: &mut Stack) {
+        let dx = self.frequency * self.sample_period;
+        let mut frame = [0.0; CHANNELS];
+
+        for (phase, sample) in self.phases.iter_mut().zip(&mut frame) {
+            *phase = ((*phase + dx + 1.0) % 2.0) - 1.0;
+            *sample = (self.f)(*phase);
+        }
+
+        stack.push(&frame);
+    }
+
+    fn migrate(&mut self, other: &dyn Op) {
+        if let Some(other) = other.downcast_ref::<Self>() {
+            self.phases = other.phases;
         }
     }
 }
