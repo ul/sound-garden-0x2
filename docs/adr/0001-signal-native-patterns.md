@@ -1,3 +1,5 @@
 # Signal-native patterns
 
 Sound Garden pattern support will be signal-native rather than a separate Tidal-style event scheduler: pattern readers are ordinary audio ops that consume explicit `0..1` phase by default (`pat:<pattern>`, `gate:<pattern>`, `trig:<pattern>`), with `cycle`/`cy` converting CPS to wrapped phase and `cpat:<pattern>`, `cgate:<pattern>`, `ctrig:<pattern>` as CPS-consuming conveniences. This keeps temporal development composable with Sound Garden's stack-based modular synthesis model, avoids introducing event/string/voice scheduling in v1, and leaves sync explicit through shared CPS/phase signals or existing variables instead of a global transport.
+
+Pattern syntax uses bracketed groups for subdivisions inside a single whitespace-separated word: `pat:60,[64,67],72,67` and `gate:x[x.]..`. A group occupies one parent cell and its children divide that cell equally; groups may nest.

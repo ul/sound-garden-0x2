@@ -690,7 +690,10 @@ impl SoundGardenApp {
                         && node.position.x >= cursor.x
                         && Some(node.id) != split_node_id)
                 {
-                    Some((node.id, vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))]))
+                    Some((
+                        node.id,
+                        vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))],
+                    ))
                 } else {
                     None
                 }
@@ -1337,9 +1340,11 @@ mod tests {
         assert_eq!(nodes.len(), 4);
         assert_eq!(nodes[0].text, "abc");
         assert_eq!(nodes[0].position, Point::new(0.0, 0.0));
-        assert!(nodes
-            .iter()
-            .any(|node| node.text == "def" && node.position == Point::new(3.0, 1.0)));
+        assert!(
+            nodes
+                .iter()
+                .any(|node| node.text == "def" && node.position == Point::new(3.0, 1.0))
+        );
         assert_eq!(position(&app, 2), Point::new(8.0, 1.0));
         assert_eq!(position(&app, 3), Point::new(0.0, 2.0));
         assert_eq!(app.state.cursor.position, Point::new(3.0, 1.0));

@@ -21,59 +21,194 @@ fn wrap_phase(phase: Sample) -> Sample {
     }
 }
 
-fn pattern_index(phase: Sample, len: usize) -> usize {
+#[derive(Clone, Debug, PartialEq)]
+struct Cell<T> {
+    start: Sample,
+    end: Sample,
+    value: T,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum PatternElement<T> {
+    Atom(T),
+    Group(Vec<PatternElement<T>>),
+}
+
+fn flatten_elements<T: Copy>(
+    elements: &[PatternElement<T>],
+    start: Sample,
+    duration: Sample,
+    cells: &mut Vec<Cell<T>>,
+) {
+    let step = duration / elements.len() as Sample;
+    for (index, element) in elements.iter().enumerate() {
+        let cell_start = start + step * index as Sample;
+        let cell_end = if index + 1 == elements.len() {
+            start + duration
+        } else {
+            cell_start + step
+        };
+        match element {
+            PatternElement::Atom(value) => cells.push(Cell {
+                start: cell_start,
+                end: cell_end,
+                value: *value,
+            }),
+            PatternElement::Group(group) => flatten_elements(group, cell_start, step, cells),
+        }
+    }
+}
+
+fn flatten_pattern<T: Copy>(elements: Vec<PatternElement<T>>) -> Vec<Cell<T>> {
+    let mut cells = Vec::new();
+    if !elements.is_empty() {
+        flatten_elements(&elements, 0.0, 1.0, &mut cells);
+    }
+    cells
+}
+
+fn cell_index<T>(phase: Sample, cells: &[Cell<T>]) -> usize {
     let phase = wrap_phase(phase);
-    let index = (phase * len as Sample).floor() as usize;
-    index.min(len.saturating_sub(1))
+    cells
+        .iter()
+        .position(|cell| phase >= cell.start && phase < cell.end)
+        .unwrap_or_else(|| cells.len().saturating_sub(1))
 }
 
-fn parse_values(pattern: &str) -> Vec<Sample> {
-    let mut values = Vec::new();
-    if pattern.is_empty() {
-        warn_invalid(ParseKind::Value, pattern);
-        return values;
+fn skip_ascii_whitespace(chars: &[char], cursor: &mut usize) {
+    while chars
+        .get(*cursor)
+        .is_some_and(|ch| ch.is_ascii_whitespace())
+    {
+        *cursor += 1;
     }
+}
 
-    for token in pattern.split(',') {
-        let token = token.trim();
-        if token.is_empty() {
-            warn_invalid(ParseKind::Value, pattern);
-            return Vec::new();
-        }
-        match token.parse::<Sample>() {
-            Ok(value) if value.is_finite() => values.push(value),
-            _ => {
-                warn_invalid(ParseKind::Value, pattern);
-                return Vec::new();
+fn parse_value_sequence(
+    chars: &[char],
+    cursor: &mut usize,
+    in_group: bool,
+) -> Option<Vec<PatternElement<Sample>>> {
+    let mut elements = Vec::new();
+    loop {
+        skip_ascii_whitespace(chars, cursor);
+        let Some(&ch) = chars.get(*cursor) else {
+            return if in_group { None } else { Some(elements) };
+        };
+        if ch == ']' {
+            if !in_group {
+                return None;
             }
+            *cursor += 1;
+            return Some(elements);
         }
-    }
-
-    values
-}
-
-fn parse_gates(pattern: &str) -> Vec<bool> {
-    let mut gates = Vec::new();
-    for ch in pattern.chars() {
+        if !elements.is_empty() {
+            if ch != ',' {
+                return None;
+            }
+            *cursor += 1;
+            skip_ascii_whitespace(chars, cursor);
+        }
+        let Some(&ch) = chars.get(*cursor) else {
+            return None;
+        };
         match ch {
-            'x' | 'X' => gates.push(true),
-            '.' => gates.push(false),
-            ch if ch.is_ascii_whitespace() => {}
+            '[' => {
+                *cursor += 1;
+                let group = parse_value_sequence(chars, cursor, true)?;
+                if group.is_empty() {
+                    return None;
+                }
+                elements.push(PatternElement::Group(group));
+            }
+            ']' => return None,
             _ => {
-                warn_invalid(ParseKind::Gate, pattern);
-                return Vec::new();
+                let start = *cursor;
+                while chars.get(*cursor).is_some_and(|ch| {
+                    !ch.is_ascii_whitespace() && *ch != ',' && *ch != '[' && *ch != ']'
+                }) {
+                    *cursor += 1;
+                }
+                if start == *cursor {
+                    return None;
+                }
+                let token: String = chars[start..*cursor].iter().collect();
+                match token.parse::<Sample>() {
+                    Ok(value) if value.is_finite() => elements.push(PatternElement::Atom(value)),
+                    _ => return None,
+                }
             }
         }
     }
-    if gates.is_empty() {
+}
+
+fn parse_values(pattern: &str) -> Vec<Cell<Sample>> {
+    let chars: Vec<_> = pattern.chars().collect();
+    let mut cursor = 0;
+    let elements = parse_value_sequence(&chars, &mut cursor, false).unwrap_or_default();
+    let cells = flatten_pattern(elements);
+    if cells.is_empty() {
+        warn_invalid(ParseKind::Value, pattern);
+    }
+    cells
+}
+
+fn parse_gate_sequence(
+    chars: &[char],
+    cursor: &mut usize,
+    in_group: bool,
+) -> Option<Vec<PatternElement<bool>>> {
+    let mut elements = Vec::new();
+    loop {
+        let Some(&ch) = chars.get(*cursor) else {
+            return if in_group { None } else { Some(elements) };
+        };
+        match ch {
+            'x' | 'X' => {
+                elements.push(PatternElement::Atom(true));
+                *cursor += 1;
+            }
+            '.' => {
+                elements.push(PatternElement::Atom(false));
+                *cursor += 1;
+            }
+            '[' => {
+                *cursor += 1;
+                let group = parse_gate_sequence(chars, cursor, true)?;
+                if group.is_empty() {
+                    return None;
+                }
+                elements.push(PatternElement::Group(group));
+            }
+            ']' => {
+                if !in_group {
+                    return None;
+                }
+                *cursor += 1;
+                return Some(elements);
+            }
+            ch if ch.is_ascii_whitespace() || ch == ',' => {
+                *cursor += 1;
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn parse_gates(pattern: &str) -> Vec<Cell<bool>> {
+    let chars: Vec<_> = pattern.chars().collect();
+    let mut cursor = 0;
+    let elements = parse_gate_sequence(&chars, &mut cursor, false).unwrap_or_default();
+    let cells = flatten_pattern(elements);
+    if cells.is_empty() {
         warn_invalid(ParseKind::Gate, pattern);
     }
-    gates
+    cells
 }
 
 #[derive(Clone)]
 struct ValuePattern {
-    values: Vec<Sample>,
+    values: Vec<Cell<Sample>>,
 }
 
 impl ValuePattern {
@@ -89,7 +224,7 @@ impl ValuePattern {
             return frame;
         }
         for (output, &phase) in frame.iter_mut().zip(phase) {
-            *output = self.values[pattern_index(phase, self.values.len())];
+            *output = self.values[cell_index(phase, &self.values)].value;
         }
         frame
     }
@@ -97,7 +232,7 @@ impl ValuePattern {
 
 #[derive(Clone)]
 struct GatePattern {
-    gates: Vec<bool>,
+    gates: Vec<Cell<bool>>,
 }
 
 impl GatePattern {
@@ -113,7 +248,7 @@ impl GatePattern {
             return frame;
         }
         for (output, &phase) in frame.iter_mut().zip(phase) {
-            *output = if self.gates[pattern_index(phase, self.gates.len())] {
+            *output = if self.gates[cell_index(phase, &self.gates)].value {
                 1.0
             } else {
                 0.0
@@ -221,8 +356,8 @@ impl PatternTrigger {
 
         for (channel, (output, &phase)) in frame.iter_mut().zip(phase).enumerate() {
             let phase = wrap_phase(phase);
-            let index = pattern_index(phase, self.pattern.gates.len());
-            let active = self.pattern.gates[index];
+            let index = cell_index(phase, &self.pattern.gates);
+            let active = self.pattern.gates[index].value;
             let entered_active_cell = self.previous_indices[channel] != Some(index) && active;
             let forward_cycle_wrap = self.previous_phases[channel].is_some_and(|prev| prev > phase);
             *output = if entered_active_cell || (forward_cycle_wrap && active) {
@@ -361,8 +496,17 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_subdivides_bracketed_groups() {
+        let mut pat = PatternValue::new("60,[64,67],72,67");
+        assert_eq!(perform(&mut pat, [0.0, 0.2499]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.3749]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.375, 0.4999]), [67.0, 67.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.75]), [72.0, 67.0]);
+    }
+
+    #[test]
     fn invalid_value_patterns_output_zero() {
-        for pattern in ["", "60,,64", "abc", "NaN", "inf", "1e309"] {
+        for pattern in ["", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64"] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
         }
@@ -377,8 +521,16 @@ mod tests {
     }
 
     #[test]
+    fn gate_pattern_subdivides_bracketed_groups() {
+        let mut gate = PatternGate::new("x[x.]..");
+        assert_eq!(perform(&mut gate, [0.0, 0.24]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.25, 0.3749]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.375, 0.5]), [0.0, 0.0]);
+    }
+
+    #[test]
     fn invalid_gate_patterns_output_zero() {
-        for pattern in ["", "x..q", "1..0"] {
+        for pattern in ["", "x..q", "1..0", "x[."] {
             let mut gate = PatternGate::new(pattern);
             assert_eq!(perform(&mut gate, [0.0, 0.5]), [0.0, 0.0]);
         }

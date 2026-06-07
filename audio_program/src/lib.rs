@@ -688,7 +688,7 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
             {
                 terms.insert(op.op, term);
             }
-        } else if stmt.op.ends_with("]") {
+        } else if stmt.op.ends_with("]") && !stmt.op.contains(':') {
             if new_term.is_some() {
                 stack.push(TextOp {
                     id: 0,
@@ -1173,6 +1173,10 @@ mod tests {
         assert_eq!(
             run_frames(&[op(1, "1"), op(2, "cycle"), op(3, "trig:x...")], 4, 5),
             vec![[1.0, 1.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [1.0, 1.0],]
+        );
+        assert_eq!(
+            run_frames(&[op(1, "1"), op(2, "cy"), op(3, "gate:x[xx]")], 4, 4),
+            vec![[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [1.0, 1.0]]
         );
     }
 
