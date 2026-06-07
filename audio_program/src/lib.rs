@@ -252,6 +252,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
         };
 
         match op.as_str() {
+            "return" | "ret" | "!" => break,
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
             "+" | "add" => push_args!(id, Fn2, pure::add),
             "-" | "sub" => push_args!(id, Fn2, pure::sub),
@@ -1131,6 +1132,26 @@ mod tests {
                 &mut context
             ),
             [20.0, 20.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_stops_at_return_op() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(
+                &[op(1, "1"), op(2, "return"), op(3, "2"), op(4, "+")],
+                &mut context
+            ),
+            [1.0, 1.0]
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "3"), op(2, "ret"), op(3, "4"), op(4, "*")],
+                &mut context
+            ),
+            [3.0, 3.0]
         );
     }
 

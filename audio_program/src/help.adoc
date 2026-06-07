@@ -4,6 +4,9 @@ Sound Garden programs are whitespace-separated concatenative words. Each word co
 
 Unknown words, stack underflow, and stack overflow are tolerated by the VM and effectively produce default/ignored values rather than aborting audio.
 
+[horizontal]
+return, ret, !:: stop compiling/evaluating the program here; the current stack/audio output is used and all following words are ignored
+
 === Constants and literals
 
 [horizontal]
