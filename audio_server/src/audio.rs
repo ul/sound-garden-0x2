@@ -1,14 +1,21 @@
 use anyhow::Result;
 use audio_ops::pure::clip;
-use audio_vm::{CHANNELS, Sample, VM};
+use audio_vm::{CHANNELS, Program, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
-use rtrb::Producer;
-use std::sync::{Arc, Mutex};
+use rtrb::{Consumer, Producer, PushError};
+
+pub enum Command {
+    Play(bool),
+    LoadProgram(Program),
+    Monitor(u64),
+}
 
 pub fn main(
-    vm: Arc<Mutex<VM>>,
+    vm: VM,
     producer: Producer<Sample>,
+    command_rx: Consumer<Command>,
+    garbage_tx: Producer<Program>,
     rx: Receiver<()>,
     tx: Sender<u32>,
 ) -> Result<()> {
@@ -17,7 +24,6 @@ pub fn main(
         .default_output_device()
         .ok_or(anyhow::anyhow!("No default device available."))?;
     let config = device.default_output_config()?;
-
     let channels = config.channels() as usize;
     if channels != CHANNELS {
         return Err(anyhow::anyhow!(
@@ -26,13 +32,38 @@ pub fn main(
             channels
         ));
     }
+
     let sample_rate = config.sample_rate();
     tx.send(sample_rate)?;
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), vm, producer, rx),
-        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), vm, producer, rx),
-        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), vm, producer, rx),
+        cpal::SampleFormat::F32 => run::<f32>(
+            &device,
+            &config.into(),
+            vm,
+            producer,
+            command_rx,
+            garbage_tx,
+            rx,
+        ),
+        cpal::SampleFormat::I16 => run::<i16>(
+            &device,
+            &config.into(),
+            vm,
+            producer,
+            command_rx,
+            garbage_tx,
+            rx,
+        ),
+        cpal::SampleFormat::U16 => run::<u16>(
+            &device,
+            &config.into(),
+            vm,
+            producer,
+            command_rx,
+            garbage_tx,
+            rx,
+        ),
         sample_format => Err(anyhow::anyhow!(
             "Unsupported sample format: {sample_format:?}"
         )),
@@ -42,21 +73,28 @@ pub fn main(
 fn run<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    vm: Arc<Mutex<VM>>,
+    mut vm: VM,
     mut producer: Producer<Sample>,
+    mut command_rx: Consumer<Command>,
+    mut garbage_tx: Producer<Program>,
     rx: Receiver<()>,
-) -> Result<(), anyhow::Error>
+) -> Result<()>
 where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
     let channels = config.channels as usize;
-
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
-
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            write_data(data, channels, &vm, &mut producer)
+            write_data(
+                data,
+                channels,
+                &mut vm,
+                &mut producer,
+                &mut command_rx,
+                &mut garbage_tx,
+            )
         },
         err_fn,
         None,
@@ -64,19 +102,34 @@ where
     stream.play()?;
 
     for _ in rx {}
-
     Ok(())
 }
 
 fn write_data<T>(
     output: &mut [T],
     channels: usize,
-    vm: &Arc<Mutex<VM>>,
+    vm: &mut VM,
     producer: &mut Producer<Sample>,
+    command_rx: &mut Consumer<Command>,
+    garbage_tx: &mut Producer<Program>,
 ) where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
-    let mut vm = vm.lock().unwrap();
+    while let Ok(command) = command_rx.pop() {
+        match command {
+            Command::Play(true) => vm.play(),
+            Command::Play(false) => vm.pause(),
+            Command::LoadProgram(program) => {
+                let garbage = vm.load_program(program);
+                if let Err(PushError::Full(garbage)) = garbage_tx.push(garbage) {
+                    // Avoid deallocating the old program in the audio callback.
+                    std::mem::forget(garbage);
+                }
+            }
+            Command::Monitor(id) => vm.set_monitor_id(id),
+        }
+    }
+
     for frame in output.chunks_mut(channels) {
         for (sample, &value) in frame.iter_mut().zip(vm.next_frame().iter()) {
             let value = clip(value);

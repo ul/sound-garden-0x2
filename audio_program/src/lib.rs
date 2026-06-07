@@ -723,7 +723,7 @@ fn note_name_semitone(note: char) -> Option<i32> {
 fn parse_note_constant(token: &str) -> Option<Sample> {
     let mut chars = token.chars();
     let note = chars.next()?;
-    if !note.is_ascii_alphabetic() || note.to_ascii_lowercase() == 's' {
+    if !note.is_ascii_alphabetic() || note.eq_ignore_ascii_case(&'s') {
         return None;
     }
 
@@ -1008,7 +1008,10 @@ mod tests {
         assert_eq!(optimize_terms(&[op(1, "A4")]), vec![constant(1, 69.0)]);
         assert_eq!(optimize_terms(&[op(1, "a4")]), vec![constant(1, 440.0)]);
         assert_eq!(optimize_terms(&[op(1, "C#4")]), vec![constant(1, 61.0)]);
-        assert_eq!(optimize_terms(&[op(1, "db4")]), vec![constant(1, pure::midi2freq(61.0))]);
+        assert_eq!(
+            optimize_terms(&[op(1, "db4")]),
+            vec![constant(1, pure::midi2freq(61.0))]
+        );
     }
 
     #[test]

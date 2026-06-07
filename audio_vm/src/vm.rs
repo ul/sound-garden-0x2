@@ -9,6 +9,7 @@ use std::sync::{Arc, atomic::Ordering};
 // Totally unscientific attempt to improve performance of small programs by using SmallVec.
 /// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur extra indirection.
 pub const FAST_PROGRAM_SIZE: usize = 64;
+const MIGRATION_INDEX_SIZE: usize = 128;
 
 pub struct Statement {
     pub id: u64,
@@ -200,8 +201,13 @@ fn migrate_program_state(active_program: &mut Program, previous_program: &Progra
         return;
     }
 
-    let mut previous_by_id: SmallVec<[(u64, &dyn Op); FAST_PROGRAM_SIZE]> = previous_program
+    // Keep this allocation-free: load_program() runs on the realtime thread in
+    // plugin/server callbacks. Index the common case in fixed stack storage, and
+    // fall back to a direct scan only for programs beyond MIGRATION_INDEX_SIZE.
+    let indexed_len = previous_program.len().min(MIGRATION_INDEX_SIZE);
+    let mut previous_by_id: SmallVec<[(u64, &dyn Op); MIGRATION_INDEX_SIZE]> = previous_program
         .iter()
+        .take(indexed_len)
         .map(|stmt| (stmt.id, stmt.op.as_ref()))
         .collect();
     previous_by_id.sort_unstable_by_key(|(id, _)| *id);
@@ -209,6 +215,12 @@ fn migrate_program_state(active_program: &mut Program, previous_program: &Progra
     for stmt in active_program {
         if let Ok(index) = previous_by_id.binary_search_by_key(&stmt.id, |(id, _)| *id) {
             stmt.op.migrate(previous_by_id[index].1);
+        } else if let Some(previous_stmt) = previous_program
+            .iter()
+            .skip(indexed_len)
+            .find(|previous_stmt| previous_stmt.id == stmt.id)
+        {
+            stmt.op.migrate(previous_stmt.op.as_ref());
         }
     }
 }

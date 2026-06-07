@@ -10,7 +10,7 @@ use audio_server::Message;
 use audio_vm::{AtomicFrame, AtomicSample, CHANNELS, Program, Sample, VM};
 use crossbeam_channel::Sender;
 use rkyv::{from_bytes, rancor::Error as RkyvError};
-use rtrb::{Consumer, Producer, RingBuffer};
+use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use std::io::Read;
 use std::sync::{
     Arc,
@@ -23,8 +23,8 @@ struct SoundGarden {
     input: Arc<AtomicFrame>,
     params: Arc<Params>,
     server: Worker<ServerInput, ServerOutput>,
-    program_rx: Consumer<Box<Program>>,
-    garbage_tx: Producer<Box<Program>>,
+    program_rx: Consumer<Program>,
+    garbage_tx: Producer<Program>,
     vm: VM,
 }
 
@@ -47,8 +47,8 @@ impl Default for SoundGarden {
     fn default() -> Self {
         let input = Default::default();
         let input_for_ctx = Arc::clone(&input);
-        let (program_tx, program_rx) = RingBuffer::<Box<Program>>::new(8);
-        let (garbage_tx, mut garbage_rx) = RingBuffer::<Box<Program>>::new(8);
+        let (program_tx, program_rx) = RingBuffer::<Program>::new(8);
+        let (garbage_tx, mut garbage_rx) = RingBuffer::<Program>::new(8);
         std::thread::spawn(move || {
             loop {
                 while let Ok(program) = garbage_rx.pop() {
@@ -102,7 +102,7 @@ impl Default for SoundGarden {
                                 sample_rate.load(Ordering::Relaxed),
                                 &mut ctx,
                             );
-                            program_tx.push(Box::new(program)).ok();
+                            program_tx.push(program).ok();
                         }
                         Message::Monitor(_) => {}
                         Message::Quit => {}
@@ -162,11 +162,11 @@ impl Plugin for SoundGarden {
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process(&mut self, buffer: &mut vst::buffer::AudioBuffer<f32>) {
         if let Ok(program) = self.program_rx.pop() {
-            let garbage = self.vm.load_program(*program);
-            if let Err(err) = self.garbage_tx.push(Box::new(garbage)) {
+            let garbage = self.vm.load_program(program);
+            if let Err(PushError::Full(garbage)) = self.garbage_tx.push(garbage) {
                 // Avoid deallocating the old program on the audio thread if the
                 // background garbage queue is full.
-                std::mem::forget(err);
+                std::mem::forget(garbage);
             }
         }
 
@@ -193,11 +193,11 @@ impl Plugin for SoundGarden {
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process_f64(&mut self, buffer: &mut vst::buffer::AudioBuffer<f64>) {
         if let Ok(program) = self.program_rx.pop() {
-            let garbage = self.vm.load_program(*program);
-            if let Err(err) = self.garbage_tx.push(Box::new(garbage)) {
+            let garbage = self.vm.load_program(program);
+            if let Err(PushError::Full(garbage)) = self.garbage_tx.push(garbage) {
                 // Avoid deallocating the old program on the audio thread if the
                 // background garbage queue is full.
-                std::mem::forget(err);
+                std::mem::forget(garbage);
             }
         }
 

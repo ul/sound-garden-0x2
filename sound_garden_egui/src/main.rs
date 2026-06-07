@@ -67,10 +67,10 @@ fn main() -> Result<()> {
             1,
             move |rx: Receiver<audio_server::Message>, _: Sender<Frame>| {
                 for msg in rx {
-                    if let Ok(mut stream) = std::net::TcpStream::connect(&address) {
-                        if let Ok(bytes) = to_bytes::<RkyvError>(&msg) {
-                            std::io::Write::write_all(&mut stream, &bytes).ok();
-                        }
+                    if let Ok(mut stream) = std::net::TcpStream::connect(&address)
+                        && let Ok(bytes) = to_bytes::<RkyvError>(&msg)
+                    {
+                        std::io::Write::write_all(&mut stream, &bytes).ok();
                     }
                 }
             },
