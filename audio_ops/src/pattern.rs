@@ -41,7 +41,10 @@ enum PatternElement<T> {
     Atom(T),
     Group(Vec<PatternElement<T>>),
     Alternate(Vec<Vec<PatternElement<T>>>),
+    Random(Vec<Vec<PatternElement<T>>>),
 }
+
+const RANDOM_PERIOD: usize = 256;
 
 fn gcd(mut a: usize, mut b: usize) -> usize {
     while b != 0 {
@@ -69,6 +72,11 @@ fn element_period<T>(element: &PatternElement<T>) -> usize {
             .fold(alternatives.len(), |period, alternative| {
                 lcm(period, pattern_period(alternative))
             }),
+        PatternElement::Random(alternatives) => alternatives
+            .iter()
+            .fold(RANDOM_PERIOD, |period, alternative| {
+                lcm(period, pattern_period(alternative))
+            }),
     }
 }
 
@@ -78,9 +86,21 @@ fn pattern_period<T>(elements: &[PatternElement<T>]) -> usize {
         .fold(1, |period, element| lcm(period, element_period(element)))
 }
 
+fn random_choice(cycle: usize, random_index: usize, choices: usize) -> usize {
+    let mut x = (cycle as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (random_index as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x ^= x >> 30;
+    x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x ^= x >> 27;
+    x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^= x >> 31;
+    (x as usize) % choices
+}
+
 fn flatten_elements<T: Copy>(
     elements: &[PatternElement<T>],
     cycle: usize,
+    random_counter: &mut usize,
     start: Sample,
     duration: Sample,
     cells: &mut Vec<Cell<T>>,
@@ -99,10 +119,19 @@ fn flatten_elements<T: Copy>(
                 end: cell_end,
                 value: *value,
             }),
-            PatternElement::Group(group) => flatten_elements(group, cycle, cell_start, step, cells),
+            PatternElement::Group(group) => {
+                flatten_elements(group, cycle, random_counter, cell_start, step, cells)
+            }
             PatternElement::Alternate(alternatives) => {
                 let alternative = &alternatives[cycle % alternatives.len()];
-                flatten_elements(alternative, cycle, cell_start, step, cells);
+                flatten_elements(alternative, cycle, random_counter, cell_start, step, cells);
+            }
+            PatternElement::Random(alternatives) => {
+                let random_index = *random_counter;
+                *random_counter += 1;
+                let alternative =
+                    &alternatives[random_choice(cycle, random_index, alternatives.len())];
+                flatten_elements(alternative, cycle, random_counter, cell_start, step, cells);
             }
         }
     }
@@ -111,7 +140,8 @@ fn flatten_elements<T: Copy>(
 fn flatten_pattern<T: Copy>(elements: &[PatternElement<T>], cycle: usize) -> Vec<Cell<T>> {
     let mut cells = Vec::new();
     if !elements.is_empty() {
-        flatten_elements(elements, cycle, 0.0, 1.0, &mut cells);
+        let mut random_counter = 0;
+        flatten_elements(elements, cycle, &mut random_counter, 0.0, 1.0, &mut cells);
     }
     cells
 }
@@ -246,6 +276,7 @@ fn value_atom(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
                         && ch != '<'
                         && ch != '>'
                         && ch != ';'
+                        && ch != '|'
                         && ch != '*'
                         && ch != '('
                 }),
@@ -285,8 +316,17 @@ fn value_alternate(input: &str) -> IResult<&str, PatternElement<Option<Sample>>>
     )(input)
 }
 
+fn value_base(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+    ws(alt((value_group, value_alternate, value_atom)))(input)
+}
+
 fn value_item(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
-    let (input, element) = ws(alt((value_group, value_alternate, value_atom)))(input)?;
+    let (input, choices) = separated_list1(char('|'), value_base)(input)?;
+    let element = if choices.len() == 1 {
+        choices.into_iter().next().unwrap()
+    } else {
+        PatternElement::Random(choices.into_iter().map(|choice| vec![choice]).collect())
+    };
     let (input, repeat) = positive_repeat(input)?;
     Ok((input, repeat_elements(element, repeat)))
 }
@@ -378,8 +418,17 @@ fn gate_alternate(input: &str) -> IResult<&str, PatternElement<bool>> {
     )(input)
 }
 
+fn gate_base(input: &str) -> IResult<&str, PatternElement<bool>> {
+    ws(alt((gate_group, gate_alternate, gate_atom)))(input)
+}
+
 fn gate_item(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
-    let (input, element) = ws(alt((gate_group, gate_alternate, gate_atom)))(input)?;
+    let (input, choices) = separated_list1(char('|'), gate_base)(input)?;
+    let element = if choices.len() == 1 {
+        choices.into_iter().next().unwrap()
+    } else {
+        PatternElement::Random(choices.into_iter().map(|choice| vec![choice]).collect())
+    };
     let (input, repeat) = positive_repeat(input)?;
     Ok((input, repeat_elements(element, repeat)))
 }
@@ -801,10 +850,22 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_random_choice_uses_pipe() {
+        let mut pat = PatternValue::new("60|64");
+        let mut seen = Vec::new();
+        for _ in 0..32 {
+            seen.push(perform(&mut pat, [0.0, 0.0])[0]);
+            perform(&mut pat, [0.9, 0.9]);
+        }
+        assert!(seen.contains(&60.0));
+        assert!(seen.contains(&64.0));
+    }
+
+    #[test]
     fn invalid_value_patterns_output_zero() {
         for pattern in [
             "", "_", "_*4", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
-            "60(5,4)", "60(3,0)", "<60,64;>",
+            "60(5,4)", "60(3,0)", "<60,64;>", "60|",
         ] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
@@ -857,6 +918,18 @@ mod tests {
     }
 
     #[test]
+    fn gate_pattern_random_choice_uses_pipe() {
+        let mut gate = PatternGate::new("x|.");
+        let mut seen = Vec::new();
+        for _ in 0..32 {
+            seen.push(perform(&mut gate, [0.0, 0.0])[0]);
+            perform(&mut gate, [0.9, 0.9]);
+        }
+        assert!(seen.contains(&0.0));
+        assert!(seen.contains(&1.0));
+    }
+
+    #[test]
     fn gate_pattern_supports_euclidean_rhythms() {
         let mut gate = PatternGate::new("x(3,8)");
         assert_eq!(perform(&mut gate, [0.0, 0.1249]), [1.0, 1.0]);
@@ -881,7 +954,7 @@ mod tests {
     #[test]
     fn invalid_gate_patterns_output_zero() {
         for pattern in [
-            "", "x..q", "1..0", "x[.", "x*", "x*0", "e(5,4)", "e(3,0)", "e(3,)",
+            "", "x..q", "1..0", "x[.", "x*", "x*0", "x|", "e(5,4)", "e(3,0)", "e(3,)",
         ] {
             let mut gate = PatternGate::new(pattern);
             assert_eq!(perform(&mut gate, [0.0, 0.5]), [0.0, 0.0]);
