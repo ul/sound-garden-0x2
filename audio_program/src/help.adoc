@@ -163,9 +163,9 @@ pitch:: (x) -> pitch detector, implemented as YIN with block size 1024 samples, 
 Variables are shared through the compilation context and can be read/written by name.
 
 [horizontal]
-var:<NAME>:: (x) -> move top element to var <NAME>
-set:<NAME>:: (x) -> copy top element to var <NAME>; sugar: `<NAME>=`
-get:<NAME>:: () -> put value of var <NAME> on the top; sugar: `@<NAME>`
+var:<NAME>:: (x) -> move top element to var <NAME>; sugar: `>name`
+set:<NAME>:: (x) -> copy top element to var <NAME>; sugar: `=name`
+get:<NAME>:: () -> put value of var <NAME> on the top; sugar: `<name`
 
 === Tables
 
