@@ -251,6 +251,10 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             }
         };
 
+        if op.trim().is_empty() {
+            continue;
+        }
+
         match op.as_str() {
             "return" | "ret" | "!" => break,
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
@@ -385,7 +389,16 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                 Err(_) => {
                     let tokens = op.split(':').collect::<Vec<_>>();
                     match tokens[0] {
-                        "" | "dig" => match tokens.get(1) {
+                        "" if tokens.len() > 1 => match tokens.get(1) {
+                            Some(x) => match x.parse::<usize>() {
+                                Ok(n) => push_args!(id, Dig, n),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as depth", x);
+                                }
+                            },
+                            None => unreachable!(),
+                        },
+                        "dig" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Dig, n),
                                 Err(_) => {
@@ -580,6 +593,9 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                             }
                             None => push_args!(id, ClockedPatternTrigger, sample_rate, ""),
                         },
+                        "" => {
+                            // Empty op (blank node) — silently skip.
+                        }
                         _ => {
                             log::warn!("Unknown token: {}", op);
                         }
@@ -1132,6 +1148,20 @@ mod tests {
                 &mut context
             ),
             [20.0, 20.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_ignores_blank_ops_and_supports_dig_shorthand() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(&[op(1, "1"), op(2, ""), op(3, "2"), op(4, "+")], &mut context),
+            [3.0, 3.0]
+        );
+        assert_eq!(
+            run_once(&[op(1, "1"), op(2, "2"), op(3, ":2")], &mut context),
+            [1.0, 1.0]
         );
     }
 

@@ -26,7 +26,7 @@ pop:: (a) -> remove top element
 dup:: (a) -> a a
 swap:: (a, b) -> b a
 rot:: (a, b, c) -> b c a
-dig:<N>:: take Nth element from the top and put it on the top
+dig:<N>, :<N>:: take Nth element from the top and put it on the top
 bury:<N>:: take the top element and put it as Nth from the top
 
 === Oscillators and phases
