@@ -97,12 +97,12 @@ ssh:: (x, trigger) -> smooth sample and hold, `x' * (1.0 - trigger) + x * trigge
 
 Patterns are signal-native cycle readers for direct musical development over time. Numeric patterns are comma-separated. Gate and trigger patterns use dense visual notation where `x`/`X` is active and `.` is inactive; ASCII whitespace and commas are ignored.
 
-Bracketed groups subdivide one pattern cell without needing whitespace, e.g. `gate:x[x.]..` gives the second top-level cell two half-speed subcells, and `pat:60,[64,67],72,67` plays 64 then 67 inside the second cell. Groups can be nested.
+Bracketed groups subdivide one pattern cell without needing whitespace, e.g. `gate:x[x.]..` gives the second top-level cell two half-speed subcells, and `pat:60,[64,67],72,67` plays 64 then 67 inside the second cell. Groups can be nested. `*N` repeats the preceding atom or group N times, e.g. `gate:[x.]*4` or `pat:60*2,[64,67]*2`.
 
 [horizontal]
-pat:<PATTERN>:: (phase) -> read a numeric pattern using wrapped `0..1` phase, e.g. `pat:60,64,67,72` or `pat:60,[64,67],72`
-gate:<PATTERN>:: (phase) -> held gate from a dense pattern, e.g. `gate:x..x` or `gate:x[x.]..`
-trig:<PATTERN>:: (phase) -> one-sample trigger on entering an active cell, e.g. `trig:x..x` or `trig:x[xx]..`
+pat:<PATTERN>:: (phase) -> read a numeric pattern using wrapped `0..1` phase, e.g. `pat:60,64,67,72`, `pat:60,[64,67],72`, or `pat:60*2,64`
+gate:<PATTERN>:: (phase) -> held gate from a dense pattern, e.g. `gate:x..x`, `gate:x[x.]..`, or `gate:[x.]*4`
+trig:<PATTERN>:: (phase) -> one-sample trigger on entering an active cell, e.g. `trig:x..x`, `trig:x[xx]..`, or `trig:[x.]*4`
 cpat:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `pat:<PATTERN>`
 cgate:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `gate:<PATTERN>`
 ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTERN>`

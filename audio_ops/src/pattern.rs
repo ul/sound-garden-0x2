@@ -84,6 +84,35 @@ fn skip_ascii_whitespace(chars: &[char], cursor: &mut usize) {
     }
 }
 
+fn parse_repeat(chars: &[char], cursor: &mut usize) -> Option<usize> {
+    if chars.get(*cursor) != Some(&'*') {
+        return Some(1);
+    }
+    *cursor += 1;
+    let start = *cursor;
+    while chars.get(*cursor).is_some_and(|ch| ch.is_ascii_digit()) {
+        *cursor += 1;
+    }
+    if start == *cursor {
+        return None;
+    }
+    let repeat: String = chars[start..*cursor].iter().collect();
+    match repeat.parse::<usize>() {
+        Ok(repeat) if repeat > 0 => Some(repeat),
+        _ => None,
+    }
+}
+
+fn push_repeated<T: Clone>(
+    elements: &mut Vec<PatternElement<T>>,
+    element: PatternElement<T>,
+    repeat: usize,
+) {
+    for _ in 0..repeat {
+        elements.push(element.clone());
+    }
+}
+
 fn parse_value_sequence(
     chars: &[char],
     cursor: &mut usize,
@@ -112,20 +141,24 @@ fn parse_value_sequence(
         let Some(&ch) = chars.get(*cursor) else {
             return None;
         };
-        match ch {
+        let element = match ch {
             '[' => {
                 *cursor += 1;
                 let group = parse_value_sequence(chars, cursor, true)?;
                 if group.is_empty() {
                     return None;
                 }
-                elements.push(PatternElement::Group(group));
+                PatternElement::Group(group)
             }
             ']' => return None,
             _ => {
                 let start = *cursor;
                 while chars.get(*cursor).is_some_and(|ch| {
-                    !ch.is_ascii_whitespace() && *ch != ',' && *ch != '[' && *ch != ']'
+                    !ch.is_ascii_whitespace()
+                        && *ch != ','
+                        && *ch != '['
+                        && *ch != ']'
+                        && *ch != '*'
                 }) {
                     *cursor += 1;
                 }
@@ -134,11 +167,13 @@ fn parse_value_sequence(
                 }
                 let token: String = chars[start..*cursor].iter().collect();
                 match token.parse::<Sample>() {
-                    Ok(value) if value.is_finite() => elements.push(PatternElement::Atom(value)),
+                    Ok(value) if value.is_finite() => PatternElement::Atom(value),
                     _ => return None,
                 }
             }
-        }
+        };
+        let repeat = parse_repeat(chars, cursor)?;
+        push_repeated(&mut elements, element, repeat);
     }
 }
 
@@ -163,14 +198,14 @@ fn parse_gate_sequence(
         let Some(&ch) = chars.get(*cursor) else {
             return if in_group { None } else { Some(elements) };
         };
-        match ch {
+        let element = match ch {
             'x' | 'X' => {
-                elements.push(PatternElement::Atom(true));
                 *cursor += 1;
+                Some(PatternElement::Atom(true))
             }
             '.' => {
-                elements.push(PatternElement::Atom(false));
                 *cursor += 1;
+                Some(PatternElement::Atom(false))
             }
             '[' => {
                 *cursor += 1;
@@ -178,7 +213,7 @@ fn parse_gate_sequence(
                 if group.is_empty() {
                     return None;
                 }
-                elements.push(PatternElement::Group(group));
+                Some(PatternElement::Group(group))
             }
             ']' => {
                 if !in_group {
@@ -189,8 +224,13 @@ fn parse_gate_sequence(
             }
             ch if ch.is_ascii_whitespace() || ch == ',' => {
                 *cursor += 1;
+                None
             }
             _ => return None,
+        };
+        if let Some(element) = element {
+            let repeat = parse_repeat(chars, cursor)?;
+            push_repeated(&mut elements, element, repeat);
         }
     }
 }
@@ -505,8 +545,21 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_repeats_atoms_and_groups() {
+        let mut pat = PatternValue::new("60*2,[64,67]*2");
+        assert_eq!(perform(&mut pat, [0.0, 0.2499]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.4999]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.6249]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.625, 0.7499]), [67.0, 67.0]);
+        assert_eq!(perform(&mut pat, [0.75, 0.8749]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.875, 0.9999]), [67.0, 67.0]);
+    }
+
+    #[test]
     fn invalid_value_patterns_output_zero() {
-        for pattern in ["", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64"] {
+        for pattern in [
+            "", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
+        ] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
         }
@@ -529,8 +582,19 @@ mod tests {
     }
 
     #[test]
+    fn gate_pattern_repeats_atoms_and_groups() {
+        let mut gate = PatternGate::new("x*2[x.]*2");
+        assert_eq!(perform(&mut gate, [0.0, 0.2499]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.25, 0.4999]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.6249]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.625, 0.7499]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.75, 0.8749]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.875, 0.9999]), [0.0, 0.0]);
+    }
+
+    #[test]
     fn invalid_gate_patterns_output_zero() {
-        for pattern in ["", "x..q", "1..0", "x[."] {
+        for pattern in ["", "x..q", "1..0", "x[.", "x*", "x*0"] {
             let mut gate = PatternGate::new(pattern);
             assert_eq!(perform(&mut gate, [0.0, 0.5]), [0.0, 0.0]);
         }
