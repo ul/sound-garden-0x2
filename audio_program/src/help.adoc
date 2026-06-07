@@ -43,6 +43,9 @@ db2amp, db2a:: (x) -> decibels to amplitude, base amplitude assumed to be 1.0
 amp2db, a2db:: (x) -> amplitude to decibels, base amplitude assumed to be 1.0
 freq2midi, f2m:: (x) -> frequency to midi pitch
 midi2freq, m2f:: (x) -> midi pitch to frequency
+
+Note constants are available in scientific pitch notation using MIDI note 60 = C4. Lowercase notes push frequencies (`c4` = 261.625565, `a4` = 440), uppercase notes push MIDI numbers (`C4` = 60, `A4` = 69). Sharps and flats are supported (`c#4`, `Db4`).
+
 quantize, q:: (x, step) -> round signal x values to the nearest step multiplicative
 channel:<N>, ch:<N>:: (x) -> compute only channel N of signal and broadcast it to all channels
 

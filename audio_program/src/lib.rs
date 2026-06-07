@@ -707,10 +707,60 @@ fn optimize_terms(stmts: &[TextOp]) -> Vec<OptimizedOp> {
     result
 }
 
+fn note_name_semitone(note: char) -> Option<i32> {
+    match note.to_ascii_lowercase() {
+        'c' => Some(0),
+        'd' => Some(2),
+        'e' => Some(4),
+        'f' => Some(5),
+        'g' => Some(7),
+        'a' => Some(9),
+        'b' => Some(11),
+        _ => None,
+    }
+}
+
+fn parse_note_constant(token: &str) -> Option<Sample> {
+    let mut chars = token.chars();
+    let note = chars.next()?;
+    if !note.is_ascii_alphabetic() || note.to_ascii_lowercase() == 's' {
+        return None;
+    }
+
+    let frequency = note.is_ascii_lowercase();
+    let mut semitone = note_name_semitone(note)?;
+    let mut rest = chars.as_str();
+
+    if let Some(accidental) = rest.chars().next() {
+        match accidental {
+            '#' => {
+                semitone += 1;
+                rest = &rest[accidental.len_utf8()..];
+            }
+            'b' => {
+                semitone -= 1;
+                rest = &rest[accidental.len_utf8()..];
+            }
+            _ => {}
+        }
+    }
+
+    let octave = rest.parse::<i32>().ok()?;
+    let midi = ((octave + 1) * 12 + semitone) as Sample;
+    Some(if frequency {
+        pure::midi2freq(midi)
+    } else {
+        midi
+    })
+}
+
 fn optimized_op(stmt: &TextOp) -> OptimizedOp {
     match stmt.op.parse::<Sample>() {
         Ok(value) => OptimizedOp::Constant { id: stmt.id, value },
-        Err(_) => OptimizedOp::Text(stmt.clone()),
+        Err(_) => match parse_note_constant(&stmt.op) {
+            Some(value) => OptimizedOp::Constant { id: stmt.id, value },
+            None => OptimizedOp::Text(stmt.clone()),
+        },
     }
 }
 
@@ -950,6 +1000,15 @@ mod tests {
                 frequency: 440.0,
             }]
         );
+    }
+
+    #[test]
+    fn optimize_terms_parses_note_constants() {
+        assert_eq!(optimize_terms(&[op(1, "C4")]), vec![constant(1, 60.0)]);
+        assert_eq!(optimize_terms(&[op(1, "A4")]), vec![constant(1, 69.0)]);
+        assert_eq!(optimize_terms(&[op(1, "a4")]), vec![constant(1, 440.0)]);
+        assert_eq!(optimize_terms(&[op(1, "C#4")]), vec![constant(1, 61.0)]);
+        assert_eq!(optimize_terms(&[op(1, "db4")]), vec![constant(1, pure::midi2freq(61.0))]);
     }
 
     #[test]
