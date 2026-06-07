@@ -21,6 +21,7 @@ pub enum Msg {
     Record(bool),
     LoadProgram(Vec<TextOp>),
     Monitor(u64),
+    Oscilloscope(bool),
     Quit,
 }
 
@@ -51,20 +52,35 @@ pub fn run(rx: Receiver<Msg>, tx: Sender<Frame>) {
         record::main(sample_rate, consumer, i, o).unwrap();
     });
 
-    let _scope = Worker::spawn("Oscilloscope", 0, move |rx: Receiver<()>, _: Sender<()>| {
-        loop {
-            crossbeam_channel::select! {
-                recv(rx) -> msg => if msg.is_err() { break; },
-                default(Duration::from_millis(OSCILLOSCOPE_POLL_MS)) => {
-                    let mut frame = [0.0; CHANNELS];
-                    for (a, x) in monitor.iter().zip(&mut frame) {
-                        *x = f64::from_bits(a.load(Ordering::Relaxed));
+    let scope = Worker::spawn(
+        "Oscilloscope",
+        1,
+        move |rx: Receiver<bool>, _: Sender<()>| {
+            let mut enabled = false;
+            loop {
+                if enabled {
+                    crossbeam_channel::select! {
+                        recv(rx) -> msg => match msg {
+                            Ok(on) => enabled = on,
+                            Err(_) => break,
+                        },
+                        default(Duration::from_millis(OSCILLOSCOPE_POLL_MS)) => {
+                            let mut frame = [0.0; CHANNELS];
+                            for (a, x) in monitor.iter().zip(&mut frame) {
+                                *x = f64::from_bits(a.load(Ordering::Relaxed));
+                            }
+                            if tx.send(frame).is_err() { break; };
+                        }
                     }
-                    if tx.send(frame).is_err() { break; };
+                } else {
+                    match rx.recv() {
+                        Ok(on) => enabled = on,
+                        Err(_) => break,
+                    }
                 }
             }
-        }
-    });
+        },
+    );
 
     let mut ctx = Context::default();
     for msg in rx {
@@ -81,6 +97,9 @@ pub fn run(rx: Receiver<Msg>, tx: Sender<Frame>) {
             }
             Msg::Monitor(id) => {
                 command_tx.push(audio::Command::Monitor(id)).ok();
+            }
+            Msg::Oscilloscope(on) => {
+                scope.sender().send(on).ok();
             }
             Msg::Quit => {
                 break;

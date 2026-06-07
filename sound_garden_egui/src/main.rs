@@ -387,6 +387,11 @@ impl SoundGardenApp {
             }
             Action::ToggleOscilloscope => {
                 self.state.show_oscilloscope = !self.state.show_oscilloscope;
+                self.audio_tx
+                    .send(audio_server::Message::Oscilloscope(
+                        self.state.show_oscilloscope,
+                    ))
+                    .ok();
             }
             Action::ToggleOpList => {
                 self.state.show_op_list = !self.state.show_op_list;
@@ -1090,8 +1095,14 @@ impl eframe::App for SoundGardenApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        let mut received_oscilloscope_frame = false;
         while let Ok(frame) = self.monitor_rx.try_recv() {
-            self.oscilloscope_values.push_back(frame[0]);
+            if self.state.show_oscilloscope {
+                self.oscilloscope_values.push_back(frame[0]);
+                received_oscilloscope_frame = true;
+            }
+        }
+        if received_oscilloscope_frame {
             ctx.request_repaint();
         }
 
