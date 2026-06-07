@@ -1,4 +1,12 @@
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
+use nom::IResult;
+use nom::Parser;
+use nom::branch::alt;
+use nom::bytes::complete::take_while1;
+use nom::character::complete::{char, digit1, multispace0};
+use nom::combinator::{all_consuming, map, map_res, opt, value};
+use nom::multi::{many0, separated_list1};
+use nom::sequence::{delimited, preceded, terminated, tuple};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ParseKind {
@@ -32,10 +40,47 @@ struct Cell<T> {
 enum PatternElement<T> {
     Atom(T),
     Group(Vec<PatternElement<T>>),
+    Alternate(Vec<Vec<PatternElement<T>>>),
+}
+
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+fn lcm(a: usize, b: usize) -> usize {
+    if a == 0 || b == 0 {
+        0
+    } else {
+        a / gcd(a, b) * b
+    }
+}
+
+fn element_period<T>(element: &PatternElement<T>) -> usize {
+    match element {
+        PatternElement::Atom(_) => 1,
+        PatternElement::Group(elements) => pattern_period(elements),
+        PatternElement::Alternate(alternatives) => alternatives
+            .iter()
+            .fold(alternatives.len(), |period, alternative| {
+                lcm(period, pattern_period(alternative))
+            }),
+    }
+}
+
+fn pattern_period<T>(elements: &[PatternElement<T>]) -> usize {
+    elements
+        .iter()
+        .fold(1, |period, element| lcm(period, element_period(element)))
 }
 
 fn flatten_elements<T: Copy>(
     elements: &[PatternElement<T>],
+    cycle: usize,
     start: Sample,
     duration: Sample,
     cells: &mut Vec<Cell<T>>,
@@ -54,15 +99,19 @@ fn flatten_elements<T: Copy>(
                 end: cell_end,
                 value: *value,
             }),
-            PatternElement::Group(group) => flatten_elements(group, cell_start, step, cells),
+            PatternElement::Group(group) => flatten_elements(group, cycle, cell_start, step, cells),
+            PatternElement::Alternate(alternatives) => {
+                let alternative = &alternatives[cycle % alternatives.len()];
+                flatten_elements(alternative, cycle, cell_start, step, cells);
+            }
         }
     }
 }
 
-fn flatten_pattern<T: Copy>(elements: Vec<PatternElement<T>>) -> Vec<Cell<T>> {
+fn flatten_pattern<T: Copy>(elements: &[PatternElement<T>], cycle: usize) -> Vec<Cell<T>> {
     let mut cells = Vec::new();
     if !elements.is_empty() {
-        flatten_elements(&elements, 0.0, 1.0, &mut cells);
+        flatten_elements(elements, cycle, 0.0, 1.0, &mut cells);
     }
     cells
 }
@@ -77,16 +126,30 @@ fn cell_index<T>(phase: Sample, cells: &[Cell<T>]) -> usize {
 
 #[derive(Clone)]
 struct Pattern<T> {
-    alternatives: Vec<Vec<Cell<T>>>,
+    variants: Vec<Vec<Cell<T>>>,
 }
 
 impl<T> Pattern<T> {
     fn is_empty(&self) -> bool {
-        self.alternatives.is_empty()
+        self.variants.is_empty()
     }
 
     fn cells(&self, cycle: usize) -> &[Cell<T>] {
-        &self.alternatives[cycle % self.alternatives.len()]
+        &self.variants[cycle % self.variants.len()]
+    }
+}
+
+fn compile_pattern<T: Copy>(elements: Vec<PatternElement<T>>) -> Pattern<T> {
+    let period = pattern_period(&elements).max(1);
+    let variants = (0..period)
+        .map(|cycle| flatten_pattern(&elements, cycle))
+        .collect::<Vec<_>>();
+    if variants.iter().any(Vec::is_empty) {
+        Pattern {
+            variants: Vec::new(),
+        }
+    } else {
+        Pattern { variants }
     }
 }
 
@@ -104,102 +167,37 @@ fn update_cycle_counts(
     }
 }
 
-fn split_top_level_alternatives(pattern: &str) -> Option<Vec<&str>> {
-    let pattern = pattern.strip_prefix('<')?.strip_suffix('>')?;
-    let mut alternatives = Vec::new();
-    let mut start = 0;
-    let mut bracket_depth = 0usize;
-    let mut paren_depth = 0usize;
-    for (index, ch) in pattern.char_indices() {
-        match ch {
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth = bracket_depth.checked_sub(1)?,
-            '(' => paren_depth += 1,
-            ')' => paren_depth = paren_depth.checked_sub(1)?,
-            ';' if bracket_depth == 0 && paren_depth == 0 => {
-                alternatives.push(pattern[start..index].trim());
-                start = index + ch.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    alternatives.push(pattern[start..].trim());
-    if alternatives.len() < 2
-        || alternatives
-            .iter()
-            .any(|alternative| alternative.is_empty())
-    {
-        None
+fn ws<'a, F, O>(parser: F) -> impl FnMut(&'a str) -> IResult<&'a str, O>
+where
+    F: Parser<&'a str, O, nom::error::Error<&'a str>>,
+{
+    delimited(multispace0, parser, multispace0)
+}
+
+fn unsigned(input: &str) -> IResult<&str, usize> {
+    map_res(digit1, str::parse::<usize>)(input)
+}
+
+fn repeat_suffix(input: &str) -> IResult<&str, usize> {
+    map(opt(preceded(char('*'), unsigned)), |repeat| {
+        repeat.unwrap_or(1)
+    })(input)
+}
+
+fn positive_repeat(input: &str) -> IResult<&str, usize> {
+    let (input, repeat) = repeat_suffix(input)?;
+    if repeat == 0 {
+        Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Verify,
+        )))
     } else {
-        Some(alternatives)
+        Ok((input, repeat))
     }
 }
 
-fn skip_ascii_whitespace(chars: &[char], cursor: &mut usize) {
-    while chars
-        .get(*cursor)
-        .is_some_and(|ch| ch.is_ascii_whitespace())
-    {
-        *cursor += 1;
-    }
-}
-
-fn parse_repeat(chars: &[char], cursor: &mut usize) -> Option<usize> {
-    if chars.get(*cursor) != Some(&'*') {
-        return Some(1);
-    }
-    *cursor += 1;
-    let start = *cursor;
-    while chars.get(*cursor).is_some_and(|ch| ch.is_ascii_digit()) {
-        *cursor += 1;
-    }
-    if start == *cursor {
-        return None;
-    }
-    let repeat: String = chars[start..*cursor].iter().collect();
-    match repeat.parse::<usize>() {
-        Ok(repeat) if repeat > 0 => Some(repeat),
-        _ => None,
-    }
-}
-
-fn push_repeated<T: Clone>(
-    elements: &mut Vec<PatternElement<T>>,
-    element: PatternElement<T>,
-    repeat: usize,
-) {
-    for _ in 0..repeat {
-        elements.push(element.clone());
-    }
-}
-
-fn euclidean_pattern(pulses: usize, steps: usize) -> Option<Vec<PatternElement<bool>>> {
-    if pulses > steps || steps == 0 {
-        return None;
-    }
-    Some(
-        (0..steps)
-            .map(|step| PatternElement::Atom((step * pulses) % steps < pulses))
-            .collect(),
-    )
-}
-
-fn parse_usize_until(chars: &[char], cursor: &mut usize, delimiter: char) -> Option<usize> {
-    skip_ascii_whitespace(chars, cursor);
-    let start = *cursor;
-    while chars.get(*cursor).is_some_and(|ch| ch.is_ascii_digit()) {
-        *cursor += 1;
-    }
-    if start == *cursor {
-        return None;
-    }
-    let value: String = chars[start..*cursor].iter().collect();
-    skip_ascii_whitespace(chars, cursor);
-    if chars.get(*cursor) != Some(&delimiter) {
-        return None;
-    }
-    *cursor += 1;
-    value.parse().ok()
+fn repeat_elements<T: Clone>(element: PatternElement<T>, repeat: usize) -> Vec<PatternElement<T>> {
+    (0..repeat).map(|_| element.clone()).collect()
 }
 
 fn euclidean_values<T: Copy>(
@@ -224,104 +222,79 @@ fn euclidean_values<T: Copy>(
     )
 }
 
-fn parse_euclidean_args(chars: &[char], cursor: &mut usize) -> Option<(usize, usize)> {
-    if chars.get(*cursor) != Some(&'(') {
-        return None;
-    }
-    *cursor += 1;
-    let pulses = parse_usize_until(chars, cursor, ',')?;
-    let steps = parse_usize_until(chars, cursor, ')')?;
-    Some((pulses, steps))
+fn euclidean_args(input: &str) -> IResult<&str, (usize, usize)> {
+    delimited(
+        char('('),
+        map(
+            tuple((ws(unsigned), char(','), ws(unsigned))),
+            |(pulses, _, steps)| (pulses, steps),
+        ),
+        char(')'),
+    )(input)
 }
 
-fn parse_euclidean(chars: &[char], cursor: &mut usize) -> Option<Vec<PatternElement<bool>>> {
-    if chars.get(*cursor) != Some(&'e') {
-        return None;
-    }
-    *cursor += 1;
-    let (pulses, steps) = parse_euclidean_args(chars, cursor)?;
-    euclidean_pattern(pulses, steps)
-}
-
-fn parse_value_sequence(
-    chars: &[char],
-    cursor: &mut usize,
-    in_group: bool,
-) -> Option<Vec<PatternElement<Option<Sample>>>> {
-    let mut elements = Vec::new();
-    loop {
-        skip_ascii_whitespace(chars, cursor);
-        let Some(&ch) = chars.get(*cursor) else {
-            return if in_group { None } else { Some(elements) };
-        };
-        if ch == ']' {
-            if !in_group {
-                return None;
-            }
-            *cursor += 1;
-            return Some(elements);
-        }
-        if !elements.is_empty() {
-            if ch != ',' {
-                return None;
-            }
-            *cursor += 1;
-            skip_ascii_whitespace(chars, cursor);
-        }
-        let Some(&ch) = chars.get(*cursor) else {
-            return None;
-        };
-        let element = match ch {
-            '[' => {
-                *cursor += 1;
-                let group = parse_value_sequence(chars, cursor, true)?;
-                if group.is_empty() {
-                    return None;
-                }
-                PatternElement::Group(group)
-            }
-            ']' => return None,
-            _ => {
-                let start = *cursor;
-                while chars.get(*cursor).is_some_and(|ch| {
+fn value_atom(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+    alt((
+        value(PatternElement::Atom(None), char('_')),
+        map_res(
+            tuple((
+                take_while1(|ch: char| {
                     !ch.is_ascii_whitespace()
-                        && *ch != ','
-                        && *ch != '['
-                        && *ch != ']'
-                        && *ch != '*'
-                        && *ch != '('
-                }) {
-                    *cursor += 1;
+                        && ch != ','
+                        && ch != '['
+                        && ch != ']'
+                        && ch != '<'
+                        && ch != '>'
+                        && ch != ';'
+                        && ch != '*'
+                        && ch != '('
+                }),
+                opt(euclidean_args),
+            )),
+            |(token, euclid): (&str, Option<(usize, usize)>)| {
+                let value = token.parse::<Sample>().map_err(|_| ())?;
+                if !value.is_finite() {
+                    return Err(());
                 }
-                if start == *cursor {
-                    return None;
-                }
-                let token: String = chars[start..*cursor].iter().collect();
-                if token == "_" {
-                    PatternElement::Atom(None)
-                } else {
-                    match token.parse::<Sample>() {
-                        Ok(value) if value.is_finite() => {
-                            if chars.get(*cursor) == Some(&'(') {
-                                let (pulses, steps) = parse_euclidean_args(chars, cursor)?;
-                                PatternElement::Group(euclidean_values(
-                                    pulses,
-                                    steps,
-                                    Some(value),
-                                    None,
-                                )?)
-                            } else {
-                                PatternElement::Atom(Some(value))
-                            }
-                        }
-                        _ => return None,
-                    }
-                }
-            }
-        };
-        let repeat = parse_repeat(chars, cursor)?;
-        push_repeated(&mut elements, element, repeat);
-    }
+                Ok(match euclid {
+                    Some((pulses, steps)) => PatternElement::Group(
+                        euclidean_values(pulses, steps, Some(value), None).ok_or(())?,
+                    ),
+                    None => PatternElement::Atom(Some(value)),
+                })
+            },
+        ),
+    ))(input)
+}
+
+fn value_group(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+    map(
+        delimited(char('['), value_sequence, char(']')),
+        PatternElement::Group,
+    )(input)
+}
+
+fn value_alternate(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+    map(
+        delimited(
+            char('<'),
+            separated_list1(char(';'), value_sequence),
+            char('>'),
+        ),
+        PatternElement::Alternate,
+    )(input)
+}
+
+fn value_item(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
+    let (input, element) = ws(alt((value_group, value_alternate, value_atom)))(input)?;
+    let (input, repeat) = positive_repeat(input)?;
+    Ok((input, repeat_elements(element, repeat)))
+}
+
+fn value_sequence(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
+    map(separated_list1(char(','), value_item), |items| {
+        items.into_iter().flatten().collect()
+    })(input)
 }
 
 fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
@@ -343,104 +316,99 @@ fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
         .collect()
 }
 
-fn parse_value_cells(pattern: &str) -> Vec<Cell<Sample>> {
-    let chars: Vec<_> = pattern.chars().collect();
-    let mut cursor = 0;
-    let elements = parse_value_sequence(&chars, &mut cursor, false).unwrap_or_default();
-    resolve_value_holds(flatten_pattern(elements))
-}
-
 fn parse_values(pattern: &str) -> Pattern<Sample> {
-    let alternatives = if let Some(alternatives) = split_top_level_alternatives(pattern) {
-        alternatives.into_iter().map(parse_value_cells).collect()
-    } else {
-        vec![parse_value_cells(pattern)]
-    };
-    if alternatives.iter().any(Vec::is_empty) {
-        warn_invalid(ParseKind::Value, pattern);
-        Pattern {
-            alternatives: Vec::new(),
+    let parsed = all_consuming(terminated(value_sequence, multispace0))(pattern);
+    match parsed {
+        Ok((_, elements)) => {
+            let period = pattern_period(&elements).max(1);
+            let variants = (0..period)
+                .map(|cycle| resolve_value_holds(flatten_pattern(&elements, cycle)))
+                .collect::<Vec<_>>();
+            if variants.iter().any(Vec::is_empty) {
+                warn_invalid(ParseKind::Value, pattern);
+                Pattern {
+                    variants: Vec::new(),
+                }
+            } else {
+                Pattern { variants }
+            }
         }
-    } else {
-        Pattern { alternatives }
-    }
-}
-
-fn parse_gate_sequence(
-    chars: &[char],
-    cursor: &mut usize,
-    in_group: bool,
-) -> Option<Vec<PatternElement<bool>>> {
-    let mut elements = Vec::new();
-    loop {
-        let Some(&ch) = chars.get(*cursor) else {
-            return if in_group { None } else { Some(elements) };
-        };
-        let element = match ch {
-            'x' | 'X' => {
-                *cursor += 1;
-                if chars.get(*cursor) == Some(&'(') {
-                    let (pulses, steps) = parse_euclidean_args(chars, cursor)?;
-                    Some(PatternElement::Group(euclidean_values(
-                        pulses, steps, true, false,
-                    )?))
-                } else {
-                    Some(PatternElement::Atom(true))
-                }
+        Err(_) => {
+            warn_invalid(ParseKind::Value, pattern);
+            Pattern {
+                variants: Vec::new(),
             }
-            '.' => {
-                *cursor += 1;
-                Some(PatternElement::Atom(false))
-            }
-            '[' => {
-                *cursor += 1;
-                let group = parse_gate_sequence(chars, cursor, true)?;
-                if group.is_empty() {
-                    return None;
-                }
-                Some(PatternElement::Group(group))
-            }
-            'e' => Some(PatternElement::Group(parse_euclidean(chars, cursor)?)),
-            ']' => {
-                if !in_group {
-                    return None;
-                }
-                *cursor += 1;
-                return Some(elements);
-            }
-            ch if ch.is_ascii_whitespace() || ch == ',' => {
-                *cursor += 1;
-                None
-            }
-            _ => return None,
-        };
-        if let Some(element) = element {
-            let repeat = parse_repeat(chars, cursor)?;
-            push_repeated(&mut elements, element, repeat);
         }
     }
 }
 
-fn parse_gate_cells(pattern: &str) -> Vec<Cell<bool>> {
-    let chars: Vec<_> = pattern.chars().collect();
-    let mut cursor = 0;
-    let elements = parse_gate_sequence(&chars, &mut cursor, false).unwrap_or_default();
-    flatten_pattern(elements)
+fn gate_atom(input: &str) -> IResult<&str, PatternElement<bool>> {
+    alt((
+        map(
+            preceded(alt((char('x'), char('X'))), opt(euclidean_args)),
+            |euclid| match euclid {
+                Some((pulses, steps)) => PatternElement::Group(
+                    euclidean_values(pulses, steps, true, false).unwrap_or_default(),
+                ),
+                None => PatternElement::Atom(true),
+            },
+        ),
+        value(PatternElement::Atom(false), char('.')),
+        map(preceded(char('e'), euclidean_args), |(pulses, steps)| {
+            PatternElement::Group(euclidean_values(pulses, steps, true, false).unwrap_or_default())
+        }),
+    ))(input)
+}
+
+fn gate_group(input: &str) -> IResult<&str, PatternElement<bool>> {
+    map(
+        delimited(char('['), gate_sequence, char(']')),
+        PatternElement::Group,
+    )(input)
+}
+
+fn gate_alternate(input: &str) -> IResult<&str, PatternElement<bool>> {
+    map(
+        delimited(
+            char('<'),
+            separated_list1(char(';'), gate_sequence),
+            char('>'),
+        ),
+        PatternElement::Alternate,
+    )(input)
+}
+
+fn gate_item(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
+    let (input, element) = ws(alt((gate_group, gate_alternate, gate_atom)))(input)?;
+    let (input, repeat) = positive_repeat(input)?;
+    Ok((input, repeat_elements(element, repeat)))
+}
+
+fn gate_sequence(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
+    map(
+        many0(alt((gate_item, value(Vec::new(), ws(char(',')))))),
+        |items| items.into_iter().flatten().collect(),
+    )(input)
 }
 
 fn parse_gates(pattern: &str) -> Pattern<bool> {
-    let alternatives = if let Some(alternatives) = split_top_level_alternatives(pattern) {
-        alternatives.into_iter().map(parse_gate_cells).collect()
-    } else {
-        vec![parse_gate_cells(pattern)]
-    };
-    if alternatives.iter().any(Vec::is_empty) {
-        warn_invalid(ParseKind::Gate, pattern);
-        Pattern {
-            alternatives: Vec::new(),
+    match all_consuming(terminated(gate_sequence, multispace0))(pattern) {
+        Ok((_, elements)) if !elements.is_empty() => {
+            let pattern = compile_pattern(elements);
+            if pattern.is_empty() {
+                Pattern {
+                    variants: Vec::new(),
+                }
+            } else {
+                pattern
+            }
         }
-    } else {
-        Pattern { alternatives }
+        _ => {
+            warn_invalid(ParseKind::Gate, pattern);
+            Pattern {
+                variants: Vec::new(),
+            }
+        }
     }
 }
 
@@ -824,6 +792,15 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_alternates_inside_sequences_and_groups() {
+        let mut pat = PatternValue::new("60,<64;67>,[72,<76;79>]");
+        assert_eq!(perform(&mut pat, [0.0, 0.34]), [60.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.67, 0.84]), [72.0, 76.0]);
+        assert_eq!(perform(&mut pat, [0.0, 0.34]), [60.0, 67.0]);
+        assert_eq!(perform(&mut pat, [0.67, 0.84]), [72.0, 79.0]);
+    }
+
+    #[test]
     fn invalid_value_patterns_output_zero() {
         for pattern in [
             "", "_", "_*4", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
@@ -869,6 +846,14 @@ mod tests {
         assert_eq!(perform(&mut gate, [0.0, 0.0]), [0.0, 0.0]);
         assert_eq!(perform(&mut gate, [0.5, 0.5]), [1.0, 1.0]);
         assert_eq!(perform(&mut gate, [0.0, 0.0]), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn gate_pattern_alternates_inside_groups() {
+        let mut gate = PatternGate::new("x[<x.;.x>]x");
+        assert_eq!(perform(&mut gate, [0.4, 0.55]), [1.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.0, 0.0]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.4, 0.55]), [0.0, 1.0]);
     }
 
     #[test]

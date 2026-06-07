@@ -7,6 +7,7 @@ edition = "2024"
 [dependencies]
 itertools.workspace = true
 log.workspace = true
+nom.workspace = true
 rustfft.workspace = true
 apodize.workspace = true
 micromath.workspace = true
