@@ -117,7 +117,7 @@ fn parse_value_sequence(
     chars: &[char],
     cursor: &mut usize,
     in_group: bool,
-) -> Option<Vec<PatternElement<Sample>>> {
+) -> Option<Vec<PatternElement<Option<Sample>>>> {
     let mut elements = Vec::new();
     loop {
         skip_ascii_whitespace(chars, cursor);
@@ -166,9 +166,13 @@ fn parse_value_sequence(
                     return None;
                 }
                 let token: String = chars[start..*cursor].iter().collect();
-                match token.parse::<Sample>() {
-                    Ok(value) if value.is_finite() => PatternElement::Atom(value),
-                    _ => return None,
+                if token == "_" {
+                    PatternElement::Atom(None)
+                } else {
+                    match token.parse::<Sample>() {
+                        Ok(value) if value.is_finite() => PatternElement::Atom(Some(value)),
+                        _ => return None,
+                    }
                 }
             }
         };
@@ -177,11 +181,30 @@ fn parse_value_sequence(
     }
 }
 
+fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
+    let Some(mut held) = cells.iter().rev().find_map(|cell| cell.value) else {
+        return Vec::new();
+    };
+    cells
+        .into_iter()
+        .map(|cell| {
+            if let Some(value) = cell.value {
+                held = value;
+            }
+            Cell {
+                start: cell.start,
+                end: cell.end,
+                value: held,
+            }
+        })
+        .collect()
+}
+
 fn parse_values(pattern: &str) -> Vec<Cell<Sample>> {
     let chars: Vec<_> = pattern.chars().collect();
     let mut cursor = 0;
     let elements = parse_value_sequence(&chars, &mut cursor, false).unwrap_or_default();
-    let cells = flatten_pattern(elements);
+    let cells = resolve_value_holds(flatten_pattern(elements));
     if cells.is_empty() {
         warn_invalid(ParseKind::Value, pattern);
     }
@@ -556,9 +579,27 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_holds_previous_value_for_underscore() {
+        let mut pat = PatternValue::new("60,_,[64,_],_");
+        assert_eq!(perform(&mut pat, [0.0, 0.2499]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.4999]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.6249]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.625, 0.7499]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.75, 0.9999]), [64.0, 64.0]);
+    }
+
+    #[test]
+    fn value_pattern_initial_holds_wrap_to_last_value() {
+        let mut pat = PatternValue::new("_,60,64,_");
+        assert_eq!(perform(&mut pat, [0.0, 0.2499]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.4999]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.9999]), [64.0, 64.0]);
+    }
+
+    #[test]
     fn invalid_value_patterns_output_zero() {
         for pattern in [
-            "", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
+            "", "_", "_*4", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
         ] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
