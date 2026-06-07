@@ -164,8 +164,8 @@ Variables are shared through the compilation context and can be read/written by 
 
 [horizontal]
 var:<NAME>:: (x) -> move top element to var <NAME>
-set:<NAME>:: (x) -> copy top element to var <NAME>
-get:<NAME>:: () -> put value of var <NAME> on the top
+set:<NAME>:: (x) -> copy top element to var <NAME>; sugar: `<NAME>=`
+get:<NAME>:: () -> put value of var <NAME> on the top; sugar: `@<NAME>`
 
 === Tables
 

@@ -255,6 +255,18 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             continue;
         }
 
+        if let Some(name) = op.strip_prefix('@').filter(|name| !name.is_empty()) {
+            let var = ctx.variables.entry(name.to_string()).or_default();
+            push_args!(id, ReadVariable, Arc::clone(var));
+            continue;
+        }
+
+        if let Some(name) = op.strip_suffix('=').filter(|name| !name.is_empty()) {
+            let var = ctx.variables.entry(name.to_string()).or_default();
+            push_args!(id, WriteVariable, Arc::clone(var));
+            continue;
+        }
+
         match op.as_str() {
             "return" | "ret" | "!" => break,
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
@@ -1267,6 +1279,20 @@ mod tests {
                     op(3, "get:answer"),
                     op(4, "+")
                 ],
+                &mut context
+            ),
+            [14.0, 14.0]
+        );
+        assert!(context.variables.contains_key("answer"));
+    }
+
+    #[test]
+    fn compile_program_supports_variable_get_set_sugar() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(
+                &[op(1, "7"), op(2, "answer="), op(3, "@answer"), op(4, "+")],
                 &mut context
             ),
             [14.0, 14.0]
