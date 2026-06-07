@@ -116,7 +116,7 @@ fn split_top_level_alternatives(pattern: &str) -> Option<Vec<&str>> {
             ']' => bracket_depth = bracket_depth.checked_sub(1)?,
             '(' => paren_depth += 1,
             ')' => paren_depth = paren_depth.checked_sub(1)?,
-            '|' if bracket_depth == 0 && paren_depth == 0 => {
+            ';' if bracket_depth == 0 && paren_depth == 0 => {
                 alternatives.push(pattern[start..index].trim());
                 start = index + ch.len_utf8();
             }
@@ -202,13 +202,44 @@ fn parse_usize_until(chars: &[char], cursor: &mut usize, delimiter: char) -> Opt
     value.parse().ok()
 }
 
-fn parse_euclidean(chars: &[char], cursor: &mut usize) -> Option<Vec<PatternElement<bool>>> {
-    if chars.get(*cursor) != Some(&'e') || chars.get(*cursor + 1) != Some(&'(') {
+fn euclidean_values<T: Copy>(
+    pulses: usize,
+    steps: usize,
+    on: T,
+    off: T,
+) -> Option<Vec<PatternElement<T>>> {
+    if pulses > steps || steps == 0 {
         return None;
     }
-    *cursor += 2;
+    Some(
+        (0..steps)
+            .map(|step| {
+                PatternElement::Atom(if (step * pulses) % steps < pulses {
+                    on
+                } else {
+                    off
+                })
+            })
+            .collect(),
+    )
+}
+
+fn parse_euclidean_args(chars: &[char], cursor: &mut usize) -> Option<(usize, usize)> {
+    if chars.get(*cursor) != Some(&'(') {
+        return None;
+    }
+    *cursor += 1;
     let pulses = parse_usize_until(chars, cursor, ',')?;
     let steps = parse_usize_until(chars, cursor, ')')?;
+    Some((pulses, steps))
+}
+
+fn parse_euclidean(chars: &[char], cursor: &mut usize) -> Option<Vec<PatternElement<bool>>> {
+    if chars.get(*cursor) != Some(&'e') {
+        return None;
+    }
+    *cursor += 1;
+    let (pulses, steps) = parse_euclidean_args(chars, cursor)?;
     euclidean_pattern(pulses, steps)
 }
 
@@ -258,6 +289,7 @@ fn parse_value_sequence(
                         && *ch != '['
                         && *ch != ']'
                         && *ch != '*'
+                        && *ch != '('
                 }) {
                     *cursor += 1;
                 }
@@ -269,7 +301,19 @@ fn parse_value_sequence(
                     PatternElement::Atom(None)
                 } else {
                     match token.parse::<Sample>() {
-                        Ok(value) if value.is_finite() => PatternElement::Atom(Some(value)),
+                        Ok(value) if value.is_finite() => {
+                            if chars.get(*cursor) == Some(&'(') {
+                                let (pulses, steps) = parse_euclidean_args(chars, cursor)?;
+                                PatternElement::Group(euclidean_values(
+                                    pulses,
+                                    steps,
+                                    Some(value),
+                                    None,
+                                )?)
+                            } else {
+                                PatternElement::Atom(Some(value))
+                            }
+                        }
                         _ => return None,
                     }
                 }
@@ -335,7 +379,14 @@ fn parse_gate_sequence(
         let element = match ch {
             'x' | 'X' => {
                 *cursor += 1;
-                Some(PatternElement::Atom(true))
+                if chars.get(*cursor) == Some(&'(') {
+                    let (pulses, steps) = parse_euclidean_args(chars, cursor)?;
+                    Some(PatternElement::Group(euclidean_values(
+                        pulses, steps, true, false,
+                    )?))
+                } else {
+                    Some(PatternElement::Atom(true))
+                }
             }
             '.' => {
                 *cursor += 1;
@@ -754,8 +805,17 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_supports_euclidean_rhythms_as_held_values() {
+        let mut pat = PatternValue::new("60(3,8)");
+        assert_eq!(perform(&mut pat, [0.0, 0.1249]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.125, 0.2499]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.3749]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.375, 0.4999]), [60.0, 60.0]);
+    }
+
+    #[test]
     fn value_pattern_alternates_each_forward_cycle() {
-        let mut pat = PatternValue::new("<60,64|67,72>");
+        let mut pat = PatternValue::new("<60,64;67,72>");
         assert_eq!(perform(&mut pat, [0.0, 0.0]), [60.0, 60.0]);
         assert_eq!(perform(&mut pat, [0.5, 0.5]), [64.0, 64.0]);
         assert_eq!(perform(&mut pat, [0.0, 0.0]), [67.0, 67.0]);
@@ -767,7 +827,7 @@ mod tests {
     fn invalid_value_patterns_output_zero() {
         for pattern in [
             "", "_", "_*4", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
-            "<60,64|>",
+            "60(5,4)", "60(3,0)", "<60,64;>",
         ] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
@@ -803,7 +863,7 @@ mod tests {
 
     #[test]
     fn gate_pattern_alternates_each_forward_cycle() {
-        let mut gate = PatternGate::new("<x.|.x>");
+        let mut gate = PatternGate::new("<x.;.x>");
         assert_eq!(perform(&mut gate, [0.0, 0.0]), [1.0, 1.0]);
         assert_eq!(perform(&mut gate, [0.5, 0.5]), [0.0, 0.0]);
         assert_eq!(perform(&mut gate, [0.0, 0.0]), [0.0, 0.0]);
@@ -813,7 +873,7 @@ mod tests {
 
     #[test]
     fn gate_pattern_supports_euclidean_rhythms() {
-        let mut gate = PatternGate::new("e(3,8)");
+        let mut gate = PatternGate::new("x(3,8)");
         assert_eq!(perform(&mut gate, [0.0, 0.1249]), [1.0, 1.0]);
         assert_eq!(perform(&mut gate, [0.125, 0.2499]), [0.0, 0.0]);
         assert_eq!(perform(&mut gate, [0.25, 0.3749]), [0.0, 0.0]);
