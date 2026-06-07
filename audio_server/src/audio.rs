@@ -39,7 +39,7 @@ pub fn main(
     match config.sample_format() {
         cpal::SampleFormat::F32 => run::<f32>(
             &device,
-            &config.into(),
+            config.into(),
             vm,
             producer,
             command_rx,
@@ -48,7 +48,7 @@ pub fn main(
         ),
         cpal::SampleFormat::I16 => run::<i16>(
             &device,
-            &config.into(),
+            config.into(),
             vm,
             producer,
             command_rx,
@@ -57,7 +57,7 @@ pub fn main(
         ),
         cpal::SampleFormat::U16 => run::<u16>(
             &device,
-            &config.into(),
+            config.into(),
             vm,
             producer,
             command_rx,
@@ -72,7 +72,7 @@ pub fn main(
 
 fn run<T>(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     mut vm: VM,
     mut producer: Producer<Sample>,
     mut command_rx: Consumer<Command>,

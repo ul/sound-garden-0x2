@@ -24,9 +24,9 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), &text),
-        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), &text),
-        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), &text),
+        cpal::SampleFormat::F32 => run::<f32>(&device, config.into(), &text),
+        cpal::SampleFormat::I16 => run::<i16>(&device, config.into(), &text),
+        cpal::SampleFormat::U16 => run::<u16>(&device, config.into(), &text),
         sample_format => Err(anyhow::anyhow!(
             "Unsupported sample format: {sample_format:?}"
         )),
@@ -35,7 +35,7 @@ fn main() -> Result<(), anyhow::Error> {
 
 fn run<T>(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     text: &str,
 ) -> Result<(), anyhow::Error>
 where

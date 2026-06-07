@@ -30,7 +30,7 @@ rkyv = "0.8.16"
 chrono = "0.4.45"
 ciborium = "0.2.2"
 clap = { version = "4.6.1", features = ["cargo"] }
-cpal = "0.17.3"
+cpal = "0.18.0"
 crossbeam-channel = "0.5.15"
 downcast-rs = "2.0.2"
 eframe = "0.34.3"
