@@ -53,6 +53,7 @@ vst = "0.4.0"
 alloc_counter = "0.0.4"
 
 [dev-dependencies]
+alloc_counter.workspace = true
 audio_program = { path = "audio_program" }
 audio_vm = { path = "audio_vm" }
 criterion = "0.8.2"
