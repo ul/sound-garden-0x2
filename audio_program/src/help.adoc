@@ -84,6 +84,17 @@ conv:<N>:: (x, y) -> convolve two signals with a N frames wide window
 convm:<N>:: (x, ...ys) -> convolve x with a N frames wide kernel of ys
 wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass!
 
+=== Patterns
+
+[horizontal]
+cycle, cy:: (cps) -> wrapped `0..1` cycle phase, advanced by cycles-per-second input; negative CPS runs backwards
+pat:<PATTERN>:: (phase) -> read a flat comma-separated numeric pattern using wrapped `0..1` phase, e.g. `pat:60,64,67,72`
+gate:<PATTERN>:: (phase) -> held gate from a flat dense pattern where `x`/`X` is active and `.` is inactive, e.g. `gate:x..x`
+trig:<PATTERN>:: (phase) -> one-sample trigger on entering an active cell of a flat dense pattern, e.g. `trig:x..x`
+cpat:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `pat:<PATTERN>`
+cgate:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `gate:<PATTERN>`
+ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTERN>`
+
 === Triggers
 
 [horizontal]

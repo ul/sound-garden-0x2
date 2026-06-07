@@ -153,6 +153,24 @@ The editor stores a tree as nodes on a two-dimensional grid. A node under the cu
 .Oscilloscope
 The oscilloscope panel shows the monitored node's current audio frame. Toggle it with `v`, resize it by dragging its top edge, and zoom with `Alt+=` / `Alt+-`.
 
+=== Patterns
+Patterns are signal-native cycle readers for direct musical development over time.
+Use `cycle` (alias `cy`) to turn a cycles-per-second signal into wrapped `0..1` phase,
+then read flat patterns with `pat`, `gate`, or `trig`:
+-----
+1 cycle pat:60,64,67,72 m2f s .2 *
+-----
+`pat:<PATTERN>` reads comma-separated numeric values. `gate:<PATTERN>` and
+`trig:<PATTERN>` read dense visual rhythms where `x` is active and `.` is inactive;
+`gate` stays high over active spans, while `trig` emits one-sample impulses when entering
+active cells:
+-----
+220 s 1 cycle gate:x..x 0.01 0.1 0.0 0.2 adsr *
+1 ctrig:x... impulse
+-----
+The `cpat`, `cgate`, and `ctrig` forms are CPS-consuming conveniences equivalent to
+`cycle` followed by the corresponding phase-consuming reader.
+
 === Templates
 Templates is syntactic sugar for abbreviating repetitive patterns.
 Template content is defined between square brackets followed by the template name.

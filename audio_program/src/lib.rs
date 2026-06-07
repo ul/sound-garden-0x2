@@ -276,6 +276,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "cosh" => push_args!(id, Fn1, pure::cosh),
             "cosine" => push_args!(id, OscPhase, sample_rate, pure::cosine),
             "cosine'" => push_args!(id, OscPhase, sample_rate, pure::cosine_fast),
+            "cycle" | "cy" => push_args!(id, Cycle, sample_rate),
             "db2amp" | "db2a" => push_args!(id, Fn1, pure::db2amp),
             "dm" | "dmetro" => push_args!(id, DMetro, sample_rate),
             "dmh" | "dmetro_hold" => push_args!(id, DMetroHold, sample_rate),
@@ -547,6 +548,36 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                         "norm" => match tokens.get(1) {
                             Some(x) => push_args!(id, Normalise, x.parse::<usize>().unwrap_or(256)),
                             None => push_args!(id, Normalise, 256),
+                        },
+                        "pat" => match tokens.get(1) {
+                            Some(pattern) => push_args!(id, PatternValue, pattern),
+                            None => push_args!(id, PatternValue, ""),
+                        },
+                        "gate" => match tokens.get(1) {
+                            Some(pattern) => push_args!(id, PatternGate, pattern),
+                            None => push_args!(id, PatternGate, ""),
+                        },
+                        "trig" => match tokens.get(1) {
+                            Some(pattern) => push_args!(id, PatternTrigger, pattern),
+                            None => push_args!(id, PatternTrigger, ""),
+                        },
+                        "cpat" => match tokens.get(1) {
+                            Some(pattern) => {
+                                push_args!(id, ClockedPatternValue, sample_rate, pattern)
+                            }
+                            None => push_args!(id, ClockedPatternValue, sample_rate, ""),
+                        },
+                        "cgate" => match tokens.get(1) {
+                            Some(pattern) => {
+                                push_args!(id, ClockedPatternGate, sample_rate, pattern)
+                            }
+                            None => push_args!(id, ClockedPatternGate, sample_rate, ""),
+                        },
+                        "ctrig" => match tokens.get(1) {
+                            Some(pattern) => {
+                                push_args!(id, ClockedPatternTrigger, sample_rate, pattern)
+                            }
+                            None => push_args!(id, ClockedPatternTrigger, sample_rate, ""),
                         },
                         _ => {
                             log::warn!("Unknown token: {}", op);
@@ -1075,6 +1106,15 @@ mod tests {
         vm.next_frame()
     }
 
+    fn run_frames(ops: &[TextOp], sample_rate: u32, frames: usize) -> Vec<Frame> {
+        let mut context = Context::new();
+        let mut vm = audio_vm::VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(compile_program(ops, sample_rate, &mut context));
+        vm.play();
+        (0..frames).map(|_| vm.next_frame()).collect()
+    }
+
     #[test]
     fn compile_program_evaluates_stack_arithmetic_and_aliases() {
         let mut context = Context::new();
@@ -1107,6 +1147,52 @@ mod tests {
                 &mut context
             ),
             [1.0, -2.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_runs_phase_pattern_ops() {
+        assert_eq!(
+            run_frames(
+                &[op(1, "1"), op(2, "cycle"), op(3, "pat:10,20,30,40")],
+                4,
+                5
+            ),
+            vec![
+                [10.0, 10.0],
+                [20.0, 20.0],
+                [30.0, 30.0],
+                [40.0, 40.0],
+                [10.0, 10.0],
+            ]
+        );
+        assert_eq!(
+            run_frames(&[op(1, "1"), op(2, "cy"), op(3, "gate:x.")], 4, 3),
+            vec![[1.0, 1.0], [1.0, 1.0], [0.0, 0.0]]
+        );
+        assert_eq!(
+            run_frames(&[op(1, "1"), op(2, "cycle"), op(3, "trig:x...")], 4, 5),
+            vec![[1.0, 1.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [1.0, 1.0],]
+        );
+    }
+
+    #[test]
+    fn compile_program_runs_clocked_pattern_convenience_ops() {
+        assert_eq!(
+            run_frames(&[op(1, "1"), op(2, "cpat:10,20,30,40")], 4, 5),
+            run_frames(
+                &[op(1, "1"), op(2, "cycle"), op(3, "pat:10,20,30,40")],
+                4,
+                5
+            )
+        );
+        assert_eq!(
+            run_frames(&[op(1, "1"), op(2, "cgate:x.")], 4, 3),
+            run_frames(&[op(1, "1"), op(2, "cycle"), op(3, "gate:x.")], 4, 3)
+        );
+        assert_eq!(
+            run_frames(&[op(1, "1"), op(2, "ctrig:x...")], 4, 5),
+            run_frames(&[op(1, "1"), op(2, "cycle"), op(3, "trig:x...")], 4, 5)
         );
     }
 

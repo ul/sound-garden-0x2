@@ -817,6 +817,35 @@ At the moment you run it from the command line to provide it with the path to th
 </div>
 </div>
 <div class="sect2">
+<h3 id="_patterns">Patterns</h3>
+<div class="paragraph">
+<p>Patterns are signal-native cycle readers for direct musical development over time.
+Use <code>cycle</code> (alias <code>cy</code>) to turn a cycles-per-second signal into wrapped <code>0..1</code> phase,
+then read flat patterns with <code>pat</code>, <code>gate</code>, or <code>trig</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1 cycle pat:60,64,67,72 m2f s .2 *</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>pat:&lt;PATTERN&gt;</code> reads comma-separated numeric values. <code>gate:&lt;PATTERN&gt;</code> and
+<code>trig:&lt;PATTERN&gt;</code> read dense visual rhythms where <code>x</code> is active and <code>.</code> is inactive;
+<code>gate</code> stays high over active spans, while <code>trig</code> emits one-sample impulses when entering
+active cells:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>220 s 1 cycle gate:x..x 0.01 0.1 0.0 0.2 adsr *
+1 ctrig:x... impulse</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The <code>cpat</code>, <code>cgate</code>, and <code>ctrig</code> forms are CPS-consuming conveniences equivalent to
+<code>cycle</code> followed by the corresponding phase-consuming reader.</p>
+</div>
+</div>
+<div class="sect2">
 <h3 id="_templates">Templates</h3>
 <div class="paragraph">
 <p>Templates is syntactic sugar for abbreviating repetitive patterns.
@@ -849,7 +878,7 @@ would produce expanded `t`s with the same identity as corresponding `s`s before,
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-06-05 23:56:58 +1000
+Last updated 2026-06-07 13:37:53 +1000
 </div>
 </div>
 </body>

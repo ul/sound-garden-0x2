@@ -537,6 +537,7 @@ dependencies = [
  "apodize",
  "audio_vm",
  "itertools 0.14.0",
+ "log",
  "micromath",
  "rand",
  "rustfft",

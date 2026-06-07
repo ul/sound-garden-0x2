@@ -16,6 +16,7 @@ mod normalise;
 mod osc;
 mod pan;
 mod param;
+mod pattern;
 mod phasor;
 mod pulse;
 pub mod pure;
@@ -30,6 +31,6 @@ mod yin;
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*,
     filters::*, function::*, input::*, metro::*, noise::*, noop::*, normalise::*, osc::*, pan::*,
-    param::*, phasor::*, pulse::*, sample_and_hold::*, sampler::*, spectral_transform::*, stack::*,
-    variable::*, wah::*, yin::*,
+    param::*, pattern::*, phasor::*, pulse::*, sample_and_hold::*, sampler::*,
+    spectral_transform::*, stack::*, variable::*, wah::*, yin::*,
 };
