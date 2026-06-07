@@ -413,6 +413,7 @@ impl SoundGardenApp {
             }
             Action::InsertNewLineBelow => self.insert_new_line(true),
             Action::InsertNewLineAbove => self.insert_new_line(false),
+            Action::SplitLine => self.split_line(),
         }
 
         if self.state.cursor.position != prev_cursor_position {
@@ -670,6 +671,67 @@ impl SoundGardenApp {
         self.edit(edits);
         self.state.cursor.position.x = x;
         self.state.cursor.position.y += if below { 1.0 } else { -1.0 };
+    }
+
+    fn split_line(&mut self) {
+        self.undo_group += 1;
+        let cursor = self.state.cursor.position;
+        let split_node = self.node_at_cursor();
+        let split_node_id = split_node.as_ref().map(|(node, _)| node.id);
+        let mut new_node = None;
+
+        let mut edits = self
+            .state
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                if node.position.y > cursor.y
+                    || (node.position.y == cursor.y
+                        && node.position.x >= cursor.x
+                        && Some(node.id) != split_node_id)
+                {
+                    Some((node.id, vec![NodeEdit::Move(node.position + Vec2::new(0.0, 1.0))]))
+                } else {
+                    None
+                }
+            })
+            .collect::<HashMap<_, _>>();
+
+        if let Some((node, index)) = split_node {
+            let len = node.text.chars().count();
+            if index == 0 {
+                edits
+                    .entry(node.id)
+                    .or_default()
+                    .push(NodeEdit::Move(node.position + Vec2::new(0.0, 1.0)));
+            } else if index < len {
+                let left = node.text.chars().take(index).collect::<String>();
+                let right = node.text.chars().skip(index).collect::<String>();
+                edits.entry(node.id).or_default().push(NodeEdit::Edit {
+                    start: 0,
+                    end: len,
+                    text: left,
+                });
+                new_node = Some(Node {
+                    id: Id::random(),
+                    position: Point::new(cursor.x, cursor.y + 1.0),
+                    text: right,
+                });
+            }
+        }
+
+        {
+            let mut repo = self.node_repo.lock().unwrap();
+            if !edits.is_empty() {
+                repo.edit_nodes(edits, self.undo_group);
+            }
+            if let Some(node) = new_node {
+                repo.add_node(node, self.undo_group);
+            }
+        }
+        self.state.cursor.position.y += 1.0;
+        self.set_cursor();
+        self.save();
     }
 
     fn commit_program(&mut self) {
@@ -1091,6 +1153,7 @@ enum Action {
     MoveRightToRight,
     MoveLeftToLeft,
     MoveLeftToRight,
+    SplitLine,
 }
 
 fn key_action(key: egui::Key, modifiers: egui::Modifiers, mode: Mode) -> Option<Action> {
@@ -1155,6 +1218,7 @@ fn key_action(key: egui::Key, modifiers: egui::Modifiers, mode: Mode) -> Option<
             egui::Key::Slash => Some(Action::ToggleOpList),
             egui::Key::O if shift => Some(Action::InsertNewLineAbove),
             egui::Key::O if !shift => Some(Action::InsertNewLineBelow),
+            egui::Key::S if !shift => Some(Action::SplitLine),
             egui::Key::V if !shift => Some(Action::ToggleOscilloscope),
             _ => None,
         },
@@ -1254,6 +1318,39 @@ mod tests {
         assert_eq!(nodes[2].text, "baz");
         assert_eq!(nodes[2].position, Point::new(2.0, 4.0));
         assert_eq!(app.state.cursor.position, Point::new(5.0, 4.0));
+    }
+
+    #[test]
+    fn split_line_moves_right_side_and_lines_below_down() {
+        let mut app = app_with_nodes(
+            vec![
+                node(1, 0.0, 0.0, "abcdef"),
+                node(2, 8.0, 0.0, "right"),
+                node(3, 0.0, 1.0, "below"),
+            ],
+            Point::new(3.0, 0.0),
+        );
+
+        app.handle_action(Action::SplitLine);
+
+        let nodes = app.state.nodes.iter().collect::<Vec<_>>();
+        assert_eq!(nodes.len(), 4);
+        assert_eq!(nodes[0].text, "abc");
+        assert_eq!(nodes[0].position, Point::new(0.0, 0.0));
+        assert!(nodes
+            .iter()
+            .any(|node| node.text == "def" && node.position == Point::new(3.0, 1.0)));
+        assert_eq!(position(&app, 2), Point::new(8.0, 1.0));
+        assert_eq!(position(&app, 3), Point::new(0.0, 2.0));
+        assert_eq!(app.state.cursor.position, Point::new(3.0, 1.0));
+    }
+
+    #[test]
+    fn normal_s_splits_line() {
+        assert!(matches!(
+            key_action(egui::Key::S, egui::Modifiers::NONE, Mode::Normal),
+            Some(Action::SplitLine)
+        ));
     }
 
     #[test]
