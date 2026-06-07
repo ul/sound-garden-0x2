@@ -118,15 +118,7 @@ enum OptimizedOp {
         id: u64,
         value: Sample,
     },
-    RSubConst {
-        id: u64,
-        value: Sample,
-    },
     DivConst {
-        id: u64,
-        value: Sample,
-    },
-    RDivConst {
         id: u64,
         value: Sample,
     },
@@ -237,16 +229,8 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                 push_args!(id, SubConst, value);
                 continue;
             }
-            OptimizedOp::RSubConst { id, value } => {
-                push_args!(id, RSubConst, value);
-                continue;
-            }
             OptimizedOp::DivConst { id, value } => {
                 push_args!(id, DivConst, value);
-                continue;
-            }
-            OptimizedOp::RDivConst { id, value } => {
-                push_args!(id, RDivConst, value);
                 continue;
             }
         };
@@ -844,26 +828,14 @@ fn fold_tail_binary_const_terms(stmts: &[OptimizedOp]) -> Option<[OptimizedOp; 2
         ("+" | "add", _, Some(value)) => {
             Some([a.clone(), OptimizedOp::AddConst { id: op.id, value }])
         }
-        ("+" | "add", Some(value), _) => {
-            Some([b.clone(), OptimizedOp::AddConst { id: op.id, value }])
-        }
         ("*" | "mul", _, Some(value)) => {
             Some([a.clone(), OptimizedOp::MulConst { id: op.id, value }])
-        }
-        ("*" | "mul", Some(value), _) => {
-            Some([b.clone(), OptimizedOp::MulConst { id: op.id, value }])
         }
         ("-" | "sub", _, Some(value)) => {
             Some([a.clone(), OptimizedOp::SubConst { id: op.id, value }])
         }
-        ("-" | "sub", Some(value), _) => {
-            Some([b.clone(), OptimizedOp::RSubConst { id: op.id, value }])
-        }
         ("/" | "div", _, Some(value)) => {
             Some([a.clone(), OptimizedOp::DivConst { id: op.id, value }])
-        }
-        ("/" | "div", Some(value), _) => {
-            Some([b.clone(), OptimizedOp::RDivConst { id: op.id, value }])
         }
         _ => None,
     }
@@ -1091,10 +1063,7 @@ mod tests {
         );
         assert_eq!(
             optimize_terms(&[op(1, "0.5"), op(2, "input"), op(3, "*")]),
-            vec![
-                text(2, "input"),
-                OptimizedOp::MulConst { id: 3, value: 0.5 }
-            ]
+            vec![constant(1, 0.5), text(2, "input"), text(3, "*")]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "+")]),
@@ -1112,10 +1081,7 @@ mod tests {
         );
         assert_eq!(
             optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "-")]),
-            vec![
-                text(2, "input"),
-                OptimizedOp::RSubConst { id: 3, value: 2.0 }
-            ]
+            vec![constant(1, 2.0), text(2, "input"), text(3, "-")]
         );
         assert_eq!(
             optimize_terms(&[op(1, "input"), op(2, "2"), op(3, "/")]),
@@ -1126,9 +1092,33 @@ mod tests {
         );
         assert_eq!(
             optimize_terms(&[op(1, "2"), op(2, "input"), op(3, "/")]),
+            vec![constant(1, 2.0), text(2, "input"), text(3, "/")]
+        );
+    }
+
+    #[test]
+    fn optimize_terms_does_not_steal_constants_used_by_previous_op() {
+        assert_eq!(
+            optimize_terms(&[
+                op(1, "input"),
+                op(2, "0.0625"),
+                op(3, "5"),
+                op(4, "range"),
+                op(5, "0.5"),
+                op(6, "fb"),
+                op(7, "+"),
+                op(8, "0.1"),
+                op(9, "*"),
+            ]),
             vec![
-                text(2, "input"),
-                OptimizedOp::RDivConst { id: 3, value: 2.0 }
+                text(1, "input"),
+                constant(2, 0.0625),
+                constant(3, 5.0),
+                text(4, "range"),
+                constant(5, 0.5),
+                text(6, "fb"),
+                text(7, "+"),
+                OptimizedOp::MulConst { id: 9, value: 0.1 },
             ]
         );
     }
@@ -1174,7 +1164,10 @@ mod tests {
         let mut context = Context::new();
 
         assert_eq!(
-            run_once(&[op(1, "1"), op(2, ""), op(3, "2"), op(4, "+")], &mut context),
+            run_once(
+                &[op(1, "1"), op(2, ""), op(3, "2"), op(4, "+")],
+                &mut context
+            ),
             [3.0, 3.0]
         );
         assert_eq!(
@@ -1311,7 +1304,10 @@ mod tests {
         let mut context = Context::new();
 
         assert_eq!(
-            run_once(&[op(1, "7"), op(2, ">answer"), op(3, "<answer")], &mut context),
+            run_once(
+                &[op(1, "7"), op(2, ">answer"), op(3, "<answer")],
+                &mut context
+            ),
             [7.0, 7.0]
         );
         assert!(context.variables.contains_key("answer"));
