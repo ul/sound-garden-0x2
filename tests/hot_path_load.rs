@@ -62,7 +62,10 @@ fn pattern_feedback_reload_does_not_allocate_on_load_program() {
 #[ignore = "diagnostic timing test; run with --ignored --nocapture"]
 fn print_load_program_timing_simple_vs_pattern_feedback() {
     let simple = time_load("110 s", "220 s");
-    eprintln!("simple reload: allocations={:?}, elapsed={:?}", simple.0, simple.1);
+    eprintln!(
+        "simple reload: allocations={:?}, elapsed={:?}",
+        simple.0, simple.1
+    );
 
     let old = "1 cy >ph .0625 .5 p <ph pat:110,220 s * dup .5 t 0.0625 5 range 0.5 fb swap .125 t 0.0625 5 range 0.5 fb + .1 * 110 s";
     let new = "1 cy >ph .0625 .5 p <ph pat:110,220 s * dup .5 t 0.0625 5 range 0.5 fb swap .125 t 0.0625 5 range 0.5 fb + .1 * 220 s";

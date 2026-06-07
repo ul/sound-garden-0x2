@@ -4,7 +4,7 @@ use crate::stack::Stack;
 #[cfg(feature = "allocation-checks")]
 use alloc_counter::no_alloc;
 use smallvec::SmallVec;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::{atomic::Ordering, Arc};
 
 // Totally unscientific attempt to improve performance of small programs by using SmallVec.
 /// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur extra indirection.
@@ -23,6 +23,12 @@ pub struct VM {
     active_program: Program,
     /// Reused stack for the active program hot path.
     active_stack: Stack,
+    /// Total duration of play/pause fade in frames.
+    xfade_duration: usize,
+    /// Reciprocal of fade duration, cached to avoid per-frame division.
+    xfade_duration_recip: Sample,
+    /// Crossfade duration left on play/pause toggle.
+    pause_countdown: usize,
     status: Status,
     /// For oscilloscope-like feedback to the client.
     monitor: Arc<AtomicFrame>,
@@ -42,6 +48,9 @@ impl VM {
         Self {
             active_program: Default::default(),
             active_stack: Stack::new(),
+            xfade_duration: 8192,
+            xfade_duration_recip: 1.0 / 8192.0,
+            pause_countdown: 0,
             status: Status::Pause,
             monitor: Default::default(),
             monitor_id: 0,
@@ -49,26 +58,36 @@ impl VM {
     }
 
     pub fn toggle_play(&mut self) {
-        self.status = match self.status {
-            Status::Play => Status::Pause,
-            Status::Pause => Status::Play,
-        };
+        match self.status {
+            Status::Play => self.pause(),
+            Status::Pause => self.play(),
+        }
     }
 
     pub fn play(&mut self) {
+        self.pause_countdown = self.xfade_duration;
         self.status = Status::Play;
     }
 
     pub fn pause(&mut self) {
+        self.pause_countdown = self.xfade_duration;
         self.status = Status::Pause;
     }
 
     pub fn stop(&mut self) {
+        self.pause_countdown = 0;
         self.status = Status::Pause;
     }
 
-    /// Kept for API compatibility. Program/play/pause crossfades are disabled.
-    pub fn set_xfade_duration(&mut self, _frames: Sample) {}
+    /// Set play/pause fade duration in frames. Program reload crossfade is disabled.
+    pub fn set_xfade_duration(&mut self, frames: Sample) {
+        self.xfade_duration = frames.max(0.0) as usize;
+        self.xfade_duration_recip = if self.xfade_duration > 0 {
+            (self.xfade_duration as Sample).recip()
+        } else {
+            0.0
+        };
+    }
 
     /// Load the new program and steal/migrate state from the previous active program.
     /// Returns the old program so it can be deallocated somewhere else.
@@ -97,9 +116,16 @@ impl VM {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
 
-                frame
+                self.play_xfade(frame)
             }
-            Status::Pause => Default::default(),
+            Status::Pause => {
+                if self.pause_countdown > 0 {
+                    let frame = perform(&mut self.active_program, &mut self.active_stack);
+                    self.pause_xfade(frame)
+                } else {
+                    Default::default()
+                }
+            }
         }
     }
 
@@ -109,6 +135,28 @@ impl VM {
 
     pub fn set_monitor_id(&mut self, id: u64) {
         self.monitor_id = id;
+    }
+
+    fn play_xfade(&mut self, mut frame: Frame) -> Frame {
+        if self.pause_countdown > 0 {
+            let progress = 1.0 - (self.pause_countdown as Sample * self.xfade_duration_recip);
+            self.pause_countdown -= 1;
+            for x in frame.iter_mut() {
+                *x *= progress;
+            }
+        }
+
+        frame
+    }
+
+    fn pause_xfade(&mut self, mut frame: Frame) -> Frame {
+        let progress = self.pause_countdown as Sample * self.xfade_duration_recip;
+        self.pause_countdown -= 1;
+        for x in frame.iter_mut() {
+            *x *= progress;
+        }
+
+        frame
     }
 }
 
@@ -134,7 +182,8 @@ fn migrate_program_state(active_program: &mut Program, previous_program: &mut Pr
     for stmt in active_program {
         if let Ok(index) = previous_by_id.binary_search_by_key(&stmt.id, |(id, _)| *id) {
             let previous_index = previous_by_id[index].1;
-            stmt.op.migrate(previous_program[previous_index].op.as_mut());
+            stmt.op
+                .migrate(previous_program[previous_index].op.as_mut());
         } else if let Some(previous_stmt) = previous_program
             .iter_mut()
             .skip(indexed_len)
@@ -238,6 +287,23 @@ mod tests {
 
         vm.play();
         assert_eq!(vm.next_frame(), [1.0, -1.0]);
+    }
+
+    #[test]
+    fn play_and_pause_fade_active_program() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(2.0);
+        vm.load_program(smallvec![statement(1, PushFrame([10.0, 20.0]))]);
+
+        vm.play();
+        assert_eq!(vm.next_frame(), [0.0, 0.0]);
+        assert_eq!(vm.next_frame(), [5.0, 10.0]);
+        assert_eq!(vm.next_frame(), [10.0, 20.0]);
+
+        vm.pause();
+        assert_eq!(vm.next_frame(), [10.0, 20.0]);
+        assert_eq!(vm.next_frame(), [5.0, 10.0]);
+        assert_eq!(vm.next_frame(), [0.0, 0.0]);
     }
 
     #[test]
