@@ -290,6 +290,7 @@ impl SoundGardenApp {
                 self.undo_group += 1;
             }
             Action::InsertText(text) => self.insert_text(&text),
+            Action::PasteText(text) => self.paste_text(&text),
             Action::DeleteChar => self.delete_char(),
             Action::DeleteNode => {
                 if let Some((node, _)) = self.node_at_cursor() {
@@ -425,6 +426,22 @@ impl SoundGardenApp {
                     .unwrap_or_default(),
             ))
             .ok();
+    }
+
+    fn paste_text(&mut self, text: &str) {
+        let line_start_x = self.state.cursor.position.x;
+        for ch in text.chars() {
+            match ch {
+                '\r' => {}
+                '\n' => self.handle_action(Action::SetCursor(Point::new(
+                    line_start_x,
+                    self.state.cursor.position.y + 1.0,
+                ))),
+                '\t' | ' ' => self.handle_action(Action::MoveRightToRight),
+                ch if !ch.is_control() => self.handle_action(Action::InsertText(ch.to_string())),
+                _ => {}
+            }
+        }
     }
 
     fn insert_text(&mut self, text: &str) {
@@ -677,6 +694,9 @@ impl SoundGardenApp {
         ctx.input(|input| {
             for event in &input.events {
                 match event {
+                    egui::Event::Paste(text) if !text.is_empty() => {
+                        actions.push(Action::PasteText(text.clone()));
+                    }
                     egui::Event::Text(text) if self.state.mode == Mode::Insert => {
                         if text == " " {
                             actions.push(Action::MoveRightToRight);
@@ -1044,6 +1064,7 @@ enum Action {
     Splash,
     NormalMode,
     InsertText(String),
+    PasteText(String),
     DeleteChar,
     DeleteNode,
     DeleteLine,
@@ -1216,6 +1237,23 @@ mod tests {
             .find(|node| node.id == Id::from(id))
             .unwrap()
             .position
+    }
+
+    #[test]
+    fn paste_text_splits_spaces_and_newlines_into_grid_positions() {
+        let mut app = app_with_nodes(Vec::new(), Point::new(2.0, 3.0));
+
+        app.handle_action(Action::PasteText("foo bar\nbaz".to_owned()));
+
+        let nodes = app.state.nodes.iter().collect::<Vec<_>>();
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(nodes[0].text, "foo");
+        assert_eq!(nodes[0].position, Point::new(2.0, 3.0));
+        assert_eq!(nodes[1].text, "bar");
+        assert_eq!(nodes[1].position, Point::new(6.0, 3.0));
+        assert_eq!(nodes[2].text, "baz");
+        assert_eq!(nodes[2].position, Point::new(2.0, 4.0));
+        assert_eq!(app.state.cursor.position, Point::new(5.0, 4.0));
     }
 
     #[test]
