@@ -1,96 +1,106 @@
+=== Language and stack model
+
+Sound Garden programs are whitespace-separated concatenative words. Each word consumes zero or more frames from the stack and pushes zero or more frames back. A frame contains one value per audio channel; scalar constants are broadcast to all channels. Stack effect notation below uses the logical order `(older, ..., top) -> result`.
+
+Unknown words, stack underflow, and stack overflow are tolerated by the VM and effectively produce default/ignored values rather than aborting audio.
+
+=== Constants and literals
+
+[horizontal]
+<number>:: push a numeric constant, e.g. `0.5`, `-12`, `1e-3`
+silence:: () -> push constant 0.0
+sr:: () -> push current sample rate
+pi:: () -> push π
+tau:: () -> push 2π
+whiteNoise, noise, n:: () -> pseudo-random white noise; each sample/channel receives the next generator value
+
+Scientific pitch notation is also available using MIDI note 60 = C4. Lowercase notes push frequencies (`c4` = 261.625565, `a4` = 440); uppercase notes push MIDI note numbers (`C4` = 60, `A4` = 69). Sharps and flats are supported (`c#4`, `Db4`).
+
 === Stack manipulations
 
 [horizontal]
-pop:: remove top element
-dup:: duplicate top element, a -> a a
-swap:: swap top element with the next one, a b -> b a
-rot:: take 3rd from the top element and put it on the top, a b c -> b c a
-dig:<N>:: take Nth from the top element and put it on the top
+pop:: (a) -> remove top element
+dup:: (a) -> a a
+swap:: (a, b) -> b a
+rot:: (a, b, c) -> b c a
+dig:<N>:: take Nth element from the top and put it on the top
 bury:<N>:: take the top element and put it as Nth from the top
 
-=== Oscillators
+=== Oscillators and phases
 
-All non-hyperbolic oscillators produce signal in range -1..1
-
-[horizontal]
-saw:: (freq, phase0) -> saw oscillator
-w:: (freq) -> saw with phase0 = 0
-tri:: (freq, phase0) -> triangle oscillator (symmetric)
-t:: (freq) -> tri with phase0 = 0
-pulse:: (freq, width, phase0) -> rectangular oscillator with width of positive segment as a ratio of period
-p:: (freq, width) -> pulse with phase0 = 0
-sine:: (freq, phase0) -> sine oscillator
-s:: (freq) -> sine with phase0 = 0
-cosine:: (freq, phase0) -> cosine oscillator
-c:: (freq) -> cosine with phase0 = 0
-
-=== Basics
+Oscillator phases are wrapped in the `-1..1` range unless noted otherwise. Oscillator outputs are in the `-1..1` range.
 
 [horizontal]
-silence:: () -> alias for constant 0 signal
-sr:: () -> put sample rate on the stack
-whiteNoise, noise, n:: () -> each sample in each channel is the next value provided by pseudo-random generator
-linlin, project:: (x, a, b, c, d) -> assuming that signal x varies in the range from a to b linearly project its values to the range from c to d
-Note that ranges are just signals and are allowed to vary in time
-norm:<N>:: (x) -> normalise signal within a <N> frames wide window, default <N> is 256
+saw:: (freq, phase0) -> saw/phasor oscillator with explicit phase offset
+w:: (freq) -> saw/phasor oscillator with phase0 = 0
+tri:: (freq, phase0) -> symmetric triangle oscillator with explicit phase offset
+t:: (freq) -> triangle oscillator with phase0 = 0
+pulse:: (freq, width, phase0) -> rectangular oscillator; `width` is the positive segment as a ratio of period
+p:: (freq, width) -> pulse oscillator with phase0 = 0
+sine:: (freq, phase0) -> sine oscillator with explicit phase offset
+s:: (freq) -> sine oscillator with phase0 = 0
+cosine:: (freq, phase0) -> cosine oscillator with explicit phase offset
+c:: (freq) -> cosine oscillator with phase0 = 0
+cycle, cy:: (cps) -> wrapped `0..1` phase, advanced by cycles-per-second input; negative CPS runs backwards
 
-range, r:: (x, c, d) -> same as project with a = -1 and b = 1
-unit:: (x) -> same as range with c = 0 and d = 1
-circle:: (x) -> same as range with c = -π and d = π
-sh:: (x, trigger) -> sample and hold
-ssh:: (x, trigger) -> smooth sample and hold, `x' * (1.0 - trigger) + x * trigger`
-db2amp, db2a:: (x) -> decibels to amplitude, base amplitude assumed to be 1.0
-amp2db, a2db:: (x) -> amplitude to decibels, base amplitude assumed to be 1.0
-freq2midi, f2m:: (x) -> frequency to midi pitch
-midi2freq, m2f:: (x) -> midi pitch to frequency
-
-Note constants are available in scientific pitch notation using MIDI note 60 = C4. Lowercase notes push frequencies (`c4` = 261.625565, `a4` = 440), uppercase notes push MIDI numbers (`C4` = 60, `A4` = 69). Sharps and flats are supported (`c#4`, `Db4`).
-
-quantize, q:: (x, step) -> round signal x values to the nearest step multiplicative
-channel:<N>, ch:<N>:: (x) -> compute only channel N of signal and broadcast it to all channels
+Fast approximate variants are available for sine/cosine oscillators and trig functions: `s'`, `sine'`, `c'`, `cosine'`, `sin'`, `cos'`, `tan'`, `sinc'`.
 
 === Math
 
-Binary arithmetic operations are available: `+`, `-`, `*`, `/`, `%`, '^'. If you prefer, you can use aliases `add`, `sub`, `mul`, `div`, `mod`, `pow`.
+Binary arithmetic operations are available: `+`, `-`, `*`, `/`, `%`, `^`. Aliases are `add`, `sub`, `mul`, `div`, `mod`, `pow`. Division and reciprocal are safe: division by zero produces 0.0.
 
-`\\` is for reciprocal. `16 \\` will produce 1/16th.
+The backslash op computes reciprocal; for example `16 \` produces `1/16`.
 
 [horizontal]
-min:: (a, b)
-max:: (a, b)
-clip:: (x) -> forces signal values to be in the range -1..1 by outputting nearest edge for values outside
-wrap:: (x) -> forces signal values to be in the range -1..1 by wrapping it around the range
+min:: (a, b) -> pairwise minimum
+max:: (a, b) -> pairwise maximum
+clamp:: (x, min, max) -> clamp x to the provided range
+clip:: (x) -> clamp x to -1..1
+wrap:: (x) -> wrap x around the -1..1 range
 exp:: (x) -> e^x
-sin:: (x)
-cos:: (x)
-tan:: (x)
-sinc:: (x)
-sinh:: (x)
-cosh:: (x)
-tanh:: (x)
-round:: (x) -> round signal value to the nearest integer
+sin:: (x) -> sine of x radians
+cos:: (x) -> cosine of x radians
+tan:: (x) -> tangent of x radians
+sinc:: (x) -> sin(x) / x, with sinc(0) = 1
+sinh:: (x) -> hyperbolic sine
+cosh:: (x) -> hyperbolic cosine
+tanh:: (x) -> hyperbolic tangent
+round:: (x) -> round to nearest integer
+quantize, q:: (x, step) -> round x to the nearest multiple of step
+linlin, project:: (x, a, b, c, d) -> linearly project x from range a..b to range c..d
+range, r:: (x, c, d) -> same as project with a = -1 and b = 1
+unit:: (x) -> same as range with c = 0 and d = 1
+circle:: (x) -> same as range with c = -π and d = π
+db2amp, db2a:: (x) -> currently computes `20 * log10(x)`
+amp2db, a2db:: (x) -> currently computes `10^(x / 20)`
+freq2midi, f2m:: (x) -> frequency in Hz to MIDI pitch
+midi2freq, m2f:: (x) -> MIDI pitch to frequency in Hz; `#` is also an alias
 
-=== Filters
+=== Filters, delays, and time-domain effects
 
 [horizontal]
-lpf:: (x, freq) -> https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter[Simple infinite impulse response low-pass filter]
-hpf:: (x, freq) -> https://en.wikipedia.org/wiki/High-pass_filter#Algorithmic_implementation[Simple infinite impulse response high-pass filter]
-bqlpf, l:: (x, freq, Q) -> biquad LPF as described https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[here]
-bqhpf, h:: (x, freq, Q) -> biquad HPF as described https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[here]
+lpf:: (x, freq) -> https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter[simple infinite impulse response low-pass filter]
+hpf:: (x, freq) -> https://en.wikipedia.org/wiki/High-pass_filter#Algorithmic_implementation[simple infinite impulse response high-pass filter]
+bqlpf, l:: (x, freq, Q) -> biquad LPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
+bqhpf, h:: (x, freq, Q) -> biquad HPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
 prime:: (x) -> delay x by one sample
-delay:<N>, dl:<N>:: (x, time) -> max delay time is <N> seconds
-feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo, max delay is <N> seconds
-conv:<N>:: (x, y) -> convolve two signals with a N frames wide window
-convm:<N>:: (x, ...ys) -> convolve x with a N frames wide kernel of ys
-wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass!
+delay:<N>, dl:<N>:: (x, time) -> delay by `time` seconds; max delay buffer is <N> seconds, default 60
+feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo; max delay is <N> seconds, default 60
+conv:<N>:: (x, y) -> convolve two signals with an N-frame window
+convm:<N>:: (x, ...ys) -> convolve x with an N-frame kernel of y signals
+wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass control
+norm:<N>:: (x) -> normalise signal within an <N>-frame window, default <N> is 256
+sh, sample&hold:: (x, trigger) -> sample and hold
+ssh:: (x, trigger) -> smooth sample and hold, `x' * (1.0 - trigger) + x * trigger`
 
 === Patterns
 
+Patterns are signal-native cycle readers for direct musical development over time. Numeric patterns are comma-separated. Gate and trigger patterns use dense visual notation where `x`/`X` is active and `.` is inactive; ASCII whitespace is ignored.
+
 [horizontal]
-cycle, cy:: (cps) -> wrapped `0..1` cycle phase, advanced by cycles-per-second input; negative CPS runs backwards
-pat:<PATTERN>:: (phase) -> read a flat comma-separated numeric pattern using wrapped `0..1` phase, e.g. `pat:60,64,67,72`
-gate:<PATTERN>:: (phase) -> held gate from a flat dense pattern where `x`/`X` is active and `.` is inactive, e.g. `gate:x..x`
-trig:<PATTERN>:: (phase) -> one-sample trigger on entering an active cell of a flat dense pattern, e.g. `trig:x..x`
+pat:<PATTERN>:: (phase) -> read a flat numeric pattern using wrapped `0..1` phase, e.g. `pat:60,64,67,72`
+gate:<PATTERN>:: (phase) -> held gate from a flat dense pattern, e.g. `gate:x..x`
+trig:<PATTERN>:: (phase) -> one-sample trigger on entering an active cell, e.g. `trig:x..x`
 cpat:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `pat:<PATTERN>`
 cgate:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `gate:<PATTERN>`
 ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTERN>`
@@ -98,56 +108,69 @@ ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTER
 === Triggers
 
 [horizontal]
-metro, m:: (freq) -> emit 1.0 with given frequency, 0.0 all other time
-dmetro, dm:: (period) -> emit 1.0 every given period, 0.0 all other time
-metro_hold, mh:: (freq) -> emit 1.0 with given frequency, 0.0 all other time; don't set new freq until the next trigger
-dmetro_hold, dmh:: (period) -> emit 1.0 every given period, 0.0 all other time; don't set new period until the next trigger
-oneshot, shot:: (period) -> emit 1.0 after a given period, 0.0 all other time
+metro, m:: (freq) -> emit 1.0 at the given frequency, 0.0 otherwise
+dmetro, dm:: (period) -> emit 1.0 every given period in seconds, 0.0 otherwise
+metro_hold, mh:: (freq) -> like metro, but only apply frequency changes at the next trigger
+dmetro_hold, dmh:: (period) -> like dmetro, but only apply period changes at the next trigger
+oneshot, shot:: (period) -> emit 1.0 once after the given period in seconds, 0.0 otherwise
 
-=== Envelopes
+=== Envelopes and transitions
 
 [horizontal]
 impulse:: (trigger, apex) -> generate exponential impulse which reaches 1.0 in apex seconds and then fades
 adsr:: (gate, a, d, s, r) -> classic ADSR envelope
-tline:: (value, delta) -> linearly smooth value change over delta timeframe 
-tquad:: (value, delta) -> quadratically smooth value change over delta timeframe 
+tline:: (value, delta) -> linearly smooth value changes over delta timeframe
+tquad:: (value, delta) -> quadratically smooth value changes over delta timeframe
 
 === Spatial
 
+[horizontal]
 pan1:: (input, position) -> pan between left and right channel
 pan2:: (left, right, position) -> pan left channel of one signal with left channel of another using left channel of position
 panx:: (left, right, position) -> pan left and right channels of inputs as two pairs of left and right and then output left channel of lefts' pan as left, and right channel of rights' pan as right
+channel:<N>, ch:<N>:: (x) -> compute only channel N of signal and broadcast it to all channels
 
-=== Modulation
+=== Modulation and waveshaping
 
 [horizontal]
-cheb2:: (x) -> Chebyshev polynomial of degree 2
-cheb3:: (x) -> Chebyshev polynomial of degree 3
-cheb4:: (x) -> Chebyshev polynomial of degree 4
-cheb5:: (x) -> Chebyshev polynomial of degree 5
-cheb6:: (x) -> Chebyshev polynomial of degree 6
+cheb2:: (x) -> Chebyshev polynomial of degree 2: `2x^2 - 1`
+cheb3:: (x) -> Chebyshev polynomial of degree 3: `4x^3 - 3x`
+cheb4:: (x) -> Chebyshev polynomial of degree 4: `8x^4 - 8x^2 + 1`
+cheb5:: (x) -> Chebyshev polynomial of degree 5: `16x^5 - 20x^3 + 5x`
+cheb6:: (x) -> Chebyshev polynomial of degree 6: `32x^6 - 48x^4 + 18x^2 - 1`
+
+=== Spectral transforms
+
+All spectral transforms consume one signal and use a 2048-sample Hann window with a 64-sample hop.
+
+[horizontal]
+spectral_shuffle:: (x) -> FFT transform that randomly shuffles frequency bins
+spectral_reverse:: (x) -> FFT transform that reverses frequency bins
+st1:: (x) -> FFT transform that keeps only the strongest bin and zeros the rest
 
 === Analyzers
 
 [horizontal]
-pitch:: (x) -> pitch detector, implemented as YIN algorithm with block size of 1024 samples and threshold 0.2
+pitch:: (x) -> pitch detector, implemented as YIN with block size 1024 samples, step 64, and threshold 0.2
 
 === Variables
 
+Variables are shared through the compilation context and can be read/written by name.
+
 [horizontal]
-var:<NAME>:: (x) -> move top element to var <NAME> 
-set:<NAME>:: (x) -> copy top element to var <NAME> 
-get:<NAME>:: (x) -> put value of var <NAME> to the top
+var:<NAME>:: (x) -> move top element to var <NAME>
+set:<NAME>:: (x) -> copy top element to var <NAME>
+get:<NAME>:: () -> put value of var <NAME> on the top
 
 === Tables
 
 [horizontal]
-writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigger write N seconds (for each channel) of signal x to the table NAME. It puts the signal back on the stack which passes through x values
-readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from the table NAME using indexer signal as a position in seconds, with linear interpolation
+writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigger write N seconds, per channel, of signal x to table NAME; x is passed through
+readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from table NAME using indexer signal as a position in seconds, with linear interpolation
 filetable:<FILE>, ftab:<FILE>, ft:<FILE>:: (indexer) -> read from the table loaded from FILE using indexer signal as a position in seconds, with linear interpolation. Supported formats: WAV, FLAC, OGG.
 
-=== VST
+=== Plugin and external I/O
 
 [horizontal]
 param:<N>:: () -> put Nth plugin parameter value on the stack
-in, input:: () -> put input on the stack
+in, input:: () -> put input audio on the stack
