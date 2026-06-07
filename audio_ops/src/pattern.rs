@@ -113,6 +113,45 @@ fn push_repeated<T: Clone>(
     }
 }
 
+fn euclidean_pattern(pulses: usize, steps: usize) -> Option<Vec<PatternElement<bool>>> {
+    if pulses > steps || steps == 0 {
+        return None;
+    }
+    Some(
+        (0..steps)
+            .map(|step| PatternElement::Atom((step * pulses) % steps < pulses))
+            .collect(),
+    )
+}
+
+fn parse_usize_until(chars: &[char], cursor: &mut usize, delimiter: char) -> Option<usize> {
+    skip_ascii_whitespace(chars, cursor);
+    let start = *cursor;
+    while chars.get(*cursor).is_some_and(|ch| ch.is_ascii_digit()) {
+        *cursor += 1;
+    }
+    if start == *cursor {
+        return None;
+    }
+    let value: String = chars[start..*cursor].iter().collect();
+    skip_ascii_whitespace(chars, cursor);
+    if chars.get(*cursor) != Some(&delimiter) {
+        return None;
+    }
+    *cursor += 1;
+    value.parse().ok()
+}
+
+fn parse_euclidean(chars: &[char], cursor: &mut usize) -> Option<Vec<PatternElement<bool>>> {
+    if chars.get(*cursor) != Some(&'e') || chars.get(*cursor + 1) != Some(&'(') {
+        return None;
+    }
+    *cursor += 2;
+    let pulses = parse_usize_until(chars, cursor, ',')?;
+    let steps = parse_usize_until(chars, cursor, ')')?;
+    euclidean_pattern(pulses, steps)
+}
+
 fn parse_value_sequence(
     chars: &[char],
     cursor: &mut usize,
@@ -238,6 +277,7 @@ fn parse_gate_sequence(
                 }
                 Some(PatternElement::Group(group))
             }
+            'e' => Some(PatternElement::Group(parse_euclidean(chars, cursor)?)),
             ']' => {
                 if !in_group {
                     return None;
@@ -634,8 +674,32 @@ mod tests {
     }
 
     #[test]
+    fn gate_pattern_supports_euclidean_rhythms() {
+        let mut gate = PatternGate::new("e(3,8)");
+        assert_eq!(perform(&mut gate, [0.0, 0.1249]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.125, 0.2499]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.25, 0.3749]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.375, 0.4999]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.6249]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.625, 0.7499]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.75, 0.8749]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.875, 0.9999]), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn gate_pattern_subdivides_and_repeats_euclidean_rhythms() {
+        let mut gate = PatternGate::new("[e(1,2).]*2");
+        assert_eq!(perform(&mut gate, [0.0, 0.1249]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.125, 0.4999]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.6249]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.625, 0.9999]), [0.0, 0.0]);
+    }
+
+    #[test]
     fn invalid_gate_patterns_output_zero() {
-        for pattern in ["", "x..q", "1..0", "x[.", "x*", "x*0"] {
+        for pattern in [
+            "", "x..q", "1..0", "x[.", "x*", "x*0", "e(5,4)", "e(3,0)", "e(3,)",
+        ] {
             let mut gate = PatternGate::new(pattern);
             assert_eq!(perform(&mut gate, [0.0, 0.5]), [0.0, 0.0]);
         }
