@@ -75,6 +75,66 @@ fn cell_index<T>(phase: Sample, cells: &[Cell<T>]) -> usize {
         .unwrap_or_else(|| cells.len().saturating_sub(1))
 }
 
+#[derive(Clone)]
+struct Pattern<T> {
+    alternatives: Vec<Vec<Cell<T>>>,
+}
+
+impl<T> Pattern<T> {
+    fn is_empty(&self) -> bool {
+        self.alternatives.is_empty()
+    }
+
+    fn cells(&self, cycle: usize) -> &[Cell<T>] {
+        &self.alternatives[cycle % self.alternatives.len()]
+    }
+}
+
+fn update_cycle_counts(
+    phase: &Frame,
+    previous_phases: &mut [Option<Sample>; CHANNELS],
+    cycle_counts: &mut [usize; CHANNELS],
+) {
+    for (channel, &phase) in phase.iter().enumerate() {
+        let phase = wrap_phase(phase);
+        if previous_phases[channel].is_some_and(|prev| prev > phase) {
+            cycle_counts[channel] = cycle_counts[channel].wrapping_add(1);
+        }
+        previous_phases[channel] = Some(phase);
+    }
+}
+
+fn split_top_level_alternatives(pattern: &str) -> Option<Vec<&str>> {
+    let pattern = pattern.strip_prefix('<')?.strip_suffix('>')?;
+    let mut alternatives = Vec::new();
+    let mut start = 0;
+    let mut bracket_depth = 0usize;
+    let mut paren_depth = 0usize;
+    for (index, ch) in pattern.char_indices() {
+        match ch {
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.checked_sub(1)?,
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.checked_sub(1)?,
+            '|' if bracket_depth == 0 && paren_depth == 0 => {
+                alternatives.push(pattern[start..index].trim());
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    alternatives.push(pattern[start..].trim());
+    if alternatives.len() < 2
+        || alternatives
+            .iter()
+            .any(|alternative| alternative.is_empty())
+    {
+        None
+    } else {
+        Some(alternatives)
+    }
+}
+
 fn skip_ascii_whitespace(chars: &[char], cursor: &mut usize) {
     while chars
         .get(*cursor)
@@ -239,15 +299,27 @@ fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
         .collect()
 }
 
-fn parse_values(pattern: &str) -> Vec<Cell<Sample>> {
+fn parse_value_cells(pattern: &str) -> Vec<Cell<Sample>> {
     let chars: Vec<_> = pattern.chars().collect();
     let mut cursor = 0;
     let elements = parse_value_sequence(&chars, &mut cursor, false).unwrap_or_default();
-    let cells = resolve_value_holds(flatten_pattern(elements));
-    if cells.is_empty() {
+    resolve_value_holds(flatten_pattern(elements))
+}
+
+fn parse_values(pattern: &str) -> Pattern<Sample> {
+    let alternatives = if let Some(alternatives) = split_top_level_alternatives(pattern) {
+        alternatives.into_iter().map(parse_value_cells).collect()
+    } else {
+        vec![parse_value_cells(pattern)]
+    };
+    if alternatives.iter().any(Vec::is_empty) {
         warn_invalid(ParseKind::Value, pattern);
+        Pattern {
+            alternatives: Vec::new(),
+        }
+    } else {
+        Pattern { alternatives }
     }
-    cells
 }
 
 fn parse_gate_sequence(
@@ -298,20 +370,32 @@ fn parse_gate_sequence(
     }
 }
 
-fn parse_gates(pattern: &str) -> Vec<Cell<bool>> {
+fn parse_gate_cells(pattern: &str) -> Vec<Cell<bool>> {
     let chars: Vec<_> = pattern.chars().collect();
     let mut cursor = 0;
     let elements = parse_gate_sequence(&chars, &mut cursor, false).unwrap_or_default();
-    let cells = flatten_pattern(elements);
-    if cells.is_empty() {
+    flatten_pattern(elements)
+}
+
+fn parse_gates(pattern: &str) -> Pattern<bool> {
+    let alternatives = if let Some(alternatives) = split_top_level_alternatives(pattern) {
+        alternatives.into_iter().map(parse_gate_cells).collect()
+    } else {
+        vec![parse_gate_cells(pattern)]
+    };
+    if alternatives.iter().any(Vec::is_empty) {
         warn_invalid(ParseKind::Gate, pattern);
+        Pattern {
+            alternatives: Vec::new(),
+        }
+    } else {
+        Pattern { alternatives }
     }
-    cells
 }
 
 #[derive(Clone)]
 struct ValuePattern {
-    values: Vec<Cell<Sample>>,
+    values: Pattern<Sample>,
 }
 
 impl ValuePattern {
@@ -321,13 +405,14 @@ impl ValuePattern {
         }
     }
 
-    fn render(&self, phase: &Frame) -> Frame {
+    fn render(&self, phase: &Frame, cycle_counts: &[usize; CHANNELS]) -> Frame {
         let mut frame = [0.0; CHANNELS];
         if self.values.is_empty() {
             return frame;
         }
-        for (output, &phase) in frame.iter_mut().zip(phase) {
-            *output = self.values[cell_index(phase, &self.values)].value;
+        for (channel, (output, &phase)) in frame.iter_mut().zip(phase).enumerate() {
+            let cells = self.values.cells(cycle_counts[channel]);
+            *output = cells[cell_index(phase, cells)].value;
         }
         frame
     }
@@ -335,7 +420,7 @@ impl ValuePattern {
 
 #[derive(Clone)]
 struct GatePattern {
-    gates: Vec<Cell<bool>>,
+    gates: Pattern<bool>,
 }
 
 impl GatePattern {
@@ -345,13 +430,14 @@ impl GatePattern {
         }
     }
 
-    fn render_gate(&self, phase: &Frame) -> Frame {
+    fn render_gate(&self, phase: &Frame, cycle_counts: &[usize; CHANNELS]) -> Frame {
         let mut frame = [0.0; CHANNELS];
         if self.gates.is_empty() {
             return frame;
         }
-        for (output, &phase) in frame.iter_mut().zip(phase) {
-            *output = if self.gates[cell_index(phase, &self.gates)].value {
+        for (channel, (output, &phase)) in frame.iter_mut().zip(phase).enumerate() {
+            let cells = self.gates.cells(cycle_counts[channel]);
+            *output = if cells[cell_index(phase, cells)].value {
                 1.0
             } else {
                 0.0
@@ -400,12 +486,16 @@ impl Op for Cycle {
 
 pub struct PatternValue {
     pattern: ValuePattern,
+    previous_phases: [Option<Sample>; CHANNELS],
+    cycle_counts: [usize; CHANNELS],
 }
 
 impl PatternValue {
     pub fn new(pattern: &str) -> Self {
         Self {
             pattern: ValuePattern::new(pattern),
+            previous_phases: [None; CHANNELS],
+            cycle_counts: [0; CHANNELS],
         }
     }
 }
@@ -413,18 +503,23 @@ impl PatternValue {
 impl Op for PatternValue {
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
-        stack.push(&self.pattern.render(&phase));
+        update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
+        stack.push(&self.pattern.render(&phase, &self.cycle_counts));
     }
 }
 
 pub struct PatternGate {
     pattern: GatePattern,
+    previous_phases: [Option<Sample>; CHANNELS],
+    cycle_counts: [usize; CHANNELS],
 }
 
 impl PatternGate {
     pub fn new(pattern: &str) -> Self {
         Self {
             pattern: GatePattern::new(pattern),
+            previous_phases: [None; CHANNELS],
+            cycle_counts: [0; CHANNELS],
         }
     }
 }
@@ -432,7 +527,8 @@ impl PatternGate {
 impl Op for PatternGate {
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
-        stack.push(&self.pattern.render_gate(&phase));
+        update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
+        stack.push(&self.pattern.render_gate(&phase, &self.cycle_counts));
     }
 }
 
@@ -440,6 +536,7 @@ pub struct PatternTrigger {
     pattern: GatePattern,
     previous_indices: [Option<usize>; CHANNELS],
     previous_phases: [Option<Sample>; CHANNELS],
+    cycle_counts: [usize; CHANNELS],
 }
 
 impl PatternTrigger {
@@ -448,6 +545,7 @@ impl PatternTrigger {
             pattern: GatePattern::new(pattern),
             previous_indices: [None; CHANNELS],
             previous_phases: [None; CHANNELS],
+            cycle_counts: [0; CHANNELS],
         }
     }
 
@@ -459,10 +557,14 @@ impl PatternTrigger {
 
         for (channel, (output, &phase)) in frame.iter_mut().zip(phase).enumerate() {
             let phase = wrap_phase(phase);
-            let index = cell_index(phase, &self.pattern.gates);
-            let active = self.pattern.gates[index].value;
-            let entered_active_cell = self.previous_indices[channel] != Some(index) && active;
             let forward_cycle_wrap = self.previous_phases[channel].is_some_and(|prev| prev > phase);
+            if forward_cycle_wrap {
+                self.cycle_counts[channel] = self.cycle_counts[channel].wrapping_add(1);
+            }
+            let cells = self.pattern.gates.cells(self.cycle_counts[channel]);
+            let index = cell_index(phase, cells);
+            let active = cells[index].value;
+            let entered_active_cell = self.previous_indices[channel] != Some(index) && active;
             *output = if entered_active_cell || (forward_cycle_wrap && active) {
                 1.0
             } else {
@@ -487,6 +589,8 @@ impl Op for PatternTrigger {
 pub struct ClockedPatternValue {
     cycle: Cycle,
     pattern: ValuePattern,
+    previous_phases: [Option<Sample>; CHANNELS],
+    cycle_counts: [usize; CHANNELS],
 }
 
 impl ClockedPatternValue {
@@ -494,6 +598,8 @@ impl ClockedPatternValue {
         Self {
             cycle: Cycle::new(sample_rate),
             pattern: ValuePattern::new(pattern),
+            previous_phases: [None; CHANNELS],
+            cycle_counts: [0; CHANNELS],
         }
     }
 }
@@ -502,12 +608,15 @@ impl Op for ClockedPatternValue {
     fn perform(&mut self, stack: &mut Stack) {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
-        stack.push(&self.pattern.render(&phase));
+        update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
+        stack.push(&self.pattern.render(&phase, &self.cycle_counts));
     }
 
     fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.cycle.phases = other.cycle.phases;
+            self.previous_phases = other.previous_phases;
+            self.cycle_counts = other.cycle_counts;
         }
     }
 }
@@ -515,6 +624,8 @@ impl Op for ClockedPatternValue {
 pub struct ClockedPatternGate {
     cycle: Cycle,
     pattern: GatePattern,
+    previous_phases: [Option<Sample>; CHANNELS],
+    cycle_counts: [usize; CHANNELS],
 }
 
 impl ClockedPatternGate {
@@ -522,6 +633,8 @@ impl ClockedPatternGate {
         Self {
             cycle: Cycle::new(sample_rate),
             pattern: GatePattern::new(pattern),
+            previous_phases: [None; CHANNELS],
+            cycle_counts: [0; CHANNELS],
         }
     }
 }
@@ -530,12 +643,15 @@ impl Op for ClockedPatternGate {
     fn perform(&mut self, stack: &mut Stack) {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
-        stack.push(&self.pattern.render_gate(&phase));
+        update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
+        stack.push(&self.pattern.render_gate(&phase, &self.cycle_counts));
     }
 
     fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.cycle.phases = other.cycle.phases;
+            self.previous_phases = other.previous_phases;
+            self.cycle_counts = other.cycle_counts;
         }
     }
 }
@@ -565,6 +681,7 @@ impl Op for ClockedPatternTrigger {
     fn migrate(&mut self, other: &dyn Op) {
         if let Some(other) = other.downcast_ref::<Self>() {
             self.cycle.phases = other.cycle.phases;
+            self.trigger.cycle_counts = other.trigger.cycle_counts;
         }
     }
 }
@@ -637,9 +754,20 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_alternates_each_forward_cycle() {
+        let mut pat = PatternValue::new("<60,64|67,72>");
+        assert_eq!(perform(&mut pat, [0.0, 0.0]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.5]), [64.0, 64.0]);
+        assert_eq!(perform(&mut pat, [0.0, 0.0]), [67.0, 67.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.5]), [72.0, 72.0]);
+        assert_eq!(perform(&mut pat, [0.0, 0.0]), [60.0, 60.0]);
+    }
+
+    #[test]
     fn invalid_value_patterns_output_zero() {
         for pattern in [
             "", "_", "_*4", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
+            "<60,64|>",
         ] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
@@ -671,6 +799,16 @@ mod tests {
         assert_eq!(perform(&mut gate, [0.625, 0.7499]), [0.0, 0.0]);
         assert_eq!(perform(&mut gate, [0.75, 0.8749]), [1.0, 1.0]);
         assert_eq!(perform(&mut gate, [0.875, 0.9999]), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn gate_pattern_alternates_each_forward_cycle() {
+        let mut gate = PatternGate::new("<x.|.x>");
+        assert_eq!(perform(&mut gate, [0.0, 0.0]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.5]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.0, 0.0]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.5]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.0, 0.0]), [1.0, 1.0]);
     }
 
     #[test]
