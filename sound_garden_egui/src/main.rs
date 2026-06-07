@@ -1115,6 +1115,7 @@ impl eframe::App for SoundGardenApp {
         }
 
         if self.state.show_oscilloscope {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
             egui::Panel::bottom("oscilloscope")
                 .resizable(true)
                 .default_size(140.0)
