@@ -84,8 +84,8 @@ impl Op for ADSR {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.frame = other.frame;
             self.gate_frame_on = other.gate_frame_on;
             self.gate_frame_off = other.gate_frame_off;

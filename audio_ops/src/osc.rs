@@ -24,8 +24,8 @@ impl Op for Osc {
         self.osc.perform(stack);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.phasor.migrate_same(&other.phasor);
         }
     }
@@ -62,8 +62,8 @@ impl Op for FixedOsc {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.phases = other.phases;
         }
     }
@@ -88,8 +88,8 @@ impl Op for OscPhase {
         self.osc.perform(stack);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.phasor.migrate_same(&other.phasor);
         }
     }

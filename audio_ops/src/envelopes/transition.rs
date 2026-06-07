@@ -57,8 +57,8 @@ impl Op for Transition {
         stack.push(&self.current_value);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.start = other.start;
             self.previous_value = other.previous_value;
             self.current_value = other.current_value;

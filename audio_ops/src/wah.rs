@@ -60,8 +60,8 @@ impl Op for WahPedal {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.dsp.fRec0 = other.dsp.fRec0;
             self.dsp.fRec1 = other.dsp.fRec1;
             self.dsp.fRec2 = other.dsp.fRec2;

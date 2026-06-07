@@ -545,8 +545,8 @@ impl Op for Cycle {
         stack.push(&phase);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.phases = other.phases;
         }
     }
@@ -680,8 +680,8 @@ impl Op for ClockedPatternValue {
         stack.push(&self.pattern.render(&phase, &self.cycle_counts));
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.cycle.phases = other.cycle.phases;
             self.previous_phases = other.previous_phases;
             self.cycle_counts = other.cycle_counts;
@@ -715,8 +715,8 @@ impl Op for ClockedPatternGate {
         stack.push(&self.pattern.render_gate(&phase, &self.cycle_counts));
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.cycle.phases = other.cycle.phases;
             self.previous_phases = other.previous_phases;
             self.cycle_counts = other.cycle_counts;
@@ -746,8 +746,8 @@ impl Op for ClockedPatternTrigger {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.cycle.phases = other.cycle.phases;
             self.trigger.cycle_counts = other.trigger.cycle_counts;
         }

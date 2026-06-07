@@ -50,9 +50,9 @@ impl Op for Normalise {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.window.copy_backward(&other.window);
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
+            self.window.steal_same_size(&mut other.window);
             self.min = other.min;
             self.max = other.max;
         }

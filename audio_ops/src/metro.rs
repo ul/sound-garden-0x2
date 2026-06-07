@@ -35,8 +35,8 @@ impl Op for Metro {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.last_trigger = other.last_trigger;
             self.frame_number = other.frame_number;
         }
@@ -76,8 +76,8 @@ impl Op for DMetro {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.last_trigger = other.last_trigger;
             self.frame_number = other.frame_number;
         }
@@ -128,8 +128,8 @@ impl Op for MetroHold {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.frequencies = other.frequencies;
             self.last_trigger = other.last_trigger;
             self.frame_number = other.frame_number;
@@ -178,8 +178,8 @@ impl Op for DMetroHold {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.dts = other.dts;
             self.last_trigger = other.last_trigger;
             self.frame_number = other.frame_number;
@@ -217,8 +217,8 @@ impl Op for OneShot {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.frame_number = other.frame_number;
         }
     }

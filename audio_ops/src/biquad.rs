@@ -81,8 +81,8 @@ impl Op for BiQuad {
         stack.push(&self.y1);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.x1 = other.x1;
             self.y1 = other.y1;
             self.x2 = other.x2;

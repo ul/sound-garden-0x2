@@ -21,20 +21,8 @@ pub type Program = SmallVec<[Statement; FAST_PROGRAM_SIZE]>;
 pub struct VM {
     /// Program to generate audio.
     active_program: Program,
-    /// Previous program stored to provide crossfade.
-    previous_program: Program,
     /// Reused stack for the active program hot path.
     active_stack: Stack,
-    /// Reused stack for the previous program during crossfade.
-    previous_stack: Stack,
-    /// How many frames left before crossfade end.
-    xfade_countdown: usize,
-    /// Total duration of crossfade in frames.
-    xfade_duration: usize,
-    /// Reciprocal of crossfade duration, cached to avoid per-frame division.
-    xfade_duration_recip: Sample,
-    /// Crossfade duration left on pause toggle.
-    pause_countdown: usize,
     status: Status,
     /// For oscilloscope-like feedback to the client.
     monitor: Arc<AtomicFrame>,
@@ -53,13 +41,7 @@ impl VM {
     pub fn new() -> Self {
         Self {
             active_program: Default::default(),
-            previous_program: Default::default(),
             active_stack: Stack::new(),
-            previous_stack: Stack::new(),
-            xfade_countdown: 0,
-            xfade_duration: 2048,
-            xfade_duration_recip: 1.0 / 2048.0,
-            pause_countdown: 0,
             status: Status::Pause,
             monitor: Default::default(),
             monitor_id: 0,
@@ -67,7 +49,6 @@ impl VM {
     }
 
     pub fn toggle_play(&mut self) {
-        self.pause_countdown = self.xfade_duration;
         self.status = match self.status {
             Status::Play => Status::Pause,
             Status::Pause => Status::Play,
@@ -75,12 +56,10 @@ impl VM {
     }
 
     pub fn play(&mut self) {
-        self.pause_countdown = self.xfade_duration;
         self.status = Status::Play;
     }
 
     pub fn pause(&mut self) {
-        self.pause_countdown = self.xfade_duration;
         self.status = Status::Pause;
     }
 
@@ -88,30 +67,14 @@ impl VM {
         self.status = Status::Pause;
     }
 
-    pub fn set_xfade_duration(&mut self, frames: Sample) {
-        self.xfade_duration = frames.max(0.0) as usize;
-        self.xfade_duration_recip = if self.xfade_duration > 0 {
-            (self.xfade_duration as Sample).recip()
-        } else {
-            0.0
-        };
-    }
+    /// Kept for API compatibility. Program/play/pause crossfades are disabled.
+    pub fn set_xfade_duration(&mut self, _frames: Sample) {}
 
-    /// Load the new program and crossfade to it from the previous one.
-    /// Returns previous value of previous program so it can be deallocated somewhere else.
+    /// Load the new program and steal/migrate state from the previous active program.
+    /// Returns the old program so it can be deallocated somewhere else.
     pub fn load_program(&mut self, program: Program) -> Program {
-        let garbage = std::mem::replace(
-            &mut self.previous_program,
-            std::mem::replace(&mut self.active_program, program),
-        );
-
-        migrate_program_state(&mut self.active_program, &self.previous_program);
-
-        self.xfade_countdown = if self.previous_program.is_empty() {
-            0
-        } else {
-            self.xfade_duration
-        };
+        let mut garbage = std::mem::replace(&mut self.active_program, program);
+        migrate_program_state(&mut self.active_program, &mut garbage);
         garbage
     }
 
@@ -134,18 +97,9 @@ impl VM {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
 
-                let frame = self.xfade(frame);
-                self.play_xfade(frame)
+                frame
             }
-            Status::Pause => {
-                if self.pause_countdown > 0 {
-                    let frame = perform(&mut self.active_program, &mut self.active_stack);
-                    let frame = self.xfade(frame);
-                    self.pause_xfade(frame)
-                } else {
-                    Default::default()
-                }
-            }
+            Status::Pause => Default::default(),
         }
     }
 
@@ -156,47 +110,9 @@ impl VM {
     pub fn set_monitor_id(&mut self, id: u64) {
         self.monitor_id = id;
     }
-
-    #[inline]
-    fn xfade(&mut self, mut frame: Frame) -> Frame {
-        if self.xfade_countdown > 0 {
-            let progress = self.xfade_countdown as Sample * self.xfade_duration_recip;
-            self.xfade_countdown -= 1;
-            let previous = perform(&mut self.previous_program, &mut self.previous_stack);
-
-            for (x, &p) in frame.iter_mut().zip(previous.iter()) {
-                *x *= 1.0 - progress;
-                *x += p * progress;
-            }
-        }
-
-        frame
-    }
-
-    fn play_xfade(&mut self, mut frame: Frame) -> Frame {
-        if self.pause_countdown > 0 {
-            let progress = 1.0 - (self.pause_countdown as Sample * self.xfade_duration_recip);
-            self.pause_countdown -= 1;
-            for x in frame.iter_mut() {
-                *x *= progress;
-            }
-        }
-
-        frame
-    }
-
-    fn pause_xfade(&mut self, mut frame: Frame) -> Frame {
-        let progress = self.pause_countdown as Sample * self.xfade_duration_recip;
-        self.pause_countdown -= 1;
-        for x in frame.iter_mut() {
-            *x *= progress;
-        }
-
-        frame
-    }
 }
 
-fn migrate_program_state(active_program: &mut Program, previous_program: &Program) {
+fn migrate_program_state(active_program: &mut Program, previous_program: &mut Program) {
     if active_program.is_empty() || previous_program.is_empty() {
         return;
     }
@@ -204,23 +120,27 @@ fn migrate_program_state(active_program: &mut Program, previous_program: &Progra
     // Keep this allocation-free: load_program() runs on the realtime thread in
     // plugin/server callbacks. Index the common case in fixed stack storage, and
     // fall back to a direct scan only for programs beyond MIGRATION_INDEX_SIZE.
+    // Store indices rather than references so migration can steal mutable state
+    // from the previous program.
     let indexed_len = previous_program.len().min(MIGRATION_INDEX_SIZE);
-    let mut previous_by_id: SmallVec<[(u64, &dyn Op); MIGRATION_INDEX_SIZE]> = previous_program
+    let mut previous_by_id: SmallVec<[(u64, usize); MIGRATION_INDEX_SIZE]> = previous_program
         .iter()
         .take(indexed_len)
-        .map(|stmt| (stmt.id, stmt.op.as_ref()))
+        .enumerate()
+        .map(|(index, stmt)| (stmt.id, index))
         .collect();
     previous_by_id.sort_unstable_by_key(|(id, _)| *id);
 
     for stmt in active_program {
         if let Ok(index) = previous_by_id.binary_search_by_key(&stmt.id, |(id, _)| *id) {
-            stmt.op.migrate(previous_by_id[index].1);
+            let previous_index = previous_by_id[index].1;
+            stmt.op.migrate(previous_program[previous_index].op.as_mut());
         } else if let Some(previous_stmt) = previous_program
-            .iter()
+            .iter_mut()
             .skip(indexed_len)
             .find(|previous_stmt| previous_stmt.id == stmt.id)
         {
-            stmt.op.migrate(previous_stmt.op.as_ref());
+            stmt.op.migrate(previous_stmt.op.as_mut());
         }
     }
 }
@@ -294,8 +214,8 @@ mod tests {
             stack.push(&[self.count; 2]);
         }
 
-        fn migrate(&mut self, other: &dyn Op) {
-            if let Some(other) = other.downcast_ref::<Self>() {
+        fn migrate(&mut self, other: &mut dyn Op) {
+            if let Some(other) = other.downcast_mut::<Self>() {
                 self.count = other.count;
             }
         }
@@ -367,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn crossfades_from_previous_program_to_new_program() {
+    fn load_program_switches_to_new_program_immediately() {
         let mut vm = VM::new();
         vm.set_xfade_duration(2.0);
         vm.load_program(smallvec![statement(1, PushFrame([0.0, 0.0]))]);
@@ -377,8 +297,6 @@ mod tests {
 
         vm.load_program(smallvec![statement(1, PushFrame([10.0, 20.0]))]);
 
-        assert_eq!(vm.next_frame(), [0.0, 0.0]);
-        assert_eq!(vm.next_frame(), [5.0, 10.0]);
         assert_eq!(vm.next_frame(), [10.0, 20.0]);
     }
 }

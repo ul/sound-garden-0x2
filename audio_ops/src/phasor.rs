@@ -46,8 +46,8 @@ impl Op for Phasor {
         stack.push(&self.phases);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.migrate_same(other);
         }
     }
@@ -82,8 +82,8 @@ impl Op for Phasor0 {
         stack.push(&self.phases);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.migrate_same(other);
         }
     }

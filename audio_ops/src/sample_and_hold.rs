@@ -31,8 +31,8 @@ impl Op for SampleAndHold {
         stack.push(&self.hold);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.hold = other.hold;
         }
     }
@@ -66,8 +66,8 @@ impl Op for SmoothSampleAndHold {
         stack.push(&self.output);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.output = other.output;
         }
     }

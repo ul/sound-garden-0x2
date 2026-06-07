@@ -33,8 +33,8 @@ impl Op for LPF {
         stack.push(&self.output);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.output = other.output;
         }
     }
@@ -72,8 +72,8 @@ impl Op for HPF {
         stack.push(&self.output);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.output = other.output;
             self.x_prime = other.x_prime;
         }

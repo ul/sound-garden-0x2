@@ -38,9 +38,9 @@ impl Op for Convolution {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.window.copy_backward(&other.window);
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
+            self.window.steal_same_size(&mut other.window);
         }
     }
 }
@@ -76,9 +76,9 @@ impl Op for ConvolutionM {
         stack.push(&frame);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.window.copy_backward(&other.window);
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
+            self.window.steal_same_size(&mut other.window);
         }
         // No need to copy kernel.
     }

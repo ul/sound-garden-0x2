@@ -76,8 +76,8 @@ impl Op for TableWriter {
         self.frame += 1;
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.frame = other.frame;
             self.last_trigger = other.last_trigger;
             self.trigger_frame = other.trigger_frame;

@@ -37,9 +37,9 @@ impl Op for Feedback {
         stack.push(&self.delay_input);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self.delay.migrate_same(&other.delay);
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
+            self.delay.migrate_same(&mut other.delay);
             self.delay_input = other.delay_input;
         }
     }

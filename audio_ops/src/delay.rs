@@ -22,8 +22,8 @@ impl Delay {
         }
     }
 
-    pub fn migrate_same(&mut self, other: &Self) {
-        self.buffer.copy_forward(&other.buffer);
+    pub fn migrate_same(&mut self, other: &mut Self) {
+        self.buffer.steal_same_size(&mut other.buffer);
     }
 }
 
@@ -44,8 +44,8 @@ impl Op for Delay {
         self.buffer.push_front(input);
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.migrate_same(other);
         }
     }
@@ -76,8 +76,8 @@ impl Op for Prime {
         self.previous = current;
     }
 
-    fn migrate(&mut self, other: &dyn Op) {
-        if let Some(other) = other.downcast_ref::<Self>() {
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
             self.previous = other.previous;
         }
     }

@@ -251,7 +251,7 @@ fn lifecycle_benchmarks(c: &mut Criterion) {
     group.finish();
 }
 
-fn monitor_and_crossfade_benchmarks(c: &mut Criterion) {
+fn monitor_and_reload_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("vm_state_paths");
     let ops = poly_synth_ops(16);
 
@@ -267,7 +267,7 @@ fn monitor_and_crossfade_benchmarks(c: &mut Criterion) {
         b.iter(|| black_box(vm.next_frame()));
     });
 
-    group.bench_function("active_program_crossfade", |b| {
+    group.bench_function("active_program_reload", |b| {
         b.iter_batched(
             || {
                 let mut ctx = Context::new();
@@ -283,7 +283,7 @@ fn monitor_and_crossfade_benchmarks(c: &mut Criterion) {
         );
     });
 
-    group.bench_function("pause_fade", |b| {
+    group.bench_function("pause", |b| {
         b.iter_batched(
             || {
                 let mut vm = vm_from_ops(&ops);
@@ -323,7 +323,7 @@ criterion_group!(
     audio_frame_benchmarks,
     stack_benchmarks,
     lifecycle_benchmarks,
-    monitor_and_crossfade_benchmarks,
+    monitor_and_reload_benchmarks,
     block_render_benchmarks,
 );
 criterion_main!(benches);

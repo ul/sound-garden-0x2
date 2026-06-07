@@ -9,10 +9,10 @@ pub trait Op: Send + Downcast {
     /// It must be called exactly once per audio frame.
     fn perform(&mut self, stack: &mut Stack);
 
-    /// Smoothly transition from another Op.
-    /// Usually just copy state from the Op of the same kind.
+    /// Transition from another Op.
+    /// Implementations may copy small state or steal large state from the previous Op.
     /// Keep it efficient as it can block an audio thread.
-    fn migrate(&mut self, _other: &dyn Op) {}
+    fn migrate(&mut self, _other: &mut dyn Op) {}
 }
 
 impl_downcast!(Op);
