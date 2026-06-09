@@ -289,12 +289,16 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "dmh" | "dmetro_hold" => push_args!(id, DMetroHold, sample_rate),
             "dup" => push!(id, Dup),
             "exp" => push_args!(id, Fn1, pure::exp),
+            "biexp" => push_args!(id, Fn3, pure::biexp),
+            "expexp" => push_args!(id, Fn5, pure::expexp),
+            "explin" => push_args!(id, Fn5, pure::explin),
             "f2m" | "freq2midi" => push_args!(id, Fn1, pure::freq2midi),
             "h" | "bqhpf" => push_args!(id, BiQuad, sample_rate, make_hpf_coefficients),
             "hpf" => push_args!(id, HPF, sample_rate),
             "impulse" => push_args!(id, Impulse, sample_rate),
             "in" | "input" => push_args!(id, Input, Arc::clone(&ctx.input)),
             "l" | "bqlpf" => push_args!(id, BiQuad, sample_rate, make_lpf_coefficients),
+            "linexp" => push_args!(id, Fn5, pure::linexp),
             "linlin" | "project" => push_args!(id, Fn5, pure::linlin),
             "lpf" => push_args!(id, LPF, sample_rate),
             "m" | "metro" => push_args!(id, Metro, sample_rate),
@@ -382,6 +386,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             "tri" => push_args!(id, OscPhase, sample_rate, pure::triangle),
             "tline" => push_args!(id, Transition, sample_rate, pure::linear_curve),
             "tquad" => push_args!(id, Transition, sample_rate, pure::quadratic_curve),
+            "uniexp" => push_args!(id, Fn3, pure::uniexp),
             "unit" => push_args!(id, Fn1, pure::unit),
             "w" => push_args!(id, Phasor, sample_rate),
             "wah" => push_args!(id, WahPedal, sample_rate),
@@ -770,6 +775,17 @@ fn note_name_semitone(note: char) -> Option<i32> {
     }
 }
 
+fn parse_ratio_constant(token: &str) -> Option<Sample> {
+    let (numerator, denominator) = token.split_once('/')?;
+    if denominator.contains('/') || numerator.is_empty() || denominator.is_empty() {
+        return None;
+    }
+
+    let numerator = numerator.parse::<Sample>().ok()?;
+    let denominator = denominator.parse::<Sample>().ok()?;
+    Some(pure::safe_div(numerator, denominator))
+}
+
 fn parse_note_constant(token: &str) -> Option<Sample> {
     let mut chars = token.chars();
     let note = chars.next()?;
@@ -807,7 +823,7 @@ fn parse_note_constant(token: &str) -> Option<Sample> {
 fn optimized_op(stmt: &TextOp) -> OptimizedOp {
     match stmt.op.parse::<Sample>() {
         Ok(value) => OptimizedOp::Constant { id: stmt.id, value },
-        Err(_) => match parse_note_constant(&stmt.op) {
+        Err(_) => match parse_ratio_constant(&stmt.op).or_else(|| parse_note_constant(&stmt.op)) {
             Some(value) => OptimizedOp::Constant { id: stmt.id, value },
             None => OptimizedOp::Text(stmt.clone()),
         },
@@ -1050,6 +1066,14 @@ mod tests {
             optimize_terms(&[op(1, "db4")]),
             vec![constant(1, pure::midi2freq(61.0))]
         );
+    }
+
+    #[test]
+    fn optimize_terms_parses_ratio_literals() {
+        assert_eq!(optimize_terms(&[op(1, "5/4")]), vec![constant(1, 1.25)]);
+        assert_eq!(optimize_terms(&[op(1, "1.5/4")]), vec![constant(1, 0.375)]);
+        assert_eq!(optimize_terms(&[op(1, "1/0")]), vec![constant(1, 0.0)]);
+        assert_eq!(optimize_terms(&[op(1, "1/2/3")]), vec![text(1, "1/2/3")]);
     }
 
     #[test]

@@ -11,6 +11,7 @@ return, ret, !:: stop compiling/evaluating the program here; the current stack/a
 
 [horizontal]
 <number>:: push a numeric constant, e.g. `0.5`, `-12`, `1e-3`
+<numerator>/<denominator>:: push a ratio literal with numeric numerator and denominator and no spaces, e.g. `5/4`, `3/2`, `1.5/4`
 silence:: () -> push constant 0.0
 sr:: () -> push current sample rate
 pi:: () -> push π
@@ -71,6 +72,11 @@ tanh:: (x) -> hyperbolic tangent
 round:: (x) -> round to nearest integer
 quantize, q:: (x, step) -> round x to the nearest multiple of step
 linlin, project:: (x, a, b, c, d) -> linearly project x from range a..b to range c..d
+linexp:: (x, a, b, c, d) -> linearly project x from range a..b to exponential range c..d
+explin:: (x, a, b, c, d) -> exponentially project x from range a..b to linear range c..d
+expexp:: (x, a, b, c, d) -> exponentially project x from range a..b to exponential range c..d
+uniexp:: (x, lo, hi) -> exponentially project x from 0..1 to lo..hi
+biexp:: (x, lo, hi) -> exponentially project x from -1..1 to lo..hi
 range, r:: (x, c, d) -> same as project with a = -1 and b = 1
 unit:: (x) -> same as range with c = 0 and d = 1
 circle:: (x) -> same as range with c = -π and d = π

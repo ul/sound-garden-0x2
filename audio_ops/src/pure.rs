@@ -107,10 +107,45 @@ pub fn tanh(x: Sample) -> Sample {
 
 // Projections
 
+#[inline]
+fn finite_or_zero(x: Sample) -> Sample {
+    if x.is_finite() { x } else { 0.0 }
+}
+
 /// Assuming that x varies in the range a..b linearly project it into the range c..d
 #[inline]
 pub fn linlin(x: Sample, a: Sample, b: Sample, c: Sample, d: Sample) -> Sample {
-    safe_div((d - c) * (x - a), b - a) + c
+    finite_or_zero(safe_div((d - c) * (x - a), b - a) + c)
+}
+
+/// Assuming that x varies in the range 0..1 exponentially project it into the range lo..hi
+#[inline]
+pub fn uniexp(x: Sample, lo: Sample, hi: Sample) -> Sample {
+    finite_or_zero(lo * safe_div(hi, lo).powf(x))
+}
+
+/// Assuming that x varies in the range -1..1 exponentially project it into the range lo..hi
+#[inline]
+pub fn biexp(x: Sample, lo: Sample, hi: Sample) -> Sample {
+    uniexp(unit(x), lo, hi)
+}
+
+/// Assuming that x varies in the range a..b linearly project it into the exponential range c..d
+#[inline]
+pub fn linexp(x: Sample, a: Sample, b: Sample, c: Sample, d: Sample) -> Sample {
+    uniexp(safe_div(x - a, b - a), c, d)
+}
+
+/// Assuming that x varies in the exponential range a..b, project it into the linear range c..d
+#[inline]
+pub fn explin(x: Sample, a: Sample, b: Sample, c: Sample, d: Sample) -> Sample {
+    linlin(safe_div(x, a).log2(), 0.0, safe_div(b, a).log2(), c, d)
+}
+
+/// Assuming that x varies in the exponential range a..b, project it into the exponential range c..d
+#[inline]
+pub fn expexp(x: Sample, a: Sample, b: Sample, c: Sample, d: Sample) -> Sample {
+    uniexp(safe_div(safe_div(x, a).log2(), safe_div(b, a).log2()), c, d)
 }
 
 /// Assuming that x varies in the range -1..1 linearly project it into the range a..b
@@ -304,4 +339,28 @@ pub fn sinc(x: Sample) -> Sample {
 #[inline]
 pub fn sinc_fast(x: Sample) -> Sample {
     if x != 0.0 { sin_fast(x) / x } else { 1.0 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_close(actual: Sample, expected: Sample) {
+        assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn exponential_projection_ops_map_endpoints_and_midpoints() {
+        assert_close(uniexp(0.0, 100.0, 10_000.0), 100.0);
+        assert_close(uniexp(0.5, 100.0, 10_000.0), 1_000.0);
+        assert_close(uniexp(1.0, 100.0, 10_000.0), 10_000.0);
+
+        assert_close(biexp(-1.0, 100.0, 10_000.0), 100.0);
+        assert_close(biexp(0.0, 100.0, 10_000.0), 1_000.0);
+        assert_close(biexp(1.0, 100.0, 10_000.0), 10_000.0);
+
+        assert_close(linexp(5.0, 0.0, 10.0, 100.0, 10_000.0), 1_000.0);
+        assert_close(explin(1_000.0, 100.0, 10_000.0, 0.0, 10.0), 5.0);
+        assert_close(expexp(1_000.0, 100.0, 10_000.0, 1.0, 16.0), 4.0);
+    }
 }
