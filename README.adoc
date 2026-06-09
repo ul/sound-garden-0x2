@@ -166,7 +166,10 @@ then read flat patterns with `pat`, `gate`, or `trig`:
 active cells:
 -----
 220 s 1 cycle gate:x..x 0.01 0.1 0.0 0.2 adsr *
-1 ctrig:x... impulse
+-----
+
+-----
+220 s 1 ctrig:x... 0.1 impulse *
 -----
 The `cpat`, `cgate`, and `ctrig` forms are CPS-consuming conveniences equivalent to
 `cycle` followed by the corresponding phase-consuming reader.
