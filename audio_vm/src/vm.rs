@@ -10,6 +10,12 @@ use std::sync::{atomic::Ordering, Arc};
 /// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur extra indirection.
 pub const FAST_PROGRAM_SIZE: usize = 64;
 const MIGRATION_INDEX_SIZE: usize = 128;
+/// Default program reload declick duration in frames (~5 ms at 48 kHz).
+const DECLICK_DURATION: usize = 256;
+/// Residual level the declick correction decays to over its duration (-100 dB).
+const DECLICK_RESIDUAL: Sample = 1e-5;
+/// Reload steps below this level are inaudible; skip declicking to keep output bit-exact.
+const DECLICK_THRESHOLD: Sample = 1e-6;
 
 pub struct Statement {
     pub id: u64,
@@ -35,6 +41,18 @@ pub struct VM {
     /// What Statement output we want to monitor.
     /// 0 has a special meaning of the last Statement.
     monitor_id: u64,
+    /// Last output frame, used to measure the step introduced by a program reload.
+    last_frame: Frame,
+    /// Exponentially decaying correction that cancels the program reload step.
+    declick_offset: Frame,
+    /// Frames of declick correction left.
+    declick_countdown: usize,
+    /// Total declick duration in frames.
+    declick_duration: usize,
+    /// Per-frame decay factor of the declick correction.
+    declick_decay: Sample,
+    /// Set by load_program while audible; the next frame captures the reload step.
+    declick_pending: bool,
 }
 
 impl Default for VM {
@@ -54,6 +72,12 @@ impl VM {
             status: Status::Pause,
             monitor: Default::default(),
             monitor_id: 0,
+            last_frame: Default::default(),
+            declick_offset: Default::default(),
+            declick_countdown: 0,
+            declick_duration: DECLICK_DURATION,
+            declick_decay: declick_decay(DECLICK_DURATION),
+            declick_pending: false,
         }
     }
 
@@ -89,17 +113,27 @@ impl VM {
         };
     }
 
+    /// Set program reload declick duration in frames. 0 disables declicking.
+    pub fn set_declick_duration(&mut self, frames: Sample) {
+        self.declick_duration = frames.max(0.0) as usize;
+        self.declick_decay = declick_decay(self.declick_duration);
+        self.declick_countdown = self.declick_countdown.min(self.declick_duration);
+    }
+
     /// Load the new program and steal/migrate state from the previous active program.
     /// Returns the old program so it can be deallocated somewhere else.
     pub fn load_program(&mut self, program: Program) -> Program {
         let mut garbage = std::mem::replace(&mut self.active_program, program);
         migrate_program_state(&mut self.active_program, &mut garbage);
+        // Arm the declicker only when the VM is audible; a silent VM cannot click.
+        self.declick_pending = self.declick_duration > 0
+            && (matches!(self.status, Status::Play) || self.pause_countdown > 0);
         garbage
     }
 
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     pub fn next_frame(&mut self) -> Frame {
-        match self.status {
+        let frame = match self.status {
             Status::Play => {
                 let (frame, monitor_frame) = if self.monitor_id == 0 {
                     let frame = perform(&mut self.active_program, &mut self.active_stack);
@@ -116,17 +150,24 @@ impl VM {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
 
+                let frame = self.declick(frame);
                 self.play_xfade(frame)
             }
             Status::Pause => {
                 if self.pause_countdown > 0 {
                     let frame = perform(&mut self.active_program, &mut self.active_stack);
+                    let frame = self.declick(frame);
                     self.pause_xfade(frame)
                 } else {
+                    // Fully silent: nothing to declick against.
+                    self.declick_pending = false;
+                    self.declick_countdown = 0;
                     Default::default()
                 }
             }
-        }
+        };
+        self.last_frame = frame;
+        frame
     }
 
     pub fn monitor(&self) -> Arc<AtomicFrame> {
@@ -135,6 +176,39 @@ impl VM {
 
     pub fn set_monitor_id(&mut self, id: u64) {
         self.monitor_id = id;
+    }
+
+    /// Cancel the step discontinuity introduced by a program reload: on the first
+    /// frame after the reload, capture the step against the last heard frame, then
+    /// add it back to the output while it decays exponentially to silence.
+    fn declick(&mut self, mut frame: Frame) -> Frame {
+        if self.declick_pending {
+            self.declick_pending = false;
+            let mut step: Sample = 0.0;
+            for (offset, (&last, &new)) in self
+                .declick_offset
+                .iter_mut()
+                .zip(self.last_frame.iter().zip(&frame))
+            {
+                *offset = last - new;
+                step = step.max(offset.abs());
+            }
+            self.declick_countdown = if step > DECLICK_THRESHOLD {
+                self.declick_duration
+            } else {
+                0
+            };
+        }
+
+        if self.declick_countdown > 0 {
+            self.declick_countdown -= 1;
+            for (x, offset) in frame.iter_mut().zip(self.declick_offset.iter_mut()) {
+                *x += *offset;
+                *offset *= self.declick_decay;
+            }
+        }
+
+        frame
     }
 
     fn play_xfade(&mut self, mut frame: Frame) -> Frame {
@@ -157,6 +231,14 @@ impl VM {
         }
 
         frame
+    }
+}
+
+fn declick_decay(duration: usize) -> Sample {
+    if duration > 0 {
+        DECLICK_RESIDUAL.powf((duration as Sample).recip())
+    } else {
+        0.0
     }
 }
 
@@ -344,6 +426,7 @@ mod tests {
     fn load_program_migrates_matching_statement_state() {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
+        vm.set_declick_duration(0.0);
         vm.load_program(smallvec![statement(42, Counter::new())]);
         vm.play();
         assert_eq!(vm.next_frame(), [1.0, 1.0]);
@@ -356,6 +439,7 @@ mod tests {
     fn load_program_switches_to_new_program_immediately() {
         let mut vm = VM::new();
         vm.set_xfade_duration(2.0);
+        vm.set_declick_duration(0.0);
         vm.load_program(smallvec![statement(1, PushFrame([0.0, 0.0]))]);
         vm.play();
         vm.next_frame();
@@ -364,5 +448,55 @@ mod tests {
         vm.load_program(smallvec![statement(1, PushFrame([10.0, 20.0]))]);
 
         assert_eq!(vm.next_frame(), [10.0, 20.0]);
+    }
+
+    #[test]
+    fn load_program_declicks_step_discontinuity() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.set_declick_duration(2.0);
+        vm.load_program(smallvec![statement(1, PushFrame([1.0, -1.0]))]);
+        vm.play();
+        assert_eq!(vm.next_frame(), [1.0, -1.0]);
+
+        vm.load_program(smallvec![statement(1, PushFrame([0.0, 0.0]))]);
+
+        // First frame after reload is continuous with the last heard frame.
+        assert_eq!(vm.next_frame(), [1.0, -1.0]);
+        // Then the correction decays exponentially...
+        let decay = DECLICK_RESIDUAL.powf(0.5);
+        let frame = vm.next_frame();
+        assert!((frame[0] - decay).abs() < 1e-12);
+        assert!((frame[1] + decay).abs() < 1e-12);
+        // ...and is dropped entirely after the declick duration.
+        assert_eq!(vm.next_frame(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn load_program_with_continuous_output_skips_declick() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(smallvec![statement(1, PushFrame([0.5, 0.5]))]);
+        vm.play();
+        assert_eq!(vm.next_frame(), [0.5, 0.5]);
+
+        vm.load_program(smallvec![statement(1, PushFrame([0.5, 0.5]))]);
+
+        // No audible step: declick stays disarmed and output is bit-exact.
+        assert_eq!(vm.next_frame(), [0.5, 0.5]);
+        assert_eq!(vm.next_frame(), [0.5, 0.5]);
+    }
+
+    #[test]
+    fn load_program_while_silent_does_not_arm_declick() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(smallvec![statement(1, PushFrame([1.0, 1.0]))]);
+        assert_eq!(vm.next_frame(), [0.0, 0.0]);
+
+        // A silent VM cannot click, so the reload must not smear the first
+        // audible frame after play().
+        vm.play();
+        assert_eq!(vm.next_frame(), [1.0, 1.0]);
     }
 }
