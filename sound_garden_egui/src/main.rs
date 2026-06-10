@@ -284,8 +284,15 @@ impl SoundGardenApp {
             .and_then(|(node, _)| node.text.split(':').next().map(|s| s.to_owned()))
     }
 
+    fn reset_oscilloscope(&mut self) {
+        self.oscilloscope_values.clear();
+        self.oscilloscope_min = -1.0;
+        self.oscilloscope_max = 1.0;
+    }
+
     fn handle_action(&mut self, action: Action) {
         let prev_cursor_position = self.state.cursor.position;
+        let prev_scope_node_id = self.node_at_cursor().map(|(node, _)| node.id);
 
         match action {
             Action::MoveCursor(delta) => self.state.cursor.position += delta,
@@ -402,8 +409,12 @@ impl SoundGardenApp {
             }
             Action::ToggleOscilloscope => {
                 self.state.show_oscilloscope = !self.state.show_oscilloscope;
+                if self.state.show_oscilloscope {
+                    self.reset_oscilloscope();
+                }
                 self.update_monitor_stream();
             }
+            Action::ResetOscilloscope => self.reset_oscilloscope(),
             Action::ToggleOpList => {
                 self.state.show_op_list = !self.state.show_op_list;
             }
@@ -440,6 +451,11 @@ impl SoundGardenApp {
             self.set_cursor();
         }
         self.sync_from_repo();
+        if self.state.show_oscilloscope
+            && self.node_at_cursor().map(|(node, _)| node.id) != prev_scope_node_id
+        {
+            self.reset_oscilloscope();
+        }
         self.update_audio_monitor();
     }
 
@@ -1303,6 +1319,7 @@ enum Action {
     InsertNewLineBelow,
     InsertNewLineAbove,
     ToggleOscilloscope,
+    ResetOscilloscope,
     ToggleOpList,
     TogglePatternHighlights,
     OscilloscopeZoomIn,
@@ -1378,6 +1395,7 @@ fn key_action(key: egui::Key, modifiers: egui::Modifiers, mode: Mode) -> Option<
             egui::Key::O if !shift => Some(Action::InsertNewLineBelow),
             egui::Key::S if !shift => Some(Action::SplitLine),
             egui::Key::V if !shift => Some(Action::ToggleOscilloscope),
+            egui::Key::V if shift => Some(Action::ResetOscilloscope),
             egui::Key::P if !shift => Some(Action::TogglePatternHighlights),
             _ => None,
         },
@@ -1774,8 +1792,14 @@ mod tests {
         assert_eq!(active_pattern_span("x(3,8).", true, 0.75, 0), Some((0, 6)));
         assert_eq!(active_pattern_span("x(3,8).", true, 0.95, 0), Some((6, 7)));
         assert_eq!(active_pattern_span("e(1,2).", true, 0.4, 0), Some((0, 6)));
-        assert_eq!(active_pattern_span("60(3,8),72", false, 0.75, 0), Some((0, 7)));
-        assert_eq!(active_pattern_span("60(3,8),72", false, 0.95, 0), Some((8, 10)));
+        assert_eq!(
+            active_pattern_span("60(3,8),72", false, 0.75, 0),
+            Some((0, 7))
+        );
+        assert_eq!(
+            active_pattern_span("60(3,8),72", false, 0.95, 0),
+            Some((8, 10))
+        );
     }
 
     #[test]
