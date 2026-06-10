@@ -503,12 +503,15 @@ impl SoundGardenApp {
             .iter()
             .enumerate()
             .filter_map(|(index, node)| {
+                if self.state.draft_nodes.contains(&node.id) {
+                    return None;
+                }
+                let source_node = self.state.nodes.get(index.checked_sub(1)?)?;
+                if self.state.draft_nodes.contains(&source_node.id) {
+                    return None;
+                }
                 let (clocked, _, _) = pattern_text(&node.text)?;
-                let source_id = self
-                    .state
-                    .nodes
-                    .get(index.checked_sub(1)?)
-                    .map(|node| u64::from(node.id))?;
+                let source_id = u64::from(source_node.id);
                 let old = old_monitors.get(&node.id);
                 Some((
                     node.id,
@@ -1005,6 +1008,9 @@ impl SoundGardenApp {
     }
 
     fn paint_pattern_highlight(&self, painter: &egui::Painter, origin: Pos2, node: &Node) {
+        if self.state.draft_nodes.contains(&node.id) {
+            return;
+        }
         let Some(monitor) = self.pattern_monitors.get(&node.id) else {
             return;
         };
