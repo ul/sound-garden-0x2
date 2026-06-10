@@ -4,7 +4,7 @@ use crate::stack::Stack;
 #[cfg(feature = "allocation-checks")]
 use alloc_counter::no_alloc;
 use smallvec::SmallVec;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::{Arc, Mutex, atomic::Ordering};
 
 // Benchmarks (benches/microstructure.rs) showed SmallVec inline storage for Program
 // buys nothing on the hot path (op state is boxed anyway) while bloating every
@@ -42,6 +42,9 @@ pub struct VM {
     /// What Statement output we want to monitor.
     /// 0 has a special meaning of the last Statement.
     monitor_id: u64,
+    /// Statement outputs used for GUI pattern highlighting.
+    pattern_monitor_ids: Vec<u64>,
+    pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>>,
     /// Last output frame, used to measure the step introduced by a program reload.
     last_frame: Frame,
     /// Exponentially decaying correction that cancels the program reload step.
@@ -73,6 +76,8 @@ impl VM {
             status: Status::Pause,
             monitor: Default::default(),
             monitor_id: 0,
+            pattern_monitor_ids: Vec::new(),
+            pattern_monitor: Default::default(),
             last_frame: Default::default(),
             declick_offset: Default::default(),
             declick_countdown: 0,
@@ -136,20 +141,20 @@ impl VM {
     pub fn next_frame(&mut self) -> Frame {
         let frame = match self.status {
             Status::Play => {
-                let (frame, monitor_frame) = if self.monitor_id == 0 {
-                    let frame = perform(&mut self.active_program, &mut self.active_stack);
-                    (frame, frame)
-                } else {
-                    perform_and_monitor(
-                        &mut self.active_program,
-                        &mut self.active_stack,
-                        self.monitor_id,
-                    )
-                };
+                let mut pattern_monitor = self.pattern_monitor.try_lock().ok();
+                let (frame, monitor_frame) = perform_and_monitor(
+                    &mut self.active_program,
+                    &mut self.active_stack,
+                    self.monitor_id,
+                    pattern_monitor
+                        .as_mut()
+                        .map(|monitor| monitor.as_mut_slice()),
+                );
 
                 for (a, &x) in self.monitor.iter().zip(&monitor_frame) {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
+                drop(pattern_monitor);
 
                 let frame = self.declick(frame);
                 self.play_xfade(frame)
@@ -175,8 +180,25 @@ impl VM {
         Arc::clone(&self.monitor)
     }
 
+    pub fn pattern_monitor(&self) -> Arc<Mutex<Vec<(u64, Frame)>>> {
+        Arc::clone(&self.pattern_monitor)
+    }
+
     pub fn set_monitor_id(&mut self, id: u64) {
         self.monitor_id = id;
+    }
+
+    pub fn set_pattern_monitor_ids(&mut self, ids: Vec<u64>) {
+        self.pattern_monitor_ids = ids;
+        if let Ok(mut monitor) = self.pattern_monitor.lock() {
+            monitor.clear();
+            monitor.extend(
+                self.pattern_monitor_ids
+                    .iter()
+                    .copied()
+                    .map(|id| (id, Default::default())),
+            );
+        }
     }
 
     /// Cancel the step discontinuity introduced by a program reload: on the first
@@ -290,19 +312,33 @@ fn perform(program: &mut Program, stack: &mut Stack) -> Frame {
 }
 
 #[inline]
-fn perform_and_monitor(program: &mut Program, stack: &mut Stack, scope_id: u64) -> (Frame, Frame) {
-    debug_assert_ne!(scope_id, 0);
-
+fn perform_and_monitor(
+    program: &mut Program,
+    stack: &mut Stack,
+    scope_id: u64,
+    mut pattern_monitor: Option<&mut [(u64, Frame)]>,
+) -> (Frame, Frame) {
     let mut scope = Default::default();
     stack.reset();
     for stmt in program {
         stmt.op.perform(stack);
+        let frame = stack.peek();
         if scope_id == stmt.id {
-            scope = stack.peek();
+            scope = frame;
+        }
+        if let Some(pattern_monitor) = &mut pattern_monitor
+            && let Some((_, pattern_frame)) =
+                pattern_monitor.iter_mut().find(|(id, _)| *id == stmt.id)
+        {
+            *pattern_frame = frame;
         }
     }
 
-    (stack.peek(), scope)
+    let frame = stack.peek();
+    if scope_id == 0 {
+        scope = frame;
+    }
+    (frame, scope)
 }
 
 enum Status {

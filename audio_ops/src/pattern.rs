@@ -208,6 +208,16 @@ fn unsigned(input: &str) -> IResult<&str, usize> {
     map_res(digit1, str::parse::<usize>)(input)
 }
 
+fn signed(input: &str) -> IResult<&str, isize> {
+    map_res(
+        tuple((opt(char('-')), digit1)),
+        |(sign, digits): (Option<char>, &str)| {
+            let value = digits.parse::<isize>()?;
+            Ok::<_, std::num::ParseIntError>(if sign.is_some() { -value } else { value })
+        },
+    )(input)
+}
+
 fn repeat_suffix(input: &str) -> IResult<&str, usize> {
     map(opt(preceded(char('*'), unsigned)), |repeat| {
         repeat.unwrap_or(1)
@@ -233,6 +243,7 @@ fn repeat_elements<T: Clone>(element: PatternElement<T>, repeat: usize) -> Vec<P
 fn euclidean_values<T: Copy>(
     pulses: usize,
     steps: usize,
+    offset: isize,
     on: T,
     off: T,
 ) -> Option<Vec<PatternElement<T>>> {
@@ -242,7 +253,8 @@ fn euclidean_values<T: Copy>(
     Some(
         (0..steps)
             .map(|step| {
-                PatternElement::Atom(if (step * pulses) % steps < pulses {
+                let rotated_step = (step as isize - offset).rem_euclid(steps as isize) as usize;
+                PatternElement::Atom(if (rotated_step * pulses) % steps < pulses {
                     on
                 } else {
                     off
@@ -252,12 +264,46 @@ fn euclidean_values<T: Copy>(
     )
 }
 
-fn euclidean_args(input: &str) -> IResult<&str, (usize, usize)> {
+fn finite_sample_token(input: &str) -> IResult<&str, Sample> {
+    map_res(
+        take_while1(|ch: char| ch != ',' && ch != ')' && !ch.is_ascii_whitespace()),
+        |token: &str| {
+            let value = token.parse::<Sample>().map_err(|_| ())?;
+            value.is_finite().then_some(value).ok_or(())
+        },
+    )(input)
+}
+
+fn euclidean_args(input: &str) -> IResult<&str, (usize, usize, isize)> {
     delimited(
         char('('),
         map(
-            tuple((ws(unsigned), char(','), ws(unsigned))),
-            |(pulses, _, steps)| (pulses, steps),
+            tuple((
+                ws(unsigned),
+                char(','),
+                ws(unsigned),
+                opt(preceded(char(','), ws(signed))),
+            )),
+            |(pulses, _, steps, offset)| (pulses, steps, offset.unwrap_or(0)),
+        ),
+        char(')'),
+    )(input)
+}
+
+fn value_euclidean_args(input: &str) -> IResult<&str, (usize, usize, isize, Sample)> {
+    delimited(
+        char('('),
+        map(
+            tuple((
+                ws(unsigned),
+                char(','),
+                ws(unsigned),
+                opt(preceded(char(','), ws(signed))),
+                opt(preceded(char(','), ws(finite_sample_token))),
+            )),
+            |(pulses, _, steps, offset, off)| {
+                (pulses, steps, offset.unwrap_or(0), off.unwrap_or(0.0))
+            },
         ),
         char(')'),
     )(input)
@@ -280,16 +326,16 @@ fn value_atom(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
                         && ch != '*'
                         && ch != '('
                 }),
-                opt(euclidean_args),
+                opt(value_euclidean_args),
             )),
-            |(token, euclid): (&str, Option<(usize, usize)>)| {
+            |(token, euclid): (&str, Option<(usize, usize, isize, Sample)>)| {
                 let value = token.parse::<Sample>().map_err(|_| ())?;
                 if !value.is_finite() {
                     return Err(());
                 }
                 Ok(match euclid {
-                    Some((pulses, steps)) => PatternElement::Group(
-                        euclidean_values(pulses, steps, Some(value), None).ok_or(())?,
+                    Some((pulses, steps, offset, off)) => PatternElement::Group(
+                        euclidean_values(pulses, steps, offset, Some(value), Some(off)).ok_or(())?,
                     ),
                     None => PatternElement::Atom(Some(value)),
                 })
@@ -387,16 +433,21 @@ fn gate_atom(input: &str) -> IResult<&str, PatternElement<bool>> {
         map(
             preceded(alt((char('x'), char('X'))), opt(euclidean_args)),
             |euclid| match euclid {
-                Some((pulses, steps)) => PatternElement::Group(
-                    euclidean_values(pulses, steps, true, false).unwrap_or_default(),
+                Some((pulses, steps, offset)) => PatternElement::Group(
+                    euclidean_values(pulses, steps, offset, true, false).unwrap_or_default(),
                 ),
                 None => PatternElement::Atom(true),
             },
         ),
         value(PatternElement::Atom(false), char('.')),
-        map(preceded(char('e'), euclidean_args), |(pulses, steps)| {
-            PatternElement::Group(euclidean_values(pulses, steps, true, false).unwrap_or_default())
-        }),
+        map(
+            preceded(char('e'), euclidean_args),
+            |(pulses, steps, offset)| {
+                PatternElement::Group(
+                    euclidean_values(pulses, steps, offset, true, false).unwrap_or_default(),
+                )
+            },
+        ),
     ))(input)
 }
 
@@ -822,12 +873,27 @@ mod tests {
     }
 
     #[test]
-    fn value_pattern_supports_euclidean_rhythms_as_held_values() {
+    fn value_pattern_supports_euclidean_rhythms_with_zero_rests() {
         let mut pat = PatternValue::new("60(3,8)");
         assert_eq!(perform(&mut pat, [0.0, 0.1249]), [60.0, 60.0]);
-        assert_eq!(perform(&mut pat, [0.125, 0.2499]), [60.0, 60.0]);
-        assert_eq!(perform(&mut pat, [0.25, 0.3749]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.125, 0.2499]), [0.0, 0.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.3749]), [0.0, 0.0]);
         assert_eq!(perform(&mut pat, [0.375, 0.4999]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.6249]), [0.0, 0.0]);
+        assert_eq!(perform(&mut pat, [0.625, 0.7499]), [0.0, 0.0]);
+        assert_eq!(perform(&mut pat, [0.75, 0.8749]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.875, 0.9999]), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn value_pattern_euclidean_rhythms_accept_offsets_and_explicit_off_values() {
+        let mut pat = PatternValue::new("60(3,8,2,-12)");
+        assert_eq!(perform(&mut pat, [0.0, 0.1249]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.125, 0.2499]), [-12.0, -12.0]);
+        assert_eq!(perform(&mut pat, [0.25, 0.3749]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.375, 0.4999]), [-12.0, -12.0]);
+        assert_eq!(perform(&mut pat, [0.5, 0.6249]), [-12.0, -12.0]);
+        assert_eq!(perform(&mut pat, [0.625, 0.7499]), [60.0, 60.0]);
     }
 
     #[test]
@@ -864,8 +930,22 @@ mod tests {
     #[test]
     fn invalid_value_patterns_output_zero() {
         for pattern in [
-            "", "_", "_*4", "60,,64", "abc", "NaN", "inf", "1e309", "60,[64", "60*", "60*0",
-            "60(5,4)", "60(3,0)", "<60,64;>", "60|",
+            "",
+            "_",
+            "_*4",
+            "60,,64",
+            "abc",
+            "NaN",
+            "inf",
+            "1e309",
+            "60,[64",
+            "60*",
+            "60*0",
+            "60(5,4)",
+            "60(3,0)",
+            "60(3,8,nan)",
+            "<60,64;>",
+            "60|",
         ] {
             let mut pat = PatternValue::new(pattern);
             assert_eq!(perform(&mut pat, [0.5, 0.5]), [0.0, 0.0]);
@@ -940,6 +1020,17 @@ mod tests {
         assert_eq!(perform(&mut gate, [0.625, 0.7499]), [0.0, 0.0]);
         assert_eq!(perform(&mut gate, [0.75, 0.8749]), [1.0, 1.0]);
         assert_eq!(perform(&mut gate, [0.875, 0.9999]), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn gate_pattern_euclidean_rhythms_accept_offsets() {
+        let mut gate = PatternGate::new("x(3,8,2)");
+        assert_eq!(perform(&mut gate, [0.0, 0.1249]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.125, 0.2499]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.25, 0.3749]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.375, 0.4999]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.6249]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.625, 0.7499]), [1.0, 1.0]);
     }
 
     #[test]

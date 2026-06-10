@@ -15,21 +15,29 @@ const CHANNEL_CAPACITY: usize = 64;
 const RECORD_BUFFER_CAPACITY: usize = 48000;
 const OSCILLOSCOPE_POLL_MS: u64 = 10;
 
+#[derive(Clone, Debug)]
+pub struct Monitor {
+    pub scope: Frame,
+    pub patterns: Vec<(u64, Frame)>,
+}
+
 #[derive(Archive, RkyvSerialize, RkyvDeserialize, Serialize, Deserialize)]
 pub enum Msg {
     Play(bool),
     Record(bool),
     LoadProgram(Vec<TextOp>),
     Monitor(u64),
+    PatternMonitors(Vec<u64>),
     Oscilloscope(bool),
     Quit,
 }
 
 pub use Msg as Message;
 
-pub fn run(rx: Receiver<Msg>, tx: Sender<Frame>) {
+pub fn run(rx: Receiver<Msg>, tx: Sender<Monitor>) {
     let vm = VM::new();
     let monitor = vm.monitor();
+    let pattern_monitor = vm.pattern_monitor();
     let (producer, consumer) = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
     let (mut command_tx, command_rx) = RingBuffer::<audio::Command>::new(CHANNEL_CAPACITY);
     let (garbage_tx, mut garbage_rx) = RingBuffer::<Program>::new(CHANNEL_CAPACITY);
@@ -69,7 +77,11 @@ pub fn run(rx: Receiver<Msg>, tx: Sender<Frame>) {
                             for (a, x) in monitor.iter().zip(&mut frame) {
                                 *x = f64::from_bits(a.load(Ordering::Relaxed));
                             }
-                            if tx.send(frame).is_err() { break; };
+                            let patterns = pattern_monitor
+                                .try_lock()
+                                .map(|monitor| monitor.clone())
+                                .unwrap_or_default();
+                            if tx.send(Monitor { scope: frame, patterns }).is_err() { break; };
                         }
                     }
                 } else {
@@ -97,6 +109,9 @@ pub fn run(rx: Receiver<Msg>, tx: Sender<Frame>) {
             }
             Msg::Monitor(id) => {
                 command_tx.push(audio::Command::Monitor(id)).ok();
+            }
+            Msg::PatternMonitors(ids) => {
+                command_tx.push(audio::Command::PatternMonitors(ids)).ok();
             }
             Msg::Oscilloscope(on) => {
                 scope.sender().send(on).ok();

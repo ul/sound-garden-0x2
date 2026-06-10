@@ -1,6 +1,5 @@
 use anyhow::Result;
-use audio_server::{Message, run};
-use audio_vm::Frame;
+use audio_server::{Message, Monitor, run};
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use rkyv::{from_bytes, rancor::Error};
@@ -40,10 +39,11 @@ fn main() -> Result<()> {
         Worker::spawn(
             "Oscilloscope (tcp)",
             CHANNEL_CAPACITY,
-            move |rx: Receiver<Frame>, _: Sender<()>| {
+            move |rx: Receiver<Monitor>, _: Sender<()>| {
                 let address = format!("127.0.0.1:{port}");
                 let mut stream = std::net::TcpStream::connect(&address).ok();
-                for frame in rx {
+                for monitor in rx {
+                    let frame = monitor.scope;
                     if stream.is_none() {
                         stream = std::net::TcpStream::connect(&address).ok();
                     }
@@ -64,7 +64,7 @@ fn main() -> Result<()> {
         Worker::spawn(
             "Oscilloscope (void)",
             CHANNEL_CAPACITY,
-            move |rx: Receiver<Frame>, _: Sender<()>| for _ in rx {},
+            move |rx: Receiver<Monitor>, _: Sender<()>| for _ in rx {},
         )
     };
 

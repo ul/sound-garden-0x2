@@ -1,6 +1,5 @@
 use anyhow::Result;
 use audio_program::{TextOp, get_help};
-use audio_vm::Frame;
 use chrono::Local;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
@@ -65,7 +64,7 @@ fn main() -> Result<()> {
         Worker::spawn(
             "Audio",
             1,
-            move |rx: Receiver<audio_server::Message>, _: Sender<Frame>| {
+            move |rx: Receiver<audio_server::Message>, _: Sender<audio_server::Monitor>| {
                 for msg in rx {
                     if let Ok(mut stream) = std::net::TcpStream::connect(&address)
                         && let Ok(bytes) = to_bytes::<RkyvError>(&msg)
@@ -110,6 +109,7 @@ struct UiState {
     record: bool,
     show_oscilloscope: bool,
     show_op_list: bool,
+    show_pattern_highlights: bool,
     oscilloscope_zoom: i16,
 }
 
@@ -125,6 +125,7 @@ impl Default for UiState {
             record: false,
             show_oscilloscope: false,
             show_op_list: false,
+            show_pattern_highlights: true,
             oscilloscope_zoom: 0,
         }
     }
@@ -134,7 +135,7 @@ struct SoundGardenApp {
     node_repo: Arc<Mutex<NodeRepository>>,
     filename: String,
     audio_tx: Sender<audio_server::Message>,
-    monitor_rx: Receiver<Frame>,
+    monitor_rx: Receiver<audio_server::Monitor>,
     undo_group: u64,
     last_committed_program: Vec<(Id, String)>,
     state: UiState,
@@ -143,6 +144,17 @@ struct SoundGardenApp {
     oscilloscope_values: VecDeque<f64>,
     oscilloscope_min: f64,
     oscilloscope_max: f64,
+    monitor_stream_enabled: bool,
+    pattern_monitors: HashMap<Id, PatternMonitor>,
+}
+
+#[derive(Clone, Copy)]
+struct PatternMonitor {
+    source_id: u64,
+    clocked: bool,
+    phase: f64,
+    cycle_count: usize,
+    last_time: Option<f64>,
 }
 
 #[derive(Clone, Copy)]
@@ -162,7 +174,7 @@ impl SoundGardenApp {
         filename: String,
         node_repo: Arc<Mutex<NodeRepository>>,
         audio_tx: Sender<audio_server::Message>,
-        monitor_rx: Receiver<Frame>,
+        monitor_rx: Receiver<audio_server::Monitor>,
     ) -> Self {
         let mut app = Self {
             node_repo,
@@ -177,8 +189,11 @@ impl SoundGardenApp {
             oscilloscope_values: VecDeque::new(),
             oscilloscope_min: -1.0,
             oscilloscope_max: 1.0,
+            monitor_stream_enabled: false,
+            pattern_monitors: HashMap::new(),
         };
         app.sync_from_repo();
+        app.update_audio_monitor();
         app
     }
 
@@ -387,14 +402,14 @@ impl SoundGardenApp {
             }
             Action::ToggleOscilloscope => {
                 self.state.show_oscilloscope = !self.state.show_oscilloscope;
-                self.audio_tx
-                    .send(audio_server::Message::Oscilloscope(
-                        self.state.show_oscilloscope,
-                    ))
-                    .ok();
+                self.update_monitor_stream();
             }
             Action::ToggleOpList => {
                 self.state.show_op_list = !self.state.show_op_list;
+            }
+            Action::TogglePatternHighlights => {
+                self.state.show_pattern_highlights = !self.state.show_pattern_highlights;
+                self.update_audio_monitor();
             }
             Action::OscilloscopeZoomIn => self.state.oscilloscope_zoom += 1,
             Action::OscilloscopeZoomOut => self.state.oscilloscope_zoom -= 1,
@@ -425,13 +440,82 @@ impl SoundGardenApp {
             self.set_cursor();
         }
         self.sync_from_repo();
+        self.update_audio_monitor();
+    }
+
+    fn update_audio_monitor(&mut self) {
+        let cursor_node_id = self.node_at_cursor().map(|(node, _)| node.id);
         self.audio_tx
             .send(audio_server::Message::Monitor(
-                self.node_at_cursor()
-                    .map(|(node, _)| u64::from(node.id))
-                    .unwrap_or_default(),
+                cursor_node_id.map(u64::from).unwrap_or_default(),
             ))
             .ok();
+
+        let old_monitors = std::mem::take(&mut self.pattern_monitors);
+        self.pattern_monitors = if self.state.show_pattern_highlights {
+            self.pattern_monitors(old_monitors)
+        } else {
+            HashMap::new()
+        };
+        self.audio_tx
+            .send(audio_server::Message::PatternMonitors(
+                self.pattern_monitors
+                    .values()
+                    .map(|monitor| monitor.source_id)
+                    .collect(),
+            ))
+            .ok();
+        self.update_monitor_stream();
+    }
+
+    fn pattern_monitors(
+        &self,
+        old_monitors: HashMap<Id, PatternMonitor>,
+    ) -> HashMap<Id, PatternMonitor> {
+        self.state
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                let (clocked, _, _) = pattern_text(&node.text)?;
+                let source_id = self
+                    .state
+                    .nodes
+                    .get(index.checked_sub(1)?)
+                    .map(|node| u64::from(node.id))?;
+                let old = old_monitors.get(&node.id);
+                Some((
+                    node.id,
+                    PatternMonitor {
+                        source_id,
+                        clocked,
+                        phase: old
+                            .filter(|monitor| {
+                                monitor.source_id == source_id && monitor.clocked == clocked
+                            })
+                            .map(|monitor| monitor.phase)
+                            .unwrap_or(0.0),
+                        cycle_count: old
+                            .filter(|monitor| {
+                                monitor.source_id == source_id && monitor.clocked == clocked
+                            })
+                            .map(|monitor| monitor.cycle_count)
+                            .unwrap_or(0),
+                        last_time: None,
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    fn update_monitor_stream(&mut self) {
+        let enabled = self.state.show_oscilloscope || !self.pattern_monitors.is_empty();
+        if enabled != self.monitor_stream_enabled {
+            self.monitor_stream_enabled = enabled;
+            self.audio_tx
+                .send(audio_server::Message::Oscilloscope(enabled))
+                .ok();
+        }
     }
 
     fn paste_text(&mut self, text: &str) {
@@ -860,6 +944,7 @@ impl SoundGardenApp {
             self.paint_cursor(&painter, rect.min);
 
             for node in self.state.nodes.iter() {
+                self.paint_pattern_highlight(&painter, rect.min, node);
                 let color = if self.state.draft_nodes.contains(&node.id) {
                     NODE_DRAFT_COLOR
                 } else {
@@ -891,6 +976,34 @@ impl SoundGardenApp {
                     (width.max(x), height.max(y))
                 });
         EVec2::new(width, height)
+    }
+
+    fn paint_pattern_highlight(&self, painter: &egui::Painter, origin: Pos2, node: &Node) {
+        let Some(monitor) = self.pattern_monitors.get(&node.id) else {
+            return;
+        };
+        let Some((_, dense, pattern)) = pattern_text(&node.text) else {
+            return;
+        };
+        let Some((start, end)) = active_pattern_span(
+            pattern,
+            dense,
+            monitor.phase.rem_euclid(1.0),
+            monitor.cycle_count,
+        ) else {
+            return;
+        };
+        let pattern_start = node.text.chars().count() - pattern.chars().count();
+        let x = origin.x + (node.position.x as f32 + (pattern_start + start) as f32) * GRID_WIDTH;
+        let y = origin.y + node.position.y as f32 * GRID_HEIGHT;
+        painter.rect_filled(
+            Rect::from_min_size(
+                Pos2::new(x, y),
+                EVec2::new((end - start) as f32 * GRID_WIDTH, GRID_HEIGHT),
+            ),
+            0.0,
+            Color32::from_rgba_unmultiplied(0x55, 0xae, 0x39, 96),
+        );
     }
 
     fn paint_cursor(&self, painter: &egui::Painter, origin: Pos2) {
@@ -1095,14 +1208,40 @@ impl eframe::App for SoundGardenApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        let mut received_oscilloscope_frame = false;
-        while let Ok(frame) = self.monitor_rx.try_recv() {
+        let time = ctx.input(|input| input.time);
+        let mut received_monitor_frame = false;
+        while let Ok(monitor_frame) = self.monitor_rx.try_recv() {
+            for (source_id, frame) in monitor_frame.patterns {
+                for monitor in self
+                    .pattern_monitors
+                    .values_mut()
+                    .filter(|monitor| monitor.source_id == source_id)
+                {
+                    let previous_phase = monitor.phase;
+                    if monitor.clocked {
+                        if let Some(last_time) = monitor.last_time {
+                            let dt = (time - last_time).max(0.0);
+                            monitor.phase = (monitor.phase + frame[0] * dt).rem_euclid(1.0);
+                            if previous_phase > monitor.phase {
+                                monitor.cycle_count = monitor.cycle_count.wrapping_add(1);
+                            }
+                        }
+                        monitor.last_time = Some(time);
+                    } else {
+                        monitor.phase = frame[0].rem_euclid(1.0);
+                        if previous_phase > monitor.phase {
+                            monitor.cycle_count = monitor.cycle_count.wrapping_add(1);
+                        }
+                    }
+                    received_monitor_frame = true;
+                }
+            }
             if self.state.show_oscilloscope {
-                self.oscilloscope_values.push_back(frame[0]);
-                received_oscilloscope_frame = true;
+                self.oscilloscope_values.push_back(monitor_frame.scope[0]);
+                received_monitor_frame = true;
             }
         }
-        if received_oscilloscope_frame {
+        if received_monitor_frame {
             ctx.request_repaint();
         }
 
@@ -1114,8 +1253,11 @@ impl eframe::App for SoundGardenApp {
             self.draw_op_list(&ctx);
         }
 
-        if self.state.show_oscilloscope {
+        if self.state.show_oscilloscope || !self.pattern_monitors.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+
+        if self.state.show_oscilloscope {
             egui::Panel::bottom("oscilloscope")
                 .resizable(true)
                 .default_size(140.0)
@@ -1162,6 +1304,7 @@ enum Action {
     InsertNewLineAbove,
     ToggleOscilloscope,
     ToggleOpList,
+    TogglePatternHighlights,
     OscilloscopeZoomIn,
     OscilloscopeZoomOut,
     MoveRightToLeft,
@@ -1235,6 +1378,7 @@ fn key_action(key: egui::Key, modifiers: egui::Modifiers, mode: Mode) -> Option<
             egui::Key::O if !shift => Some(Action::InsertNewLineBelow),
             egui::Key::S if !shift => Some(Action::SplitLine),
             egui::Key::V if !shift => Some(Action::ToggleOscilloscope),
+            egui::Key::P if !shift => Some(Action::TogglePatternHighlights),
             _ => None,
         },
         Mode::Insert => match key {
@@ -1278,6 +1422,209 @@ fn canvas_grid_position(rect: Rect, pos: Pos2) -> Point {
 
 fn remap(x: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 {
     to_min + (x - from_min) * (to_max - to_min) / (from_max - from_min)
+}
+
+fn pattern_text(text: &str) -> Option<(bool, bool, &str)> {
+    let (op, pattern) = text.split_once(':')?;
+    match op {
+        "pat" => Some((false, false, pattern)),
+        "gate" | "trig" => Some((false, true, pattern)),
+        "cpat" => Some((true, false, pattern)),
+        "cgate" | "ctrig" => Some((true, true, pattern)),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum VisualPatternElement {
+    Atom((usize, usize)),
+    Group(Vec<VisualPatternElement>),
+    Alternate(Vec<Vec<VisualPatternElement>>),
+}
+
+fn active_pattern_span(
+    pattern: &str,
+    dense: bool,
+    phase: f64,
+    cycle: usize,
+) -> Option<(usize, usize)> {
+    active_span(
+        &mut VisualPatternParser::new(pattern, dense).parse(),
+        phase,
+        cycle,
+    )
+}
+
+fn active_span(
+    elements: &mut [VisualPatternElement],
+    phase: f64,
+    cycle: usize,
+) -> Option<(usize, usize)> {
+    let len = elements.len();
+    if len == 0 {
+        return None;
+    }
+    let position = phase.rem_euclid(1.0) * len as f64;
+    let index = (position as usize).min(len - 1);
+    let local_phase = position - index as f64;
+    match &mut elements[index] {
+        VisualPatternElement::Atom(span) => Some(*span),
+        VisualPatternElement::Group(children) => active_span(children, local_phase, cycle),
+        VisualPatternElement::Alternate(alternatives) => {
+            let alternative_index = cycle % alternatives.len();
+            let alternative = alternatives.get_mut(alternative_index)?;
+            active_span(alternative, local_phase, cycle)
+        }
+    }
+}
+
+struct VisualPatternParser<'a> {
+    pattern: &'a str,
+    dense: bool,
+    index: usize,
+}
+
+impl<'a> VisualPatternParser<'a> {
+    fn new(pattern: &'a str, dense: bool) -> Self {
+        Self {
+            pattern,
+            dense,
+            index: 0,
+        }
+    }
+
+    fn parse(mut self) -> Vec<VisualPatternElement> {
+        self.sequence(&[])
+    }
+
+    fn sequence(&mut self, stops: &[char]) -> Vec<VisualPatternElement> {
+        let mut elements = Vec::new();
+        while let Some(ch) = self.peek() {
+            if stops.contains(&ch) {
+                break;
+            }
+            if ch == ',' || ch.is_whitespace() {
+                self.bump();
+                continue;
+            }
+            if let Some(element) = self.item() {
+                elements.extend(element);
+            } else {
+                self.bump();
+            }
+        }
+        elements
+    }
+
+    fn item(&mut self) -> Option<Vec<VisualPatternElement>> {
+        let element = match self.peek()? {
+            '[' => self.group('[', ']'),
+            '<' => self.alternate(),
+            _ => self.atom(),
+        }?;
+        let repeat = self.repeat();
+        Some((0..repeat).map(|_| element.clone()).collect())
+    }
+
+    fn group(&mut self, open: char, close: char) -> Option<VisualPatternElement> {
+        debug_assert_eq!(self.peek(), Some(open));
+        self.bump();
+        let children = self.sequence(&[close]);
+        if self.peek() == Some(close) {
+            self.bump();
+        }
+        Some(VisualPatternElement::Group(children))
+    }
+
+    fn alternate(&mut self) -> Option<VisualPatternElement> {
+        debug_assert_eq!(self.peek(), Some('<'));
+        self.bump();
+        let mut alternatives = Vec::new();
+        while self.peek().is_some() && self.peek() != Some('>') {
+            alternatives.push(self.sequence(&[';', '>']));
+            if self.peek() == Some(';') {
+                self.bump();
+            }
+        }
+        if self.peek() == Some('>') {
+            self.bump();
+        }
+        (!alternatives.is_empty()).then_some(VisualPatternElement::Alternate(alternatives))
+    }
+
+    fn atom(&mut self) -> Option<VisualPatternElement> {
+        let start = self.index;
+        if self.dense && matches!(self.peek()?, 'x' | 'X' | '.') {
+            self.bump();
+            self.euclidean_suffix();
+        } else {
+            let mut paren_depth = 0usize;
+            while let Some(ch) = self.peek() {
+                if paren_depth == 0
+                    && (ch == ',' || ch == ']' || ch == '>' || ch == ';' || ch.is_whitespace())
+                {
+                    break;
+                }
+                if paren_depth == 0 && matches!(ch, '[' | '<') {
+                    break;
+                }
+                self.bump();
+                match ch {
+                    '(' => paren_depth += 1,
+                    ')' => {
+                        paren_depth = paren_depth.saturating_sub(1);
+                        if paren_depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        (self.index > start).then_some(VisualPatternElement::Atom((start, self.index)))
+    }
+
+    fn euclidean_suffix(&mut self) {
+        if self.peek() != Some('(') {
+            return;
+        }
+        let mut depth = 0usize;
+        while let Some(ch) = self.peek() {
+            self.bump();
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn repeat(&mut self) -> usize {
+        if self.peek() != Some('*') {
+            return 1;
+        }
+        self.bump();
+        let start = self.index;
+        while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+            self.bump();
+        }
+        self.pattern[start..self.index].parse().unwrap_or(1)
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.pattern[self.index..].chars().next()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let ch = self.peek()?;
+        self.index += ch.len_utf8();
+        Some(ch)
+    }
 }
 
 #[cfg(test)]
@@ -1368,6 +1715,52 @@ mod tests {
             key_action(egui::Key::S, egui::Modifiers::NONE, Mode::Normal),
             Some(Action::SplitLine)
         ));
+    }
+
+    #[test]
+    fn active_pattern_span_enters_alternations() {
+        assert_eq!(
+            active_pattern_span("60,<64;67>,72", false, 0.0, 0),
+            Some((0, 2))
+        );
+        assert_eq!(
+            active_pattern_span("60,<64;67>,72", false, 0.4, 0),
+            Some((4, 6))
+        );
+        assert_eq!(
+            active_pattern_span("60,<64;67>,72", false, 0.4, 1),
+            Some((7, 9))
+        );
+        assert_eq!(
+            active_pattern_span("60,<64;67,68>,72(3,8)", false, 0.8, 0),
+            Some((14, 21))
+        );
+        assert_eq!(
+            active_pattern_span("<60,64;67,72>", false, 0.25, 0),
+            Some((1, 3))
+        );
+        assert_eq!(
+            active_pattern_span("<60,64;67,72>", false, 0.25, 1),
+            Some((7, 9))
+        );
+    }
+
+    #[test]
+    fn active_pattern_span_enters_nested_groups() {
+        assert_eq!(
+            active_pattern_span("x[<x.;.x>]x", true, 0.0, 0),
+            Some((0, 1))
+        );
+        assert_eq!(
+            active_pattern_span("x[<x.;.x>]x", true, 0.5, 0),
+            Some((4, 5))
+        );
+        assert_eq!(
+            active_pattern_span("x[<x.;.x>]x", true, 0.5, 1),
+            Some((7, 8))
+        );
+        assert_eq!(active_pattern_span("x(3,8).", true, 0.25, 0), Some((0, 6)));
+        assert_eq!(active_pattern_span("x(3,8).", true, 0.75, 0), Some((6, 7)));
     }
 
     #[test]

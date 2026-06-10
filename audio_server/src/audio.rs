@@ -9,6 +9,7 @@ pub enum Command {
     Play(bool),
     LoadProgram(Program),
     Monitor(u64),
+    PatternMonitors(Vec<u64>),
 }
 
 pub fn main(
@@ -127,6 +128,7 @@ fn write_data<T>(
                 }
             }
             Command::Monitor(id) => vm.set_monitor_id(id),
+            Command::PatternMonitors(ids) => vm.set_pattern_monitor_ids(ids),
         }
     }
 

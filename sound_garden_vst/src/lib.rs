@@ -105,6 +105,7 @@ impl Default for SoundGarden {
                             program_tx.push(program).ok();
                         }
                         Message::Monitor(_) => {}
+                        Message::PatternMonitors(_) => {}
                         Message::Oscilloscope(_) => {}
                         Message::Quit => {}
                     }
