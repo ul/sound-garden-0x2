@@ -236,10 +236,6 @@ fn positive_repeat(input: &str) -> IResult<&str, usize> {
     }
 }
 
-fn repeat_elements<T: Clone>(element: PatternElement<T>, repeat: usize) -> Vec<PatternElement<T>> {
-    (0..repeat).map(|_| element.clone()).collect()
-}
-
 fn euclidean_values<T: Copy>(
     pulses: usize,
     steps: usize,
@@ -309,9 +305,9 @@ fn value_euclidean_args(input: &str) -> IResult<&str, (usize, usize, isize, Samp
     )(input)
 }
 
-fn value_atom(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     alt((
-        value(PatternElement::Atom(None), char('_')),
+        value(vec![PatternElement::Atom(None)], char('_')),
         map_res(
             tuple((
                 take_while1(|ch: char| {
@@ -334,47 +330,47 @@ fn value_atom(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
                     return Err(());
                 }
                 Ok(match euclid {
-                    Some((pulses, steps, offset, off)) => PatternElement::Group(
-                        euclidean_values(pulses, steps, offset, Some(value), Some(off)).ok_or(())?,
-                    ),
-                    None => PatternElement::Atom(Some(value)),
+                    Some((pulses, steps, offset, off)) => {
+                        euclidean_values(pulses, steps, offset, Some(value), Some(off)).ok_or(())?
+                    }
+                    None => vec![PatternElement::Atom(Some(value))],
                 })
             },
         ),
     ))(input)
 }
 
-fn value_group(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+fn value_group(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     map(
         delimited(char('['), value_sequence, char(']')),
-        PatternElement::Group,
+        |elements| vec![PatternElement::Group(elements)],
     )(input)
 }
 
-fn value_alternate(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+fn value_alternate(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     map(
         delimited(
             char('<'),
             separated_list1(char(';'), value_sequence),
             char('>'),
         ),
-        PatternElement::Alternate,
+        |alternatives| vec![PatternElement::Alternate(alternatives)],
     )(input)
 }
 
-fn value_base(input: &str) -> IResult<&str, PatternElement<Option<Sample>>> {
+fn value_base(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     ws(alt((value_group, value_alternate, value_atom)))(input)
 }
 
 fn value_item(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     let (input, choices) = separated_list1(char('|'), value_base)(input)?;
-    let element = if choices.len() == 1 {
+    let elements = if choices.len() == 1 {
         choices.into_iter().next().unwrap()
     } else {
-        PatternElement::Random(choices.into_iter().map(|choice| vec![choice]).collect())
+        vec![PatternElement::Random(choices)]
     };
     let (input, repeat) = positive_repeat(input)?;
-    Ok((input, repeat_elements(element, repeat)))
+    Ok((input, (0..repeat).flat_map(|_| elements.clone()).collect()))
 }
 
 fn value_sequence(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
@@ -428,60 +424,57 @@ fn parse_values(pattern: &str) -> Pattern<Sample> {
     }
 }
 
-fn gate_atom(input: &str) -> IResult<&str, PatternElement<bool>> {
+fn gate_atom(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     alt((
         map(
             preceded(alt((char('x'), char('X'))), opt(euclidean_args)),
             |euclid| match euclid {
-                Some((pulses, steps, offset)) => PatternElement::Group(
-                    euclidean_values(pulses, steps, offset, true, false).unwrap_or_default(),
-                ),
-                None => PatternElement::Atom(true),
+                Some((pulses, steps, offset)) => {
+                    euclidean_values(pulses, steps, offset, true, false).unwrap_or_default()
+                }
+                None => vec![PatternElement::Atom(true)],
             },
         ),
-        value(PatternElement::Atom(false), char('.')),
+        value(vec![PatternElement::Atom(false)], char('.')),
         map(
             preceded(char('e'), euclidean_args),
             |(pulses, steps, offset)| {
-                PatternElement::Group(
-                    euclidean_values(pulses, steps, offset, true, false).unwrap_or_default(),
-                )
+                euclidean_values(pulses, steps, offset, true, false).unwrap_or_default()
             },
         ),
     ))(input)
 }
 
-fn gate_group(input: &str) -> IResult<&str, PatternElement<bool>> {
-    map(
-        delimited(char('['), gate_sequence, char(']')),
-        PatternElement::Group,
-    )(input)
+fn gate_group(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
+    map(delimited(char('['), gate_sequence, char(']')), |elements| {
+        vec![PatternElement::Group(elements)]
+    })(input)
 }
 
-fn gate_alternate(input: &str) -> IResult<&str, PatternElement<bool>> {
+fn gate_alternate(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     map(
         delimited(
             char('<'),
             separated_list1(char(';'), gate_sequence),
             char('>'),
         ),
-        PatternElement::Alternate,
+        |alternatives| vec![PatternElement::Alternate(alternatives)],
     )(input)
 }
 
-fn gate_base(input: &str) -> IResult<&str, PatternElement<bool>> {
+fn gate_base(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     ws(alt((gate_group, gate_alternate, gate_atom)))(input)
 }
 
 fn gate_item(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     let (input, choices) = separated_list1(char('|'), gate_base)(input)?;
-    let element = if choices.len() == 1 {
+    let elements = if choices.len() == 1 {
         choices.into_iter().next().unwrap()
     } else {
-        PatternElement::Random(choices.into_iter().map(|choice| vec![choice]).collect())
+        vec![PatternElement::Random(choices)]
     };
     let (input, repeat) = positive_repeat(input)?;
-    Ok((input, repeat_elements(element, repeat)))
+    Ok((input, (0..repeat).flat_map(|_| elements.clone()).collect()))
 }
 
 fn gate_sequence(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
@@ -897,6 +890,24 @@ mod tests {
     }
 
     #[test]
+    fn value_pattern_euclidean_rhythms_splice_into_parent_sequence() {
+        let mut pat = PatternValue::new("60,72(3,8)");
+        assert_eq!(perform(&mut pat, [0.0, 0.11]), [60.0, 60.0]);
+        assert_eq!(perform(&mut pat, [0.112, 0.22]), [72.0, 72.0]);
+        assert_eq!(perform(&mut pat, [0.223, 0.33]), [0.0, 0.0]);
+        assert_eq!(perform(&mut pat, [0.445, 0.56]), [72.0, 0.0]);
+        assert_eq!(perform(&mut pat, [0.778, 0.89]), [72.0, 0.0]);
+    }
+
+    #[test]
+    fn value_pattern_bracketed_euclidean_rhythms_stay_subdivided() {
+        let mut pat = PatternValue::new("[72(3,8)],60");
+        assert_eq!(perform(&mut pat, [0.0, 0.06]), [72.0, 72.0]);
+        assert_eq!(perform(&mut pat, [0.07, 0.18]), [0.0, 0.0]);
+        assert_eq!(perform(&mut pat, [0.17, 0.51]), [0.0, 60.0]);
+    }
+
+    #[test]
     fn value_pattern_alternates_each_forward_cycle() {
         let mut pat = PatternValue::new("<60,64;67,72>");
         assert_eq!(perform(&mut pat, [0.0, 0.0]), [60.0, 60.0]);
@@ -1036,10 +1047,10 @@ mod tests {
     #[test]
     fn gate_pattern_subdivides_and_repeats_euclidean_rhythms() {
         let mut gate = PatternGate::new("[e(1,2).]*2");
-        assert_eq!(perform(&mut gate, [0.0, 0.1249]), [1.0, 1.0]);
-        assert_eq!(perform(&mut gate, [0.125, 0.4999]), [0.0, 0.0]);
-        assert_eq!(perform(&mut gate, [0.5, 0.6249]), [1.0, 1.0]);
-        assert_eq!(perform(&mut gate, [0.625, 0.9999]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.0, 0.16]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.167, 0.4999]), [0.0, 0.0]);
+        assert_eq!(perform(&mut gate, [0.5, 0.66]), [1.0, 1.0]);
+        assert_eq!(perform(&mut gate, [0.667, 0.9999]), [0.0, 0.0]);
     }
 
     #[test]
