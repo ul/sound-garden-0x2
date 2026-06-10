@@ -1478,6 +1478,13 @@ fn active_span(
     }
 }
 
+fn parse_euclidean_steps(args: &str) -> Option<usize> {
+    let mut parts = args.split(',');
+    let pulses = parts.next()?.trim().parse::<usize>().ok()?;
+    let steps = parts.next()?.trim().parse::<usize>().ok()?;
+    (steps > 0 && pulses <= steps).then_some(steps)
+}
+
 struct VisualPatternParser<'a> {
     pattern: &'a str,
     dense: bool,
@@ -1517,13 +1524,13 @@ impl<'a> VisualPatternParser<'a> {
     }
 
     fn item(&mut self) -> Option<Vec<VisualPatternElement>> {
-        let element = match self.peek()? {
-            '[' => self.group('[', ']'),
-            '<' => self.alternate(),
-            _ => self.atom(),
-        }?;
+        let elements = match self.peek()? {
+            '[' => vec![self.group('[', ']')?],
+            '<' => vec![self.alternate()?],
+            _ => self.atom()?,
+        };
         let repeat = self.repeat();
-        Some((0..repeat).map(|_| element.clone()).collect())
+        Some((0..repeat).flat_map(|_| elements.clone()).collect())
     }
 
     fn group(&mut self, open: char, close: char) -> Option<VisualPatternElement> {
@@ -1552,42 +1559,44 @@ impl<'a> VisualPatternParser<'a> {
         (!alternatives.is_empty()).then_some(VisualPatternElement::Alternate(alternatives))
     }
 
-    fn atom(&mut self) -> Option<VisualPatternElement> {
+    fn atom(&mut self) -> Option<Vec<VisualPatternElement>> {
         let start = self.index;
-        if self.dense && matches!(self.peek()?, 'x' | 'X' | '.') {
-            self.bump();
-            self.euclidean_suffix();
+        let steps = if self.dense && matches!(self.peek()?, 'x' | 'X' | 'e' | '.') {
+            let ch = self.bump()?;
+            if matches!(ch, 'x' | 'X' | 'e') {
+                self.euclidean_suffix_steps()
+            } else {
+                None
+            }
         } else {
-            let mut paren_depth = 0usize;
             while let Some(ch) = self.peek() {
-                if paren_depth == 0
-                    && (ch == ',' || ch == ']' || ch == '>' || ch == ';' || ch.is_whitespace())
+                if ch == ','
+                    || ch == ']'
+                    || ch == '>'
+                    || ch == ';'
+                    || ch == '*'
+                    || ch == '|'
+                    || ch.is_whitespace()
+                    || matches!(ch, '[' | '<' | '(')
                 {
                     break;
                 }
-                if paren_depth == 0 && matches!(ch, '[' | '<') {
-                    break;
-                }
                 self.bump();
-                match ch {
-                    '(' => paren_depth += 1,
-                    ')' => {
-                        paren_depth = paren_depth.saturating_sub(1);
-                        if paren_depth == 0 {
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
             }
+            self.euclidean_suffix_steps()
+        };
+        if self.index <= start {
+            return None;
         }
-        (self.index > start).then_some(VisualPatternElement::Atom((start, self.index)))
+        let span = (start, self.index);
+        Some(vec![VisualPatternElement::Atom(span); steps.unwrap_or(1)])
     }
 
-    fn euclidean_suffix(&mut self) {
+    fn euclidean_suffix_steps(&mut self) -> Option<usize> {
         if self.peek() != Some('(') {
-            return;
+            return None;
         }
+        let content_start = self.index + '('.len_utf8();
         let mut depth = 0usize;
         while let Some(ch) = self.peek() {
             self.bump();
@@ -1596,12 +1605,14 @@ impl<'a> VisualPatternParser<'a> {
                 ')' => {
                     depth = depth.saturating_sub(1);
                     if depth == 0 {
-                        break;
+                        let content_end = self.index - ch.len_utf8();
+                        return parse_euclidean_steps(&self.pattern[content_start..content_end]);
                     }
                 }
                 _ => {}
             }
         }
+        None
     }
 
     fn repeat(&mut self) -> usize {
@@ -1760,7 +1771,11 @@ mod tests {
             Some((7, 8))
         );
         assert_eq!(active_pattern_span("x(3,8).", true, 0.25, 0), Some((0, 6)));
-        assert_eq!(active_pattern_span("x(3,8).", true, 0.75, 0), Some((6, 7)));
+        assert_eq!(active_pattern_span("x(3,8).", true, 0.75, 0), Some((0, 6)));
+        assert_eq!(active_pattern_span("x(3,8).", true, 0.95, 0), Some((6, 7)));
+        assert_eq!(active_pattern_span("e(1,2).", true, 0.4, 0), Some((0, 6)));
+        assert_eq!(active_pattern_span("60(3,8),72", false, 0.75, 0), Some((0, 7)));
+        assert_eq!(active_pattern_span("60(3,8),72", false, 0.95, 0), Some((8, 10)));
     }
 
     #[test]
