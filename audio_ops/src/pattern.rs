@@ -155,7 +155,7 @@ fn cell_index<T>(phase: Sample, cells: &[Cell<T>]) -> usize {
         .unwrap_or_else(|| cells.len().saturating_sub(1))
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Pattern<T> {
     variants: Vec<Vec<Cell<T>>>,
 }
@@ -597,7 +597,7 @@ impl ValuePattern {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct GatePattern {
     gates: Pattern<bool>,
 }
@@ -755,6 +755,31 @@ impl PatternTrigger {
 
         frame
     }
+
+    fn migrate_from(&mut self, other: &Self) {
+        self.previous_phases = other.previous_phases;
+        self.cycle_counts = other.cycle_counts;
+
+        if self.pattern == other.pattern {
+            self.previous_indices = other.previous_indices;
+        } else {
+            self.sync_previous_indices_to_phases();
+        }
+    }
+
+    fn sync_previous_indices_to_phases(&mut self) {
+        if self.pattern.gates.is_empty() {
+            self.previous_indices = [None; CHANNELS];
+            return;
+        }
+
+        for channel in 0..CHANNELS {
+            self.previous_indices[channel] = self.previous_phases[channel].map(|phase| {
+                let cells = self.pattern.gates.cells(self.cycle_counts[channel]);
+                cell_index(phase, cells)
+            });
+        }
+    }
 }
 
 impl Op for PatternTrigger {
@@ -762,6 +787,12 @@ impl Op for PatternTrigger {
         let phase = stack.pop();
         let frame = self.render(&phase);
         stack.push(&frame);
+    }
+
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
+            self.migrate_from(other);
+        }
     }
 }
 
@@ -860,7 +891,7 @@ impl Op for ClockedPatternTrigger {
     fn migrate(&mut self, other: &mut dyn Op) {
         if let Some(other) = other.downcast_mut::<Self>() {
             self.cycle.phases = other.cycle.phases;
-            self.trigger.cycle_counts = other.trigger.cycle_counts;
+            self.trigger.migrate_from(&other.trigger);
         }
     }
 }
@@ -1174,6 +1205,41 @@ mod tests {
         assert_eq!(perform(&mut trig, [0.0, 0.0]), [1.0, 1.0]);
         assert_eq!(perform(&mut trig, [0.5, 0.5]), [0.0, 0.0]);
         assert_eq!(perform(&mut trig, [0.0, 0.75]), [1.0, 0.0]);
+    }
+
+    #[test]
+    fn trigger_migration_preserves_active_cell_state() {
+        let mut previous = PatternTrigger::new("x(3,8)");
+        assert_eq!(perform(&mut previous, [0.0, 0.01]), [1.0, 1.0]);
+
+        let mut next = PatternTrigger::new("x(3,8)");
+        next.migrate(&mut previous);
+
+        assert_eq!(perform(&mut next, [0.02, 0.03]), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn trigger_migration_projects_previous_phase_onto_edited_pattern() {
+        let mut previous = PatternTrigger::new("....");
+        assert_eq!(perform(&mut previous, [0.0, 0.01]), [0.0, 0.0]);
+
+        let mut next = PatternTrigger::new("x...");
+        next.migrate(&mut previous);
+
+        assert_eq!(perform(&mut next, [0.02, 0.03]), [0.0, 0.0]);
+        assert_eq!(perform(&mut next, [0.25, 0.26]), [0.0, 0.0]);
+        assert_eq!(perform(&mut next, [0.0, 0.01]), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn clocked_trigger_migration_preserves_cycle_and_trigger_state() {
+        let mut previous = ClockedPatternTrigger::new(10, "x(3,8)");
+        assert_eq!(perform(&mut previous, [1.0, 1.0]), [1.0, 1.0]);
+
+        let mut next = ClockedPatternTrigger::new(10, "x(3,8)");
+        next.migrate(&mut previous);
+
+        assert_eq!(perform(&mut next, [1.0, 1.0]), [0.0, 0.0]);
     }
 
     #[test]
