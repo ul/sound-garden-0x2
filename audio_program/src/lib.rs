@@ -7,7 +7,6 @@ use rand::{rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
-use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fs::File;
 use std::sync::{Arc, atomic::Ordering};
@@ -188,7 +187,7 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
     let ops = optimize_terms(&rewrite_terms(ops));
-    let mut program = SmallVec::new();
+    let mut program = Vec::new();
     macro_rules! push {
         ( $id:ident, $class:ident ) => {
             program.push(Statement {

@@ -6,9 +6,10 @@ use alloc_counter::no_alloc;
 use smallvec::SmallVec;
 use std::sync::{atomic::Ordering, Arc};
 
-// Totally unscientific attempt to improve performance of small programs by using SmallVec.
-/// FAST_PROGRAM_SIZE determines how large we expect program to be before it would incur extra indirection.
-pub const FAST_PROGRAM_SIZE: usize = 64;
+// Benchmarks (benches/microstructure.rs) showed SmallVec inline storage for Program
+// buys nothing on the hot path (op state is boxed anyway) while bloating every
+// Program value and move; a plain Vec is used instead. SmallVec remains only for
+// the allocation-free migration index below.
 const MIGRATION_INDEX_SIZE: usize = 128;
 /// Default program reload declick duration in frames (~5 ms at 48 kHz).
 const DECLICK_DURATION: usize = 256;
@@ -22,7 +23,7 @@ pub struct Statement {
     pub op: Box<dyn Op>,
 }
 
-pub type Program = SmallVec<[Statement; FAST_PROGRAM_SIZE]>;
+pub type Program = Vec<Statement>;
 
 pub struct VM {
     /// Program to generate audio.
@@ -309,7 +310,6 @@ enum Status {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smallvec::smallvec;
 
     struct PushFrame(Frame);
 
@@ -363,7 +363,7 @@ mod tests {
     fn paused_vm_outputs_silence_until_playing() {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
-        vm.load_program(smallvec![statement(1, PushFrame([1.0, -1.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([1.0, -1.0]))]);
 
         assert_eq!(vm.next_frame(), [0.0, 0.0]);
 
@@ -375,7 +375,7 @@ mod tests {
     fn play_and_pause_fade_active_program() {
         let mut vm = VM::new();
         vm.set_xfade_duration(2.0);
-        vm.load_program(smallvec![statement(1, PushFrame([10.0, 20.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([10.0, 20.0]))]);
 
         vm.play();
         assert_eq!(vm.next_frame(), [0.0, 0.0]);
@@ -392,7 +392,7 @@ mod tests {
     fn monitor_tracks_selected_statement_or_final_output() {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
-        vm.load_program(smallvec![
+        vm.load_program(vec![
             statement(10, PushFrame([2.0, 3.0])),
             statement(20, PushFrame([5.0, 7.0])),
             statement(30, AddTopTwo),
@@ -427,11 +427,11 @@ mod tests {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
         vm.set_declick_duration(0.0);
-        vm.load_program(smallvec![statement(42, Counter::new())]);
+        vm.load_program(vec![statement(42, Counter::new())]);
         vm.play();
         assert_eq!(vm.next_frame(), [1.0, 1.0]);
 
-        vm.load_program(smallvec![statement(42, Counter::new())]);
+        vm.load_program(vec![statement(42, Counter::new())]);
         assert_eq!(vm.next_frame(), [2.0, 2.0]);
     }
 
@@ -440,12 +440,12 @@ mod tests {
         let mut vm = VM::new();
         vm.set_xfade_duration(2.0);
         vm.set_declick_duration(0.0);
-        vm.load_program(smallvec![statement(1, PushFrame([0.0, 0.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([0.0, 0.0]))]);
         vm.play();
         vm.next_frame();
         vm.next_frame();
 
-        vm.load_program(smallvec![statement(1, PushFrame([10.0, 20.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([10.0, 20.0]))]);
 
         assert_eq!(vm.next_frame(), [10.0, 20.0]);
     }
@@ -455,11 +455,11 @@ mod tests {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
         vm.set_declick_duration(2.0);
-        vm.load_program(smallvec![statement(1, PushFrame([1.0, -1.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([1.0, -1.0]))]);
         vm.play();
         assert_eq!(vm.next_frame(), [1.0, -1.0]);
 
-        vm.load_program(smallvec![statement(1, PushFrame([0.0, 0.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([0.0, 0.0]))]);
 
         // First frame after reload is continuous with the last heard frame.
         assert_eq!(vm.next_frame(), [1.0, -1.0]);
@@ -476,11 +476,11 @@ mod tests {
     fn load_program_with_continuous_output_skips_declick() {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
-        vm.load_program(smallvec![statement(1, PushFrame([0.5, 0.5]))]);
+        vm.load_program(vec![statement(1, PushFrame([0.5, 0.5]))]);
         vm.play();
         assert_eq!(vm.next_frame(), [0.5, 0.5]);
 
-        vm.load_program(smallvec![statement(1, PushFrame([0.5, 0.5]))]);
+        vm.load_program(vec![statement(1, PushFrame([0.5, 0.5]))]);
 
         // No audible step: declick stays disarmed and output is bit-exact.
         assert_eq!(vm.next_frame(), [0.5, 0.5]);
@@ -491,7 +491,7 @@ mod tests {
     fn load_program_while_silent_does_not_arm_declick() {
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
-        vm.load_program(smallvec![statement(1, PushFrame([1.0, 1.0]))]);
+        vm.load_program(vec![statement(1, PushFrame([1.0, 1.0]))]);
         assert_eq!(vm.next_frame(), [0.0, 0.0]);
 
         // A silent VM cannot click, so the reload must not smear the first
