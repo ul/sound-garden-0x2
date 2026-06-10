@@ -483,13 +483,15 @@ impl SoundGardenApp {
         } else {
             HashMap::new()
         };
+        let mut pattern_monitor_ids = self
+            .pattern_monitors
+            .values()
+            .map(|monitor| monitor.source_id)
+            .collect::<Vec<_>>();
+        pattern_monitor_ids.sort_unstable();
+        pattern_monitor_ids.dedup();
         self.audio_tx
-            .send(audio_server::Message::PatternMonitors(
-                self.pattern_monitors
-                    .values()
-                    .map(|monitor| monitor.source_id)
-                    .collect(),
-            ))
+            .send(audio_server::Message::PatternMonitors(pattern_monitor_ids))
             .ok();
         self.update_monitor_stream();
     }
