@@ -185,9 +185,118 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
     Some(table)
 }
 
+/// Sentinel ops produced by `rewrite_terms` to delimit a quotation (a bracket
+/// group consumed by a quotation-taking op such as `poly`) in the flat op
+/// stream. Performers never type these; nested quotations nest markers.
+// Note: these must not start with `[`, end with `]`, or contain `:` so they
+// can never collide with the bracket/template branches in `rewrite_terms`.
+const QUOTE_OPEN: &str = "\u{1}(";
+const QUOTE_CLOSE: &str = "\u{1})";
+
+fn is_quotation_consumer(op: &str) -> bool {
+    op == "poly" || op.starts_with("poly:")
+}
+
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
-    let ops = optimize_terms(&rewrite_terms(ops));
+    let ops = rewrite_terms(ops);
     let mut program = Vec::new();
+    compile_ops(&ops, sample_rate, ctx, &mut program);
+    program
+}
+
+/// Compile an op stream: quotations (`QUOTE_OPEN .. QUOTE_CLOSE` followed by
+/// a quotation consumer) become container ops, everything between them is
+/// compiled as plain segments. Returns true if compilation was stopped by
+/// `return`.
+fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mut Program) -> bool {
+    let mut segment_start = 0;
+    let mut i = 0;
+    while i < ops.len() {
+        if ops[i].op != QUOTE_OPEN {
+            i += 1;
+            continue;
+        }
+        if compile_segment(&ops[segment_start..i], sample_rate, ctx, program) {
+            return true;
+        }
+        // Find the matching close marker, allowing nested quotations.
+        let mut depth = 0usize;
+        let mut close = None;
+        for (j, op) in ops.iter().enumerate().skip(i + 1) {
+            if op.op == QUOTE_OPEN {
+                depth += 1;
+            } else if op.op == QUOTE_CLOSE {
+                if depth == 0 {
+                    close = Some(j);
+                    break;
+                }
+                depth -= 1;
+            }
+        }
+        let Some(close) = close else {
+            // Unbalanced markers should not happen; skip forgivingly.
+            log::warn!("Unbalanced quotation; ignoring it.");
+            segment_start = i + 1;
+            i += 1;
+            continue;
+        };
+        let body = &ops[i + 1..close];
+        match ops.get(close + 1) {
+            Some(consumer) if is_quotation_consumer(&consumer.op) => {
+                program.push(Statement {
+                    id: consumer.id,
+                    op: Box::new(compile_poly(&consumer.op, body, sample_rate, ctx)),
+                });
+                i = close + 2;
+            }
+            _ => {
+                log::warn!("Quotation is not followed by a quotation consumer; ignoring it.");
+                i = close + 1;
+            }
+        }
+        segment_start = i;
+    }
+    compile_segment(&ops[segment_start..], sample_rate, ctx, program)
+}
+
+/// Compile `<quotation> poly:N`: N voices, each an independently compiled
+/// instance of the body sharing node ids (state migrates by voice index +
+/// node id). Invalid argument or empty body compiles to a forgiving
+/// zero-voice op which preserves stack shape.
+fn compile_poly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Poly {
+    let Some(voices) = op
+        .split(':')
+        .nth(1)
+        .and_then(|n| n.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+    else {
+        log::warn!(
+            "Can't parse voice count in {}; compiling to a zero-voice poly.",
+            op
+        );
+        return Poly::empty();
+    };
+    let bodies: Vec<_> = (0..voices)
+        .map(|_| {
+            let mut voice = Vec::new();
+            compile_ops(body, sample_rate, ctx, &mut voice);
+            voice.into_boxed_slice()
+        })
+        .collect();
+    if bodies.first().is_none_or(|body| body.is_empty()) {
+        log::warn!("Empty poly voice body; compiling to a zero-voice poly.");
+        return Poly::empty();
+    }
+    Poly::new(bodies)
+}
+
+fn compile_segment(
+    ops: &[TextOp],
+    sample_rate: u32,
+    ctx: &mut Context,
+    program: &mut Program,
+) -> bool {
+    let ops = optimize_terms(ops);
     macro_rules! push {
         ( $id:ident, $class:ident ) => {
             program.push(Statement {
@@ -257,7 +366,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
         }
 
         match op.as_str() {
-            "return" | "ret" | "!" => break,
+            "return" | "ret" | "!" => return true,
             "*" | "mul" => push_args!(id, Fn2, pure::mul),
             "+" | "add" => push_args!(id, Fn2, pure::add),
             "-" | "sub" => push_args!(id, Fn2, pure::sub),
@@ -599,6 +708,12 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
                             }
                             None => push_args!(id, ClockedPatternTrigger, sample_rate, ""),
                         },
+                        "poly" => {
+                            log::warn!(
+                                "poly without a preceding quotation; compiling to a zero-voice poly."
+                            );
+                            push_args!(id, Poly, Vec::new());
+                        }
                         "" => {
                             // Empty op (blank node) — silently skip.
                         }
@@ -610,7 +725,7 @@ pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> P
             },
         }
     }
-    program
+    false
 }
 
 pub fn get_help() -> HashMap<String, String> {
@@ -659,6 +774,8 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
 fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
     let mut result: Vec<TextOp> = Vec::new();
     let mut new_term: Option<Term> = None;
+    // Depth of nested bracket groups inside the group being collected.
+    let mut bracket_depth = 0usize;
     let mut terms: HashMap<String, Term> = Default::default();
     let mut stack: Vec<TextOp> = Vec::from(stmts);
     stack.reverse();
@@ -687,29 +804,78 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                         t
                     });
                 }
+                // A term used directly before a quotation consumer acts as
+                // a quotation: wrap its expansion in quote markers.
+                let quoted = stack
+                    .last()
+                    .is_some_and(|next| is_quotation_consumer(&next.op));
+                if quoted {
+                    stack.push(TextOp {
+                        id: 0,
+                        op: QUOTE_CLOSE.to_string(),
+                    });
+                }
                 // Push rewrites onto the stack, not result,
                 // to have them processed (as may contain further terms).
                 for op in rewrite.drain(..).rev() {
                     stack.push(op);
                 }
+                if quoted {
+                    stack.push(TextOp {
+                        id: 0,
+                        op: QUOTE_OPEN.to_string(),
+                    });
+                }
             }
         } else if stmt.op.starts_with("[") {
-            new_term = Some(Term {
-                holes: 0,
-                ops: Vec::new(),
-            });
-            let token: String = stmt.op.chars().skip(1).collect();
-            if !token.is_empty() {
-                stack.push(TextOp {
-                    id: stmt.id,
-                    op: token,
+            if let Some(term) = new_term.as_mut() {
+                // Nested bracket group: keep it literal, it is reprocessed
+                // when the enclosing group is replayed as a quotation.
+                bracket_depth += 1;
+                term.ops.push(stmt);
+            } else {
+                new_term = Some(Term {
+                    holes: 0,
+                    ops: Vec::new(),
                 });
+                bracket_depth = 0;
+                let token: String = stmt.op.chars().skip(1).collect();
+                if !token.is_empty() {
+                    stack.push(TextOp {
+                        id: stmt.id,
+                        op: token,
+                    });
+                }
             }
         } else if stmt.op == "]" {
-            if let Some(term) = new_term.take()
+            if bracket_depth > 0 {
+                bracket_depth -= 1;
+                if let Some(term) = new_term.as_mut() {
+                    term.ops.push(stmt);
+                }
+            } else if let Some(term) = new_term.take()
                 && let Some(op) = stack.pop()
             {
-                terms.insert(op.op, term);
+                if is_quotation_consumer(&op.op) {
+                    // A bracket group before a quotation consumer is a
+                    // quotation, not a template definition: replay its body
+                    // wrapped in quote markers so the compiler can extract
+                    // it (and expand templates inside it on the way).
+                    stack.push(op);
+                    stack.push(TextOp {
+                        id: 0,
+                        op: QUOTE_CLOSE.to_string(),
+                    });
+                    for op in term.ops.into_iter().rev() {
+                        stack.push(op);
+                    }
+                    stack.push(TextOp {
+                        id: 0,
+                        op: QUOTE_OPEN.to_string(),
+                    });
+                } else {
+                    terms.insert(op.op, term);
+                }
             }
         } else if stmt.op.ends_with("]") && !stmt.op.contains(':') {
             if new_term.is_some() {
@@ -1357,6 +1523,174 @@ mod tests {
             ],
             [0.75, 0.75]
         );
+    }
+
+    #[test]
+    fn compile_program_runs_poly_quotation_with_latch_and_routing() {
+        let mut context = Context::new();
+
+        // Body `+` adds latched value and routed ctl. Constant ctl 1 rises on
+        // the first frame: voice 0 latches 5 and receives the held ctl,
+        // voice 1 stays silent: (5 + 1) + 0.
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "5"),
+                    op(2, "1"),
+                    op(3, "["),
+                    op(4, "+"),
+                    op(5, "]"),
+                    op(6, "poly:2"),
+                ],
+                &mut context
+            ),
+            [6.0, 6.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_accepts_named_template_as_poly_body() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "["),
+                    op(2, "+"),
+                    op(3, "]"),
+                    op(4, "lead"),
+                    op(5, "5"),
+                    op(6, "1"),
+                    op(7, "lead"),
+                    op(8, "poly:2"),
+                ],
+                &mut context
+            ),
+            [6.0, 6.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_supports_nested_poly_quotations() {
+        let mut context = Context::new();
+
+        // Outer body: push 0 and 1, run inner poly (latches 0, ctl 1 -> 1),
+        // then add it to the outer routed ctl: outer stack [5, 1, 1] -> [5, 2].
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "5"),
+                    op(2, "1"),
+                    op(3, "["),
+                    op(4, "0"),
+                    op(5, "1"),
+                    op(6, "["),
+                    op(7, "+"),
+                    op(8, "]"),
+                    op(9, "poly:1"),
+                    op(10, "+"),
+                    op(11, "]"),
+                    op(12, "poly:1"),
+                ],
+                &mut context
+            ),
+            [2.0, 2.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_forgives_invalid_poly_forms() {
+        let mut context = Context::new();
+
+        // poly without a quotation: consumes value and ctl, pushes silence.
+        assert_eq!(
+            run_once(&[op(1, "5"), op(2, "1"), op(3, "poly:4")], &mut context),
+            [0.0, 0.0]
+        );
+        // Empty body.
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "5"),
+                    op(2, "1"),
+                    op(3, "["),
+                    op(4, "]"),
+                    op(5, "poly:2"),
+                ],
+                &mut context
+            ),
+            [0.0, 0.0]
+        );
+        // Zero voices.
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "5"),
+                    op(2, "1"),
+                    op(3, "["),
+                    op(4, "+"),
+                    op(5, "]"),
+                    op(6, "poly:0"),
+                ],
+                &mut context
+            ),
+            [0.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn return_inside_poly_body_stops_body_compilation_only() {
+        let mut context = Context::new();
+
+        // Body compiles to just `+` (ret drops the 9); the outer program
+        // continues after poly: (5 + 1) + 2.
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "5"),
+                    op(2, "1"),
+                    op(3, "["),
+                    op(4, "+"),
+                    op(5, "ret"),
+                    op(6, "9"),
+                    op(7, "]"),
+                    op(8, "poly:1"),
+                    op(9, "2"),
+                    op(10, "+"),
+                ],
+                &mut context
+            ),
+            [8.0, 8.0]
+        );
+    }
+
+    #[test]
+    fn poly_voice_state_survives_program_reload() {
+        let ops = [
+            op(1, "0"),
+            op(2, "1"),
+            op(3, "["),
+            op(4, "1"),
+            op(5, "w"),
+            op(6, "]"),
+            op(7, "poly:1"),
+        ];
+        let sample_rate = 100;
+
+        let mut context = Context::new();
+        let mut vm = audio_vm::VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.set_declick_duration(0.0);
+        vm.load_program(compile_program(&ops, sample_rate, &mut context));
+        vm.play();
+        let mut reloaded = vec![vm.next_frame(), vm.next_frame()];
+        vm.load_program(compile_program(&ops, sample_rate, &mut context));
+        reloaded.push(vm.next_frame());
+        reloaded.push(vm.next_frame());
+
+        // The phasor inside the voice body keeps its phase across the
+        // reload: the sequence matches an uninterrupted run.
+        assert_eq!(run_frames(&ops, sample_rate, 4), reloaded);
     }
 
     #[test]

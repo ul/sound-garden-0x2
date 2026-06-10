@@ -174,6 +174,27 @@ active cells:
 The `cpat`, `cgate`, and `ctrig` forms are CPS-consuming conveniences equivalent to
 `cycle` followed by the corresponding phase-consuming reader.
 
+=== Polyphony
+A single pattern lane drives one voice: when a new note triggers, the previous note's tail is cut.
+To let tails ring (or play overlapping gated notes), wrap the voice in a quotation and hand it to `poly:N`.
+A bracket group immediately before `poly` is compiled as a voice body instead of being spliced as a template;
+`poly:N` runs N copies of it and sums their outputs:
+-----
+1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4 .2 *
+-----
+`poly` consumes a value signal and a control signal. On a rising edge of the control signal it
+allocates the next voice round-robin and latches the current value into it; each voice body then runs
+every sample against a stack seeded with `(value, ctl)`. The most recently allocated voice receives
+the live control signal as-is, other voices receive 0. This makes `poly` gate-transparent: a trig
+body sees a one-sample impulse, while a gate body sees the full gate including its fall, so `adsr`
+releases work naturally:
+-----
+1 cycle pat:60,64,67,72 m2f 1 cycle gate:x.xx [ swap s swap 0.01 0.1 0.7 0.3 adsr * ] poly:4 .2 *
+-----
+Control amplitude passes through unchanged, so gates can carry velocity. There is no note-off or
+free-voice detection: if tails get stolen, raise N. Named templates work as voice bodies too:
+`lead poly:4`.
+
 === Templates
 Templates is syntactic sugar for abbreviating repetitive patterns.
 Template content is defined between square brackets followed by the template name.

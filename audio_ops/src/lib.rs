@@ -18,6 +18,7 @@ mod pan;
 mod param;
 mod pattern;
 mod phasor;
+mod poly;
 mod pulse;
 pub mod pure;
 mod sample_and_hold;
@@ -31,6 +32,6 @@ mod yin;
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*,
     filters::*, function::*, input::*, metro::*, noise::*, noop::*, normalise::*, osc::*, pan::*,
-    param::*, pattern::*, phasor::*, pulse::*, sample_and_hold::*, sampler::*,
+    param::*, pattern::*, phasor::*, poly::*, pulse::*, sample_and_hold::*, sampler::*,
     spectral_transform::*, stack::*, variable::*, wah::*, yin::*,
 };

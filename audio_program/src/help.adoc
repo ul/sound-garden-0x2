@@ -116,6 +116,13 @@ cpat:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `pat:<PATTERN>
 cgate:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `gate:<PATTERN>`
 ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTERN>`
 
+=== Polyphony
+
+A bracket group immediately before `poly` is a quotation: it is compiled into a voice body instead of being spliced as a template. `poly:N` runs N copies of the body and sums their outputs. On a rising edge of the control signal it allocates the next voice (round-robin) and latches the current value into it; the most recently allocated voice receives the live control signal as-is (a trig body sees a one-sample impulse, a gate body sees the full gate including its fall, so `adsr` releases work), other voices receive 0. Control amplitude passes through, so gates can carry velocity. Each voice body starts from a stack of `(value, ctl)`. Named templates work as bodies too: `lead poly:4`.
+
+[horizontal]
+poly:<N>:: (value, ctl) -> sum of N voices of the preceding quotation, e.g. `1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4`
+
 === Triggers
 
 [horizontal]

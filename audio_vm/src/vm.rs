@@ -4,7 +4,7 @@ use crate::stack::Stack;
 #[cfg(feature = "allocation-checks")]
 use alloc_counter::no_alloc;
 use smallvec::SmallVec;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 // Benchmarks (benches/microstructure.rs) showed SmallVec inline storage for Program
 // buys nothing on the hot path (op state is boxed anyway) while bloating every
@@ -243,7 +243,10 @@ fn declick_decay(duration: usize) -> Sample {
     }
 }
 
-fn migrate_program_state(active_program: &mut Program, previous_program: &mut Program) {
+/// Migrate state between statement lists pairing by statement id.
+/// Public so container ops (e.g. Poly) can reuse it for their sub-programs.
+/// Allocation-free: safe to call on the audio thread during `Op::migrate`.
+pub fn migrate_program_state(active_program: &mut [Statement], previous_program: &mut [Statement]) {
     if active_program.is_empty() || previous_program.is_empty() {
         return;
     }

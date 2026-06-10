@@ -216,13 +216,16 @@ fn poly_storage_benchmarks(c: &mut Criterion) {
             group.bench_function(format!("{}_frame_{VOICES}v_{BODY_LEN}ops", $name), |b| {
                 b.iter(|| black_box(poly_frame(black_box(&mut voices), &mut stack)))
             });
-            group.bench_function(format!("{}_construct_{VOICES}v_{BODY_LEN}ops", $name), |b| {
-                b.iter(|| {
-                    let voices: Vec<$ty> =
-                        (0..VOICES).map(|_| body(BODY_LEN).collect()).collect();
-                    black_box(voices)
-                })
-            });
+            group.bench_function(
+                format!("{}_construct_{VOICES}v_{BODY_LEN}ops", $name),
+                |b| {
+                    b.iter(|| {
+                        let voices: Vec<$ty> =
+                            (0..VOICES).map(|_| body(BODY_LEN).collect()).collect();
+                        black_box(voices)
+                    })
+                },
+            );
         }};
     }
     bench_poly!("smallvec64", SmallVec<[Stmt; 64]>);

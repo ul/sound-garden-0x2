@@ -96,6 +96,35 @@ fn pitch_detection_ops() -> Vec<TextOp> {
     vec![text_op(1, "110"), text_op(2, "s'"), text_op(3, "pitch")]
 }
 
+/// Canonical poly patch: pattern-driven pitch + trigger into 8 voices of
+/// sine * exponential impulse.
+fn poly_voices_ops() -> Vec<TextOp> {
+    [
+        "1",
+        "cycle",
+        "pat:60,64,67,72",
+        "m2f",
+        "1",
+        "cycle",
+        "trig:x.xx",
+        "[",
+        "swap",
+        "s",
+        "swap",
+        "0.01",
+        "impulse",
+        "*",
+        "]",
+        "poly:8",
+        "0.2",
+        "*",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, op)| text_op(i as u64 + 1, *op))
+    .collect()
+}
+
 fn compile_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("compile_program");
 
@@ -117,6 +146,7 @@ fn compile_benchmarks(c: &mut Criterion) {
         ("biquad_lpf", biquad_lpf_ops()),
         ("constant_arithmetic_64_terms", constant_arithmetic_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
+        ("poly_8_voices", poly_voices_ops()),
     ] {
         group.bench_function(name, |b| {
             b.iter_batched(
@@ -167,6 +197,7 @@ fn audio_frame_benchmarks(c: &mut Criterion) {
         ("biquad_lpf", biquad_lpf_ops()),
         ("constant_arithmetic_64_terms", constant_arithmetic_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
+        ("poly_8_voices", poly_voices_ops()),
     ] {
         group.bench_function(name, |b| {
             let mut vm = vm_from_ops(&ops);
@@ -307,6 +338,7 @@ fn block_render_benchmarks(c: &mut Criterion) {
         ("filtered_synth_8_lpf_stages", filtered_synth_ops(8)),
         ("convolution_m_64_taps", convolution_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
+        ("poly_8_voices", poly_voices_ops()),
     ] {
         group.bench_function(format!("{name}_{BLOCK_FRAMES}_frames"), |b| {
             let mut vm = vm_from_ops(&ops);

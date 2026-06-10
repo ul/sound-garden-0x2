@@ -7,5 +7,5 @@ pub use self::{
     op::Op,
     sample::{AtomicFrame, AtomicSample, CHANNELS, Frame, Sample},
     stack::Stack,
-    vm::{Program, Statement, VM},
+    vm::{Program, Statement, VM, migrate_program_state},
 };
