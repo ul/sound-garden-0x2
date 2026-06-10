@@ -57,9 +57,14 @@ alloc_counter.workspace = true
 audio_program = { path = "audio_program" }
 audio_vm = { path = "audio_vm" }
 criterion = "0.8.2"
+smallvec.workspace = true
 
 [[bench]]
 name = "performance"
+harness = false
+
+[[bench]]
+name = "microstructure"
 harness = false
 
 [profile.release]

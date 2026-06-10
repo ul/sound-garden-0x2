@@ -556,7 +556,6 @@ dependencies = [
  "regex",
  "rkyv",
  "serde",
- "smallvec",
  "symphonia",
 ]
 
@@ -3853,6 +3852,7 @@ dependencies = [
  "audio_program",
  "audio_vm",
  "criterion",
+ "smallvec",
 ]
 
 [[package]]
