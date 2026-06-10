@@ -624,12 +624,21 @@ fn compile_segment(
                             Some(x) => match x.parse::<Sample>() {
                                 Ok(size) => {
                                     let len = (size * (sample_rate as Sample)) as usize;
-                                    let mut table = Vec::with_capacity(len);
-                                    for _ in 0..len {
-                                        table.push(Default::default());
-                                    }
-                                    let table = Arc::new(table);
                                     let table_name = String::from(tokens[1]);
+                                    // Reuse the existing Arc when the table name and size match,
+                                    // so a live-recorded buffer survives program reload.
+                                    let table = match ctx.tables.get(&table_name) {
+                                        Some(existing) if existing.len() == len => {
+                                            Arc::clone(existing)
+                                        }
+                                        _ => {
+                                            let mut t = Vec::with_capacity(len);
+                                            for _ in 0..len {
+                                                t.push(Default::default());
+                                            }
+                                            Arc::new(t)
+                                        }
+                                    };
                                     ctx.tables.insert(table_name, Arc::clone(&table));
                                     push_args!(id, TableWriter, table);
                                 }
@@ -1522,6 +1531,29 @@ mod tests {
                 f64::from_bits(table[0][1].load(Ordering::Relaxed)),
             ],
             [0.75, 0.75]
+        );
+    }
+
+    #[test]
+    fn compile_program_reuses_same_sized_named_tables() {
+        let mut context = Context::new();
+        let ops = [op(1, "0.75"), op(2, "1"), op(3, "wt:loop:0.01")];
+
+        let _ = compile_program(&ops, 100, &mut context);
+        let first = Arc::clone(context.tables.get("loop").expect("created table"));
+        first[0][0].store(0.5f64.to_bits(), Ordering::Relaxed);
+        first[0][1].store((-0.5f64).to_bits(), Ordering::Relaxed);
+
+        let _ = compile_program(&ops, 100, &mut context);
+        let second = context.tables.get("loop").expect("reused table");
+
+        assert!(Arc::ptr_eq(&first, second));
+        assert_eq!(
+            [
+                f64::from_bits(second[0][0].load(Ordering::Relaxed)),
+                f64::from_bits(second[0][1].load(Ordering::Relaxed)),
+            ],
+            [0.5, -0.5]
         );
     }
 
