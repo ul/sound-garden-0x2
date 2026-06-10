@@ -1,3 +1,4 @@
+use crate::pure;
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use nom::IResult;
 use nom::Parser;
@@ -260,13 +261,66 @@ fn euclidean_values<T: Copy>(
     )
 }
 
+fn note_name_semitone(note: char) -> Option<i32> {
+    match note.to_ascii_lowercase() {
+        'c' => Some(0),
+        'd' => Some(2),
+        'e' => Some(4),
+        'f' => Some(5),
+        'g' => Some(7),
+        'a' => Some(9),
+        'b' => Some(11),
+        _ => None,
+    }
+}
+
+fn parse_note_constant(token: &str) -> Option<Sample> {
+    let mut chars = token.chars();
+    let note = chars.next()?;
+    if !note.is_ascii_alphabetic() || note.eq_ignore_ascii_case(&'s') {
+        return None;
+    }
+
+    let frequency = note.is_ascii_lowercase();
+    let mut semitone = note_name_semitone(note)?;
+    let mut rest = chars.as_str();
+
+    if let Some(accidental) = rest.chars().next() {
+        match accidental {
+            '#' => {
+                semitone += 1;
+                rest = &rest[accidental.len_utf8()..];
+            }
+            'b' => {
+                semitone -= 1;
+                rest = &rest[accidental.len_utf8()..];
+            }
+            _ => {}
+        }
+    }
+
+    let octave = rest.parse::<i32>().ok()?;
+    let midi = ((octave + 1) * 12 + semitone) as Sample;
+    Some(if frequency {
+        pure::midi2freq(midi)
+    } else {
+        midi
+    })
+}
+
+fn parse_value_constant(token: &str) -> Result<Sample, ()> {
+    let value = token
+        .parse::<Sample>()
+        .ok()
+        .or_else(|| parse_note_constant(token))
+        .ok_or(())?;
+    value.is_finite().then_some(value).ok_or(())
+}
+
 fn finite_sample_token(input: &str) -> IResult<&str, Sample> {
     map_res(
         take_while1(|ch: char| ch != ',' && ch != ')' && !ch.is_ascii_whitespace()),
-        |token: &str| {
-            let value = token.parse::<Sample>().map_err(|_| ())?;
-            value.is_finite().then_some(value).ok_or(())
-        },
+        parse_value_constant,
     )(input)
 }
 
@@ -325,11 +379,8 @@ fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>>
                 opt(value_euclidean_args),
             )),
             |(token, euclid): (&str, Option<(usize, usize, isize, Sample)>)| {
-                let value = token.parse::<Sample>().map_err(|_| ())?;
-                if !value.is_finite() {
-                    return Err(());
-                }
-                Ok(match euclid {
+                let value = parse_value_constant(token)?;
+                Ok::<_, ()>(match euclid {
                     Some((pulses, steps, offset, off)) => {
                         euclidean_values(pulses, steps, offset, Some(value), Some(off)).ok_or(())?
                     }
@@ -825,6 +876,22 @@ mod tests {
         assert_eq!(perform(&mut pat, [0.25, 0.9999]), [64.0, 72.0]);
         assert_eq!(perform(&mut pat, [1.0, -0.25]), [60.0, 72.0]);
         assert_eq!(perform(&mut pat, [f64::NAN, f64::INFINITY]), [60.0, 60.0]);
+    }
+
+    #[test]
+    fn value_pattern_accepts_note_constants() {
+        let mut pat = PatternValue::new("C4,C#4,Db4,c4");
+        let frame = perform(&mut pat, [0.0, 0.25]);
+        assert_eq!(frame, [60.0, 61.0]);
+        let frame = perform(&mut pat, [0.5, 0.75]);
+        assert_eq!(frame[0], 61.0);
+        assert!((frame[1] - pure::midi2freq(60.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn value_pattern_accepts_note_constants_in_euclidean_off_values() {
+        let mut pat = PatternValue::new("C4(1,2,0,D4)");
+        assert_eq!(perform(&mut pat, [0.0, 0.5]), [60.0, 62.0]);
     }
 
     #[test]
