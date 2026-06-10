@@ -308,10 +308,26 @@ fn parse_note_constant(token: &str) -> Option<Sample> {
     })
 }
 
+fn parse_ratio_constant(token: &str) -> Option<Sample> {
+    let (numerator, denominator) = token.split_once('/')?;
+    if denominator.contains('/') {
+        return None;
+    }
+
+    let numerator = numerator.parse::<Sample>().ok()?;
+    let denominator = denominator.parse::<Sample>().ok()?;
+    if numerator.is_finite() && denominator.is_finite() && denominator != 0.0 {
+        Some(numerator / denominator)
+    } else {
+        None
+    }
+}
+
 fn parse_value_constant(token: &str) -> Result<Sample, ()> {
     let value = token
         .parse::<Sample>()
         .ok()
+        .or_else(|| parse_ratio_constant(token))
         .or_else(|| parse_note_constant(token))
         .ok_or(())?;
     value.is_finite().then_some(value).ok_or(())
@@ -892,6 +908,19 @@ mod tests {
     fn value_pattern_accepts_note_constants_in_euclidean_off_values() {
         let mut pat = PatternValue::new("C4(1,2,0,D4)");
         assert_eq!(perform(&mut pat, [0.0, 0.5]), [60.0, 62.0]);
+    }
+
+    #[test]
+    fn value_pattern_accepts_ratio_constants() {
+        let mut pat = PatternValue::new("1/2,-3/2,1.5/3");
+        assert_eq!(perform(&mut pat, [0.0, 0.34]), [0.5, -1.5]);
+        assert_eq!(perform(&mut pat, [0.67, 0.99]), [0.5, 0.5]);
+    }
+
+    #[test]
+    fn value_pattern_accepts_ratio_constants_in_euclidean_off_values() {
+        let mut pat = PatternValue::new("2(1,2,0,1/2)");
+        assert_eq!(perform(&mut pat, [0.0, 0.5]), [2.0, 0.5]);
     }
 
     #[test]
