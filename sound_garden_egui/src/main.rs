@@ -284,6 +284,15 @@ impl SoundGardenApp {
             .and_then(|(node, _)| node.text.split(':').next().map(|s| s.to_owned()))
     }
 
+    fn current_line_text(&self) -> String {
+        let y = self.state.cursor.position.y;
+        render_nodes_text(self.state.nodes.iter().filter(|node| node.position.y == y))
+    }
+
+    fn program_text(&self) -> String {
+        render_nodes_text(self.state.nodes.iter())
+    }
+
     fn reset_oscilloscope(&mut self) {
         self.oscilloscope_values.clear();
         self.oscilloscope_min = -1.0;
@@ -445,6 +454,7 @@ impl SoundGardenApp {
             Action::InsertNewLineBelow => self.insert_new_line(true),
             Action::InsertNewLineAbove => self.insert_new_line(false),
             Action::SplitLine => self.split_line(),
+            Action::CopyCurrentLine | Action::CopyProgram => {}
         }
 
         if self.state.cursor.position != prev_cursor_position {
@@ -1262,7 +1272,11 @@ impl eframe::App for SoundGardenApp {
         }
 
         for action in self.collect_input(&ctx) {
-            self.handle_action(action);
+            match action {
+                Action::CopyCurrentLine => ctx.copy_text(self.current_line_text()),
+                Action::CopyProgram => ctx.copy_text(self.program_text()),
+                _ => self.handle_action(action),
+            }
         }
 
         if self.state.show_op_list {
@@ -1329,6 +1343,8 @@ enum Action {
     MoveLeftToLeft,
     MoveLeftToRight,
     SplitLine,
+    CopyCurrentLine,
+    CopyProgram,
 }
 
 fn key_action(key: egui::Key, modifiers: egui::Modifiers, mode: Mode) -> Option<Action> {
@@ -1394,6 +1410,8 @@ fn key_action(key: egui::Key, modifiers: egui::Modifiers, mode: Mode) -> Option<
             egui::Key::O if shift => Some(Action::InsertNewLineAbove),
             egui::Key::O if !shift => Some(Action::InsertNewLineBelow),
             egui::Key::S if !shift => Some(Action::SplitLine),
+            egui::Key::Y if !shift => Some(Action::CopyCurrentLine),
+            egui::Key::Y if shift => Some(Action::CopyProgram),
             egui::Key::V if !shift => Some(Action::ToggleOscilloscope),
             egui::Key::V if shift => Some(Action::ResetOscilloscope),
             egui::Key::P if !shift => Some(Action::TogglePatternHighlights),
@@ -1428,6 +1446,43 @@ fn default_cycles() -> Vec<Vec<String>> {
     .iter()
     .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
     .collect()
+}
+
+fn render_nodes_text<'a>(nodes: impl Iterator<Item = &'a Node>) -> String {
+    let mut nodes = nodes.collect::<Vec<_>>();
+    if nodes.is_empty() {
+        return String::new();
+    }
+
+    nodes.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
+    let min_x = nodes
+        .iter()
+        .map(|node| node.position.x as i64)
+        .min()
+        .unwrap_or_default();
+    let min_y = nodes
+        .iter()
+        .map(|node| node.position.y as i64)
+        .min()
+        .unwrap_or_default();
+    let max_y = nodes
+        .iter()
+        .map(|node| node.position.y as i64)
+        .max()
+        .unwrap_or(min_y);
+    let mut lines = vec![String::new(); (max_y - min_y + 1) as usize];
+
+    for node in nodes {
+        let line = &mut lines[(node.position.y as i64 - min_y) as usize];
+        let x = (node.position.x as i64 - min_x).max(0) as usize;
+        let len = line.chars().count();
+        if len < x {
+            line.push_str(&" ".repeat(x - len));
+        }
+        line.push_str(&node.text);
+    }
+
+    lines.join("\n")
 }
 
 fn canvas_grid_position(rect: Rect, pos: Pos2) -> Point {
@@ -1744,6 +1799,44 @@ mod tests {
             key_action(egui::Key::S, egui::Modifiers::NONE, Mode::Normal),
             Some(Action::SplitLine)
         ));
+    }
+
+    #[test]
+    fn normal_y_copies_current_line() {
+        assert!(matches!(
+            key_action(egui::Key::Y, egui::Modifiers::NONE, Mode::Normal),
+            Some(Action::CopyCurrentLine)
+        ));
+    }
+
+    #[test]
+    fn normal_shift_y_copies_program() {
+        assert!(matches!(
+            key_action(
+                egui::Key::Y,
+                egui::Modifiers {
+                    shift: true,
+                    ..Default::default()
+                },
+                Mode::Normal
+            ),
+            Some(Action::CopyProgram)
+        ));
+    }
+
+    #[test]
+    fn copy_text_renders_line_and_program_relative_to_content() {
+        let app = app_with_nodes(
+            vec![
+                node(1, 4.0, 2.0, "foo"),
+                node(2, 9.0, 2.0, "bar"),
+                node(3, 6.0, 4.0, "baz"),
+            ],
+            Point::new(4.0, 2.0),
+        );
+
+        assert_eq!(app.current_line_text(), "foo  bar");
+        assert_eq!(app.program_text(), "foo  bar\n\n  baz");
     }
 
     #[test]
