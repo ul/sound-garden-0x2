@@ -803,12 +803,17 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
 }
 
 fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
+    let stmts = stmts
+        .iter()
+        .filter(|stmt| !stmt.op.starts_with(';'))
+        .cloned()
+        .collect::<Vec<_>>();
     let mut result: Vec<TextOp> = Vec::new();
     let mut new_term: Option<Term> = None;
     // Depth of nested bracket groups inside the group being collected.
     let mut bracket_depth = 0usize;
     let mut terms: HashMap<String, Term> = Default::default();
-    let mut stack: Vec<TextOp> = Vec::from(stmts);
+    let mut stack: Vec<TextOp> = stmts;
     stack.reverse();
     while let Some(stmt) = stack.pop() {
         // This is a known term, let's rewrite it...
@@ -1429,6 +1434,64 @@ mod tests {
                 &mut context
             ),
             [1.0, -2.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_drops_comment_tokens() {
+        let mut context = Context::new();
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "440"),
+                    op(2, ";hello"),
+                    op(3, "s"),
+                    op(4, ";world-this-is-a-comment"),
+                ],
+                &mut context,
+            ),
+            run_once(&[op(1, "440"), op(3, "s")], &mut Context::new())
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "1"), op(2, ";"), op(3, "2"), op(4, "+")],
+                &mut context
+            ),
+            [3.0, 3.0]
+        );
+    }
+
+    #[test]
+    fn comments_inside_templates_and_quotations_are_ignored() {
+        let mut context = Context::new();
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "["),
+                    op(2, ";ignored"),
+                    op(3, "1"),
+                    op(4, "]"),
+                    op(5, "one"),
+                    op(6, "one"),
+                ],
+                &mut context,
+            ),
+            [1.0, 1.0]
+        );
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "5"),
+                    op(2, "1"),
+                    op(3, "["),
+                    op(4, ";ignored"),
+                    op(5, "+"),
+                    op(6, "]"),
+                    op(7, "poly:1"),
+                ],
+                &mut Context::new(),
+            ),
+            [6.0, 6.0]
         );
     }
 

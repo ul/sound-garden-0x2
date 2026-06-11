@@ -7,6 +7,10 @@ Unknown words, stack underflow, and stack overflow are tolerated by the VM and e
 [horizontal]
 return, ret, !:: stop compiling/evaluating the program here; the current stack/audio output is used and all following words are ignored
 
+=== Comments
+
+Any word starting with `;` is ignored by the compiler, e.g. `;bassline` or `;slow-attack`. Comments are single words (use dashes inside one comment word, or several `;` words); this matches the editor where every node is one word.
+
 === Constants and literals
 
 [horizontal]

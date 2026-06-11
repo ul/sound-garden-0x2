@@ -22,6 +22,7 @@ const GRID_HEIGHT: f32 = 16.0;
 const MODELINE_HEIGHT: f32 = 26.0;
 const BACKGROUND_COLOR: Color32 = Color32::from_rgb(0xf3, 0xf0, 0xe8);
 const FOREGROUND_COLOR: Color32 = Color32::from_rgb(0x22, 0x22, 0x20);
+const COMMENT_COLOR: Color32 = Color32::from_rgb(0x8f, 0x8c, 0x84);
 const NODE_DRAFT_COLOR: Color32 = Color32::from_rgb(0xff, 0x81, 0x2b);
 const MODELINE_NORMAL_COLOR: Color32 = Color32::from_rgb(0xcc, 0xcc, 0xcc);
 const MODELINE_INSERT_COLOR: Color32 = Color32::from_rgb(0x55, 0xae, 0x39);
@@ -976,7 +977,9 @@ impl SoundGardenApp {
 
             for node in self.state.nodes.iter() {
                 self.paint_pattern_highlight(&painter, rect.min, node);
-                let color = if self.state.draft_nodes.contains(&node.id) {
+                let color = if node.text.starts_with(';') {
+                    COMMENT_COLOR
+                } else if self.state.draft_nodes.contains(&node.id) {
                     NODE_DRAFT_COLOR
                 } else {
                     FOREGROUND_COLOR
