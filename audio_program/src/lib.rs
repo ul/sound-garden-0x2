@@ -3,7 +3,7 @@ use audio_ops::*;
 #[cfg(test)]
 use audio_vm::Frame;
 use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
-use rand::{rngs::SmallRng, seq::SliceRandom};
+use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,8 @@ pub struct Context {
     pub params: [Arc<AtomicSample>; PARAMETERS],
     pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, RandomState>,
     pub variables: HashMap<String, Arc<AtomicFrame>, RandomState>,
+    pub seed: Option<u64>,
+    pub rng_counter: u64,
 }
 
 impl Context {
@@ -34,6 +36,8 @@ impl Context {
             params: Default::default(),
             tables: HashMap::with_hasher(RandomState::new()),
             variables: HashMap::with_hasher(RandomState::new()),
+            seed: None,
+            rng_counter: 0,
         }
     }
 }
@@ -41,6 +45,29 @@ impl Context {
 impl Default for Context {
     fn default() -> Self {
         Context::new()
+    }
+}
+
+fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
+}
+
+impl Context {
+    fn set_seed(&mut self, seed: Option<u64>) {
+        self.seed = seed;
+        self.rng_counter = 0;
+    }
+
+    fn next_rng_seed(&mut self) -> Option<u64> {
+        let seed = self.seed?;
+        let counter = self.rng_counter;
+        self.rng_counter = self.rng_counter.wrapping_add(1);
+        Some(splitmix64(
+            seed ^ counter.wrapping_mul(0x9E37_79B9_7F4A_7C15),
+        ))
     }
 }
 
@@ -198,7 +225,16 @@ fn is_quotation_consumer(op: &str) -> bool {
 }
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
-    let ops = rewrite_terms(ops);
+    let seed = ops
+        .iter()
+        .find_map(|op| op.op.strip_prefix("seed:")?.parse::<u64>().ok());
+    ctx.set_seed(seed);
+    let ops = ops
+        .iter()
+        .filter(|op| !op.op.starts_with("seed:"))
+        .cloned()
+        .collect::<Vec<_>>();
+    let ops = rewrite_terms(&ops);
     let mut program = Vec::new();
     compile_ops(&ops, sample_rate, ctx, &mut program);
     program
@@ -415,7 +451,10 @@ fn compile_segment(
             "max" => push_args!(id, Fn2, pure::max),
             "mh" | "metro_hold" => push_args!(id, MetroHold, sample_rate),
             "min" => push_args!(id, Fn2, pure::min),
-            "n" | "noise" | "whiteNoise" => push!(id, WhiteNoise),
+            "n" | "noise" | "whiteNoise" => program.push(Statement {
+                id,
+                op: Box::new(WhiteNoise::with_seed(ctx.next_rng_seed())) as Box<dyn Op>,
+            }),
             "notch" | "bqnotch" => push_args!(id, BiQuad, sample_rate, make_notch_coefficients),
             "oneshot" | "shot" => push_args!(id, OneShot, sample_rate),
             "p" => push_args!(id, Pulse, sample_rate),
@@ -446,7 +485,10 @@ fn compile_segment(
             "sine'" => push_args!(id, OscPhase, sample_rate, pure::sine_fast),
             "sinh" => push_args!(id, Fn1, pure::sinh),
             "spectral_shuffle" => {
-                let mut rng = Box::new(rand::make_rng::<SmallRng>());
+                let mut rng = Box::new(
+                    ctx.next_rng_seed()
+                        .map_or_else(rand::make_rng::<SmallRng>, SmallRng::seed_from_u64),
+                );
                 push_args!(
                     id,
                     SpectralTransform,
@@ -709,36 +751,69 @@ fn compile_segment(
                             Some(x) => push_args!(id, Normalise, x.parse::<usize>().unwrap_or(256)),
                             None => push_args!(id, Normalise, 256),
                         },
-                        "pat" => match tokens.get(1) {
-                            Some(pattern) => push_args!(id, PatternValue, pattern),
-                            None => push_args!(id, PatternValue, ""),
-                        },
-                        "gate" => match tokens.get(1) {
-                            Some(pattern) => push_args!(id, PatternGate, pattern),
-                            None => push_args!(id, PatternGate, ""),
-                        },
-                        "trig" => match tokens.get(1) {
-                            Some(pattern) => push_args!(id, PatternTrigger, pattern),
-                            None => push_args!(id, PatternTrigger, ""),
-                        },
-                        "cpat" => match tokens.get(1) {
-                            Some(pattern) => {
-                                push_args!(id, ClockedPatternValue, sample_rate, pattern)
-                            }
-                            None => push_args!(id, ClockedPatternValue, sample_rate, ""),
-                        },
-                        "cgate" => match tokens.get(1) {
-                            Some(pattern) => {
-                                push_args!(id, ClockedPatternGate, sample_rate, pattern)
-                            }
-                            None => push_args!(id, ClockedPatternGate, sample_rate, ""),
-                        },
-                        "ctrig" => match tokens.get(1) {
-                            Some(pattern) => {
-                                push_args!(id, ClockedPatternTrigger, sample_rate, pattern)
-                            }
-                            None => push_args!(id, ClockedPatternTrigger, sample_rate, ""),
-                        },
+                        "pat" => {
+                            let pattern = tokens.get(1).copied().unwrap_or("");
+                            program.push(Statement {
+                                id,
+                                op: Box::new(PatternValue::with_seed(
+                                    pattern,
+                                    ctx.next_rng_seed().unwrap_or(0),
+                                )) as Box<dyn Op>,
+                            });
+                        }
+                        "gate" => {
+                            let pattern = tokens.get(1).copied().unwrap_or("");
+                            program.push(Statement {
+                                id,
+                                op: Box::new(PatternGate::with_seed(
+                                    pattern,
+                                    ctx.next_rng_seed().unwrap_or(0),
+                                )) as Box<dyn Op>,
+                            });
+                        }
+                        "trig" => {
+                            let pattern = tokens.get(1).copied().unwrap_or("");
+                            program.push(Statement {
+                                id,
+                                op: Box::new(PatternTrigger::with_seed(
+                                    pattern,
+                                    ctx.next_rng_seed().unwrap_or(0),
+                                )) as Box<dyn Op>,
+                            });
+                        }
+                        "cpat" => {
+                            let pattern = tokens.get(1).copied().unwrap_or("");
+                            program.push(Statement {
+                                id,
+                                op: Box::new(ClockedPatternValue::with_seed(
+                                    sample_rate,
+                                    pattern,
+                                    ctx.next_rng_seed().unwrap_or(0),
+                                )) as Box<dyn Op>,
+                            });
+                        }
+                        "cgate" => {
+                            let pattern = tokens.get(1).copied().unwrap_or("");
+                            program.push(Statement {
+                                id,
+                                op: Box::new(ClockedPatternGate::with_seed(
+                                    sample_rate,
+                                    pattern,
+                                    ctx.next_rng_seed().unwrap_or(0),
+                                )) as Box<dyn Op>,
+                            });
+                        }
+                        "ctrig" => {
+                            let pattern = tokens.get(1).copied().unwrap_or("");
+                            program.push(Statement {
+                                id,
+                                op: Box::new(ClockedPatternTrigger::with_seed(
+                                    sample_rate,
+                                    pattern,
+                                    ctx.next_rng_seed().unwrap_or(0),
+                                )) as Box<dyn Op>,
+                            });
+                        }
                         "poly" => {
                             log::warn!(
                                 "poly without a preceding quotation; compiling to a zero-voice poly."
@@ -1492,6 +1567,49 @@ mod tests {
                 &mut Context::new(),
             ),
             [6.0, 6.0]
+        );
+    }
+
+    #[test]
+    fn seed_directive_makes_noise_reproducible() {
+        let ops = [op(1, "seed:42"), op(2, "noise")];
+        assert_eq!(run_frames(&ops, 100, 16), run_frames(&ops, 100, 16));
+        assert_ne!(
+            run_frames(&[op(1, "seed:42"), op(2, "noise")], 100, 16),
+            run_frames(&[op(1, "seed:43"), op(2, "noise")], 100, 16)
+        );
+        let _ = run_frames(&[op(1, "noise")], 100, 1);
+    }
+
+    #[test]
+    fn seed_directive_makes_pattern_random_choice_reproducible_and_consumes_no_stack() {
+        let ops = [
+            op(1, "seed:42"),
+            op(2, "8"),
+            op(3, "cycle"),
+            op(4, "pat:1|2|3|4|5|6|7|8"),
+        ];
+        assert_eq!(run_frames(&ops, 8, 24), run_frames(&ops, 8, 24));
+        assert_ne!(
+            run_frames(&ops, 8, 24),
+            run_frames(
+                &[
+                    op(1, "seed:43"),
+                    op(2, "8"),
+                    op(3, "cycle"),
+                    op(4, "pat:1|2|3|4|5|6|7|8"),
+                ],
+                8,
+                24,
+            )
+        );
+
+        assert_eq!(
+            run_once(
+                &[op(1, "seed:42"), op(2, "1"), op(3, "2"), op(4, "+")],
+                &mut Context::new()
+            ),
+            [3.0, 3.0]
         );
     }
 

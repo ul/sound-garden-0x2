@@ -87,9 +87,15 @@ fn pattern_period<T>(elements: &[PatternElement<T>]) -> usize {
         .fold(1, |period, element| lcm(period, element_period(element)))
 }
 
-fn random_choice(cycle: usize, random_index: usize, choices: usize) -> usize {
+fn random_choice(
+    cycle: usize,
+    random_index: usize,
+    choices: usize,
+    seed_perturbation: u64,
+) -> usize {
     let mut x = (cycle as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        ^ (random_index as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        ^ (random_index as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ seed_perturbation;
     x ^= x >> 30;
     x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     x ^= x >> 27;
@@ -105,6 +111,7 @@ fn flatten_elements<T: Copy>(
     start: Sample,
     duration: Sample,
     cells: &mut Vec<Cell<T>>,
+    seed_perturbation: u64,
 ) {
     let step = duration / elements.len() as Sample;
     for (index, element) in elements.iter().enumerate() {
@@ -120,29 +127,63 @@ fn flatten_elements<T: Copy>(
                 end: cell_end,
                 value: *value,
             }),
-            PatternElement::Group(group) => {
-                flatten_elements(group, cycle, random_counter, cell_start, step, cells)
-            }
+            PatternElement::Group(group) => flatten_elements(
+                group,
+                cycle,
+                random_counter,
+                cell_start,
+                step,
+                cells,
+                seed_perturbation,
+            ),
             PatternElement::Alternate(alternatives) => {
                 let alternative = &alternatives[cycle % alternatives.len()];
-                flatten_elements(alternative, cycle, random_counter, cell_start, step, cells);
+                flatten_elements(
+                    alternative,
+                    cycle,
+                    random_counter,
+                    cell_start,
+                    step,
+                    cells,
+                    seed_perturbation,
+                );
             }
             PatternElement::Random(alternatives) => {
                 let random_index = *random_counter;
                 *random_counter += 1;
-                let alternative =
-                    &alternatives[random_choice(cycle, random_index, alternatives.len())];
-                flatten_elements(alternative, cycle, random_counter, cell_start, step, cells);
+                let alternative = &alternatives
+                    [random_choice(cycle, random_index, alternatives.len(), seed_perturbation)];
+                flatten_elements(
+                    alternative,
+                    cycle,
+                    random_counter,
+                    cell_start,
+                    step,
+                    cells,
+                    seed_perturbation,
+                );
             }
         }
     }
 }
 
-fn flatten_pattern<T: Copy>(elements: &[PatternElement<T>], cycle: usize) -> Vec<Cell<T>> {
+fn flatten_pattern<T: Copy>(
+    elements: &[PatternElement<T>],
+    cycle: usize,
+    seed_perturbation: u64,
+) -> Vec<Cell<T>> {
     let mut cells = Vec::new();
     if !elements.is_empty() {
         let mut random_counter = 0;
-        flatten_elements(elements, cycle, &mut random_counter, 0.0, 1.0, &mut cells);
+        flatten_elements(
+            elements,
+            cycle,
+            &mut random_counter,
+            0.0,
+            1.0,
+            &mut cells,
+            seed_perturbation,
+        );
     }
     cells
 }
@@ -170,10 +211,13 @@ impl<T> Pattern<T> {
     }
 }
 
-fn compile_pattern<T: Copy>(elements: Vec<PatternElement<T>>) -> Pattern<T> {
+fn compile_pattern<T: Copy>(
+    elements: Vec<PatternElement<T>>,
+    seed_perturbation: u64,
+) -> Pattern<T> {
     let period = pattern_period(&elements).max(1);
     let variants = (0..period)
-        .map(|cycle| flatten_pattern(&elements, cycle))
+        .map(|cycle| flatten_pattern(&elements, cycle, seed_perturbation))
         .collect::<Vec<_>>();
     if variants.iter().any(Vec::is_empty) {
         Pattern {
@@ -465,13 +509,15 @@ fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
         .collect()
 }
 
-fn parse_values(pattern: &str) -> Pattern<Sample> {
+fn parse_values(pattern: &str, seed_perturbation: u64) -> Pattern<Sample> {
     let parsed = all_consuming(terminated(value_sequence, multispace0))(pattern);
     match parsed {
         Ok((_, elements)) => {
             let period = pattern_period(&elements).max(1);
             let variants = (0..period)
-                .map(|cycle| resolve_value_holds(flatten_pattern(&elements, cycle)))
+                .map(|cycle| {
+                    resolve_value_holds(flatten_pattern(&elements, cycle, seed_perturbation))
+                })
                 .collect::<Vec<_>>();
             if variants.iter().any(Vec::is_empty) {
                 warn_invalid(ParseKind::Value, pattern);
@@ -551,10 +597,10 @@ fn gate_sequence(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     )(input)
 }
 
-fn parse_gates(pattern: &str) -> Pattern<bool> {
+fn parse_gates(pattern: &str, seed_perturbation: u64) -> Pattern<bool> {
     match all_consuming(terminated(gate_sequence, multispace0))(pattern) {
         Ok((_, elements)) if !elements.is_empty() => {
-            let pattern = compile_pattern(elements);
+            let pattern = compile_pattern(elements, seed_perturbation);
             if pattern.is_empty() {
                 Pattern {
                     variants: Vec::new(),
@@ -578,9 +624,9 @@ struct ValuePattern {
 }
 
 impl ValuePattern {
-    fn new(pattern: &str) -> Self {
+    fn with_seed(pattern: &str, seed_perturbation: u64) -> Self {
         Self {
-            values: parse_values(pattern),
+            values: parse_values(pattern, seed_perturbation),
         }
     }
 
@@ -603,9 +649,9 @@ struct GatePattern {
 }
 
 impl GatePattern {
-    fn new(pattern: &str) -> Self {
+    fn with_seed(pattern: &str, seed_perturbation: u64) -> Self {
         Self {
-            gates: parse_gates(pattern),
+            gates: parse_gates(pattern, seed_perturbation),
         }
     }
 
@@ -671,8 +717,12 @@ pub struct PatternValue {
 
 impl PatternValue {
     pub fn new(pattern: &str) -> Self {
+        Self::with_seed(pattern, 0)
+    }
+
+    pub fn with_seed(pattern: &str, seed_perturbation: u64) -> Self {
         Self {
-            pattern: ValuePattern::new(pattern),
+            pattern: ValuePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
         }
@@ -695,8 +745,12 @@ pub struct PatternGate {
 
 impl PatternGate {
     pub fn new(pattern: &str) -> Self {
+        Self::with_seed(pattern, 0)
+    }
+
+    pub fn with_seed(pattern: &str, seed_perturbation: u64) -> Self {
         Self {
-            pattern: GatePattern::new(pattern),
+            pattern: GatePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
         }
@@ -720,8 +774,12 @@ pub struct PatternTrigger {
 
 impl PatternTrigger {
     pub fn new(pattern: &str) -> Self {
+        Self::with_seed(pattern, 0)
+    }
+
+    pub fn with_seed(pattern: &str, seed_perturbation: u64) -> Self {
         Self {
-            pattern: GatePattern::new(pattern),
+            pattern: GatePattern::with_seed(pattern, seed_perturbation),
             previous_indices: [None; CHANNELS],
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
@@ -805,9 +863,13 @@ pub struct ClockedPatternValue {
 
 impl ClockedPatternValue {
     pub fn new(sample_rate: u32, pattern: &str) -> Self {
+        Self::with_seed(sample_rate, pattern, 0)
+    }
+
+    pub fn with_seed(sample_rate: u32, pattern: &str, seed_perturbation: u64) -> Self {
         Self {
             cycle: Cycle::new(sample_rate),
-            pattern: ValuePattern::new(pattern),
+            pattern: ValuePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
         }
@@ -840,9 +902,13 @@ pub struct ClockedPatternGate {
 
 impl ClockedPatternGate {
     pub fn new(sample_rate: u32, pattern: &str) -> Self {
+        Self::with_seed(sample_rate, pattern, 0)
+    }
+
+    pub fn with_seed(sample_rate: u32, pattern: &str, seed_perturbation: u64) -> Self {
         Self {
             cycle: Cycle::new(sample_rate),
-            pattern: GatePattern::new(pattern),
+            pattern: GatePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
         }
@@ -873,9 +939,13 @@ pub struct ClockedPatternTrigger {
 
 impl ClockedPatternTrigger {
     pub fn new(sample_rate: u32, pattern: &str) -> Self {
+        Self::with_seed(sample_rate, pattern, 0)
+    }
+
+    pub fn with_seed(sample_rate: u32, pattern: &str, seed_perturbation: u64) -> Self {
         Self {
             cycle: Cycle::new(sample_rate),
-            trigger: PatternTrigger::new(pattern),
+            trigger: PatternTrigger::with_seed(pattern, seed_perturbation),
         }
     }
 }

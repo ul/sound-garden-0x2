@@ -1,5 +1,5 @@
 use audio_vm::{CHANNELS, Op, Stack};
-use rand::{RngExt, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 
 pub struct WhiteNoise {
     rng: SmallRng,
@@ -13,8 +13,12 @@ impl Default for WhiteNoise {
 
 impl WhiteNoise {
     pub fn new() -> Self {
+        Self::with_seed(None)
+    }
+
+    pub fn with_seed(seed: Option<u64>) -> Self {
         WhiteNoise {
-            rng: rand::make_rng(),
+            rng: seed.map_or_else(rand::make_rng, SmallRng::seed_from_u64),
         }
     }
 }

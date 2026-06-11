@@ -11,6 +11,11 @@ return, ret, !:: stop compiling/evaluating the program here; the current stack/a
 
 Any word starting with `;` is ignored by the compiler, e.g. `;bassline` or `;slow-attack`. Comments are single words (use dashes inside one comment word, or several `;` words); this matches the editor where every node is one word.
 
+=== Reproducibility
+
+[horizontal]
+seed:<N>:: compile-time directive (consumes nothing, produces nothing): seeds all random generators — `noise`, `spectral_shuffle`, and pattern random choice `|` — so renders are reproducible. Without it every run is unique.
+
 === Constants and literals
 
 [horizontal]
