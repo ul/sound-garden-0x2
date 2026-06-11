@@ -80,8 +80,8 @@ biexp:: (x, lo, hi) -> exponentially project x from -1..1 to lo..hi
 range, r:: (x, c, d) -> same as project with a = -1 and b = 1
 unit:: (x) -> same as range with c = 0 and d = 1
 circle:: (x) -> same as range with c = -π and d = π
-db2amp, db2a:: (x) -> currently computes `20 * log10(x)`
-amp2db, a2db:: (x) -> currently computes `10^(x / 20)`
+db2amp, db2a:: (x) -> decibels to amplitude, `10^(x / 20)`
+amp2db, a2db:: (x) -> amplitude to decibels, `20 * log10(x)`
 freq2midi, f2m:: (x) -> frequency in Hz to MIDI pitch
 midi2freq, m2f:: (x) -> MIDI pitch to frequency in Hz; `#` is also an alias
 

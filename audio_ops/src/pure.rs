@@ -284,16 +284,16 @@ pub fn clamp(x: Sample, min: Sample, max: Sample) -> Sample {
     }
 }
 
-// Convert decibels to amplitude.
+/// Convert decibels to amplitude: 10^(x / 20).
 #[inline]
 pub fn db2amp(x: Sample) -> Sample {
-    20.0 * x.log10()
+    10.0f64.powf(x / 20.0)
 }
 
-// Convert amplitude to decibels.
+/// Convert amplitude to decibels: 20 * log10(x).
 #[inline]
 pub fn amp2db(x: Sample) -> Sample {
-    10.0f64.powf(x / 20.0)
+    20.0 * x.log10()
 }
 
 #[inline]
@@ -347,6 +347,18 @@ mod tests {
 
     fn assert_close(actual: Sample, expected: Sample) {
         assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn decibel_and_amplitude_conversions_are_named_correctly() {
+        assert_close(db2amp(0.0), 1.0);
+        assert_close(db2amp(20.0), 10.0);
+        assert_close(amp2db(1.0), 0.0);
+        assert_close(amp2db(10.0), 20.0);
+
+        for db in [-24.0, -6.0, 0.0, 3.0, 18.0] {
+            assert_close(amp2db(db2amp(db)), db);
+        }
     }
 
     #[test]
