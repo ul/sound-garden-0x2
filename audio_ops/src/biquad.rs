@@ -28,6 +28,22 @@ pub fn make_hpf_coefficients(
     (b0, b1, b0, 1.0 + alpha, -2.0 * cos_o, 1.0 - alpha)
 }
 
+pub fn make_bpf_coefficients(
+    _sin_o: Sample,
+    cos_o: Sample,
+    alpha: Sample,
+) -> (Sample, Sample, Sample, Sample, Sample, Sample) {
+    (alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * cos_o, 1.0 - alpha)
+}
+
+pub fn make_notch_coefficients(
+    _sin_o: Sample,
+    cos_o: Sample,
+    alpha: Sample,
+) -> (Sample, Sample, Sample, Sample, Sample, Sample) {
+    (1.0, -2.0 * cos_o, 1.0, 1.0 + alpha, -2.0 * cos_o, 1.0 - alpha)
+}
+
 pub struct BiQuad {
     make_coefficients: MakeCoefficients,
     sample_angular_period: Sample,
@@ -88,5 +104,54 @@ impl Op for BiQuad {
             self.x2 = other.x2;
             self.y2 = other.y2;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn coefficients(
+        frequency: Sample,
+        sample_rate: Sample,
+        q: Sample,
+        make_coefficients: MakeCoefficients,
+    ) -> (Sample, Sample, Sample, Sample, Sample, Sample) {
+        let o = frequency * 2.0 * std::f64::consts::PI / sample_rate;
+        let sin_o = o.sin();
+        let cos_o = o.cos();
+        let alpha = sin_o / (2.0 * q);
+        make_coefficients(sin_o, cos_o, alpha)
+    }
+
+    fn magnitude_at(
+        coeffs: (Sample, Sample, Sample, Sample, Sample, Sample),
+        frequency: Sample,
+        sample_rate: Sample,
+    ) -> Sample {
+        let (b0, b1, b2, a0, a1, a2) = coeffs;
+        let w = frequency * 2.0 * std::f64::consts::PI / sample_rate;
+        let z1 = rustfft::num_complex::Complex64::from_polar(1.0, -w);
+        let z2 = rustfft::num_complex::Complex64::from_polar(1.0, -2.0 * w);
+        ((b0 + b1 * z1 + b2 * z2) / (a0 + a1 * z1 + a2 * z2)).norm()
+    }
+
+    #[test]
+    fn band_pass_passes_center_and_attenuates_far_away() {
+        let sample_rate = 48_000.0;
+        let coeffs = coefficients(1_000.0, sample_rate, 1.0, make_bpf_coefficients);
+
+        assert!((magnitude_at(coeffs, 1_000.0, sample_rate) - 1.0).abs() < 1e-12);
+        assert!(magnitude_at(coeffs, 0.0, sample_rate) < 1e-12);
+        assert!(magnitude_at(coeffs, 20_000.0, sample_rate) < 0.1);
+    }
+
+    #[test]
+    fn notch_kills_center_and_passes_dc() {
+        let sample_rate = 48_000.0;
+        let coeffs = coefficients(1_000.0, sample_rate, 1.0, make_notch_coefficients);
+
+        assert!(magnitude_at(coeffs, 1_000.0, sample_rate) < 1e-12);
+        assert!((magnitude_at(coeffs, 0.0, sample_rate) - 1.0).abs() < 1e-12);
     }
 }

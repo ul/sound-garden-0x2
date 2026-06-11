@@ -92,6 +92,8 @@ lpf:: (x, freq) -> https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite
 hpf:: (x, freq) -> https://en.wikipedia.org/wiki/High-pass_filter#Algorithmic_implementation[simple infinite impulse response high-pass filter]
 bqlpf, l:: (x, freq, Q) -> biquad LPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
 bqhpf, h:: (x, freq, Q) -> biquad HPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
+bqbpf, bp:: (x, freq, Q) -> biquad band-pass filter using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
+bqnotch, notch:: (x, freq, Q) -> biquad notch filter using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
 prime:: (x) -> delay x by one sample
 delay:<N>, dl:<N>:: (x, time) -> delay by `time` seconds; max delay buffer is <N> seconds, default 60
 feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo; max delay is <N> seconds, default 60
