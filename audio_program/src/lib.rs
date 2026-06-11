@@ -563,6 +563,20 @@ fn compile_segment(
                             ),
                             None => push_args!(id, Feedback, sample_rate, 60.0),
                         },
+                        "fbsat" => {
+                            let max_delay = tokens
+                                .get(1)
+                                .and_then(|x| x.parse::<f64>().ok())
+                                .unwrap_or(60.0);
+                            program.push(Statement {
+                                id,
+                                op: Box::new(Feedback::with_shaper(
+                                    sample_rate,
+                                    max_delay,
+                                    pure::tanh,
+                                )) as Box<dyn Op>,
+                            });
+                        }
                         "get" => match tokens
                             .get(1)
                             .map(|x| ctx.variables.entry(x.to_string()).or_default())
@@ -1410,6 +1424,57 @@ mod tests {
             ),
             [1.0, -2.0]
         );
+    }
+
+    #[test]
+    fn compile_program_runs_saturating_feedback() {
+        let saturated = run_frames(
+            &[
+                op(1, "1"),
+                op(2, "0.01"),
+                op(3, "1.5"),
+                op(4, "fbsat:1"),
+            ],
+            100,
+            64,
+        );
+        assert!(saturated
+            .iter()
+            .flatten()
+            .all(|sample| (-1.0..=1.0).contains(sample)));
+
+        let plain = run_frames(
+            &[op(1, "1"), op(2, "0.01"), op(3, "1.5"), op(4, "fb:1")],
+            100,
+            8,
+        );
+        assert!(plain.iter().flatten().any(|sample| *sample > 1.0));
+
+        let low_saturated = run_frames(
+            &[
+                op(1, "0.000001"),
+                op(2, "0.01"),
+                op(3, "0.5"),
+                op(4, "fbsat:1"),
+            ],
+            100,
+            16,
+        );
+        let low_plain = run_frames(
+            &[
+                op(1, "0.000001"),
+                op(2, "0.01"),
+                op(3, "0.5"),
+                op(4, "fb:1"),
+            ],
+            100,
+            16,
+        );
+        for (saturated, plain) in low_saturated.iter().zip(low_plain) {
+            for (saturated, plain) in saturated.iter().zip(plain) {
+                assert!((saturated - plain).abs() < 1e-12);
+            }
+        }
     }
 
     #[test]

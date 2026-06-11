@@ -97,6 +97,7 @@ bqnotch, notch:: (x, freq, Q) -> biquad notch filter using https://shepazu.githu
 prime:: (x) -> delay x by one sample
 delay:<N>, dl:<N>:: (x, time) -> delay by `time` seconds; max delay buffer is <N> seconds, default 60
 feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo; max delay is <N> seconds, default 60
+fbsat:<N>:: (x, delay, gain) -> like feedback, but the loop signal is saturated with tanh so it can never blow up; max delay <N> seconds, default 60
 conv:<N>:: (x, y) -> convolve two signals with an N-frame window
 convm:<N>:: (x, ...ys) -> convolve x with an N-frame kernel of y signals
 wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass control

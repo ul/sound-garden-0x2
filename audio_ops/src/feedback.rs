@@ -1,18 +1,24 @@
 use crate::delay::Delay;
-use audio_vm::{CHANNELS, Frame, Op, Stack};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
 pub struct Feedback {
     delay: Delay,
     delay_input: Frame,
+    shaper: fn(Sample) -> Sample,
 }
 
 impl Feedback {
     pub fn new(sample_rate: u32, max_delay: f64) -> Self {
+        Self::with_shaper(sample_rate, max_delay, |x| x)
+    }
+
+    pub fn with_shaper(sample_rate: u32, max_delay: f64, shaper: fn(Sample) -> Sample) -> Self {
         let delay = Delay::new(sample_rate, max_delay);
         Feedback {
             delay,
             delay_input: [0.0; CHANNELS],
+            shaper,
         }
     }
 }
@@ -31,7 +37,7 @@ impl Op for Feedback {
         let delayed = stack.pop();
 
         for (sample, &x, &gain, &delayed) in izip!(&mut self.delay_input, &input, &gain, &delayed) {
-            *sample = x + gain * delayed;
+            *sample = (self.shaper)(x + gain * delayed);
         }
 
         stack.push(&self.delay_input);
