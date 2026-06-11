@@ -41,7 +41,14 @@ pub fn make_notch_coefficients(
     cos_o: Sample,
     alpha: Sample,
 ) -> (Sample, Sample, Sample, Sample, Sample, Sample) {
-    (1.0, -2.0 * cos_o, 1.0, 1.0 + alpha, -2.0 * cos_o, 1.0 - alpha)
+    (
+        1.0,
+        -2.0 * cos_o,
+        1.0,
+        1.0 + alpha,
+        -2.0 * cos_o,
+        1.0 - alpha,
+    )
 }
 
 pub struct BiQuad {
