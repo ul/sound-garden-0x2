@@ -9,6 +9,7 @@ mod feedback;
 mod filters;
 mod function;
 mod input;
+mod limit;
 mod metro;
 mod noise;
 mod noop;
@@ -31,7 +32,7 @@ mod yin;
 
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, delay::*, envelopes::*, feedback::*,
-    filters::*, function::*, input::*, metro::*, noise::*, noop::*, normalise::*, osc::*, pan::*,
-    param::*, pattern::*, phasor::*, poly::*, pulse::*, sample_and_hold::*, sampler::*,
+    filters::*, function::*, input::*, limit::*, metro::*, noise::*, noop::*, normalise::*, osc::*,
+    pan::*, param::*, pattern::*, phasor::*, poly::*, pulse::*, sample_and_hold::*, sampler::*,
     spectral_transform::*, stack::*, variable::*, wah::*, yin::*,
 };

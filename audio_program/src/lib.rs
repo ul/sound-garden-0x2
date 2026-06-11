@@ -699,6 +699,12 @@ fn compile_segment(
                                 log::warn!("Missing param number parameter.");
                             }
                         },
+                        "limit" => match tokens.get(1) {
+                            Some(x) => {
+                                push_args!(id, Limit, sample_rate, x.parse::<f64>().unwrap_or(0.1))
+                            }
+                            None => push_args!(id, Limit, sample_rate, 0.1),
+                        },
                         "norm" => match tokens.get(1) {
                             Some(x) => push_args!(id, Normalise, x.parse::<usize>().unwrap_or(256)),
                             None => push_args!(id, Normalise, 256),
@@ -1429,19 +1435,16 @@ mod tests {
     #[test]
     fn compile_program_runs_saturating_feedback() {
         let saturated = run_frames(
-            &[
-                op(1, "1"),
-                op(2, "0.01"),
-                op(3, "1.5"),
-                op(4, "fbsat:1"),
-            ],
+            &[op(1, "1"), op(2, "0.01"), op(3, "1.5"), op(4, "fbsat:1")],
             100,
             64,
         );
-        assert!(saturated
-            .iter()
-            .flatten()
-            .all(|sample| (-1.0..=1.0).contains(sample)));
+        assert!(
+            saturated
+                .iter()
+                .flatten()
+                .all(|sample| (-1.0..=1.0).contains(sample))
+        );
 
         let plain = run_frames(
             &[op(1, "1"), op(2, "0.01"), op(3, "1.5"), op(4, "fb:1")],

@@ -102,6 +102,7 @@ conv:<N>:: (x, y) -> convolve two signals with an N-frame window
 convm:<N>:: (x, ...ys) -> convolve x with an N-frame kernel of y signals
 wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass control
 norm:<N>:: (x) -> normalise signal within an <N>-frame window, default <N> is 256
+limit:<R>:: (x, threshold) -> peak limiter: instant-attack envelope follower with exponential release over <R> seconds (default 0.1); output never exceeds threshold
 sh, sample&hold:: (x, trigger) -> sample and hold
 ssh:: (x, trigger) -> smooth sample and hold, `x' * (1.0 - trigger) + x * trigger`
 
