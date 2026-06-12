@@ -14,7 +14,7 @@ Any word starting with `;` is ignored by the compiler, e.g. `;bassline` or `;slo
 === Reproducibility
 
 [horizontal]
-seed:<N>:: compile-time directive (consumes nothing, produces nothing): seeds all random generators — `noise`, `spectral_shuffle`, and pattern random choice `|` — so renders are reproducible. Without it every run is unique.
+seed:<N>:: compile-time directive (consumes nothing, produces nothing): seeds all random generators — `noise`, spectral transforms, and pattern random choice `|` — so renders are reproducible. Without it every run is unique.
 
 === Constants and literals
 
@@ -172,12 +172,13 @@ cheb6:: (x) -> Chebyshev polynomial of degree 6: `32x^6 - 48x^4 + 18x^2 - 1`
 
 === Spectral transforms
 
-All spectral transforms consume one signal and use a 2048-sample Hann window with a 64-sample hop.
+All spectral transforms use a 2048-sample Hann window with a 64-sample hop and proper overlap-add synthesis; they add about one window (~43 ms at 48 kHz) of latency. Random spectral ops respect `seed:<N>`.
 
 [horizontal]
-spectral_shuffle:: (x) -> FFT transform that randomly shuffles frequency bins
-spectral_reverse:: (x) -> FFT transform that reverses frequency bins
-st1:: (x) -> FFT transform that keeps only the strongest bin and zeros the rest
+spectral_shuffle:<N>:: (x, amount, trig) -> shuffle frequency bins: a new permutation is drawn on each trigger (and once at start) over the `amount` (0..1) fraction of bins; with <N> bins may only move within blocks of N neighbours (default global). `noise 1 1 spectral_shuffle` re-scrambles every hop; `... 0.7 1 dmetro spectral_shuffle:16` re-draws a local scramble each second
+spectral_freeze:: (x, gate) -> while the gate is high, sustain the magnitude spectrum captured at the gate's rise with randomized phases; while low, pass through
+spectral_reverse:: (x) -> reverse frequency bins
+st1:: (x) -> keep only the strongest bin and zero the rest
 
 === Analyzers
 
