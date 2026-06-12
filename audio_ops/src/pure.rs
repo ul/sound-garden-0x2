@@ -105,6 +105,18 @@ pub fn tanh(x: Sample) -> Sample {
     x.tanh()
 }
 
+#[inline]
+pub fn drive(x: Sample, amount: Sample) -> Sample {
+    let amount = amount.max(0.001);
+    (x * amount).tanh() / amount.tanh()
+}
+
+#[inline]
+pub fn fold(x: Sample, amount: Sample) -> Sample {
+    let folded = x * amount.max(1.0);
+    1.0 - ((folded + 1.0).rem_euclid(4.0) - 2.0).abs()
+}
+
 // Projections
 
 #[inline]
@@ -347,6 +359,28 @@ mod tests {
 
     fn assert_close(actual: Sample, expected: Sample) {
         assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn drive_is_gain_compensated_tanh_saturation() {
+        assert_close(drive(1.0, 1_000.0), 1.0);
+        assert_close(drive(-1.0, 1_000.0), -1.0);
+        let small = 0.01;
+        assert!(drive(small, 1.0) >= small);
+    }
+
+    #[test]
+    fn fold_stays_bounded_and_is_identity_at_unity_for_small_inputs() {
+        for x in [-12.3, -3.0, -1.5, -1.0, -0.25, 0.0, 0.5, 1.0, 1.7, 4.2] {
+            assert!(
+                (-1.0..=1.0).contains(&fold(x, 3.0)),
+                "{x} -> {}",
+                fold(x, 3.0)
+            );
+        }
+        for x in [-1.0, -0.5, 0.0, 0.25, 1.0] {
+            assert_close(fold(x, 1.0), x);
+        }
     }
 
     #[test]

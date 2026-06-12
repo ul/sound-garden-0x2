@@ -26,6 +26,7 @@ sr:: () -> push current sample rate
 pi:: () -> push π
 tau:: () -> push 2π
 whiteNoise, noise, n:: () -> pseudo-random white noise; each sample/channel receives the next generator value
+rnd:: (trig) -> sample a new uniform random value in 0..1 on each rising edge and hold it; reproducible with `seed:<N>`
 
 Scientific pitch notation is also available using MIDI note 60 = C4. Lowercase notes push frequencies (`c4` = 261.625565, `a4` = 440); uppercase notes push MIDI note numbers (`C4` = 60, `A4` = 69). Sharps and flats are supported (`c#4`, `Db4`).
 
@@ -44,27 +45,41 @@ bury:<N>:: take the top element and put it as Nth from the top
 Oscillator phases are wrapped in the `-1..1` range unless noted otherwise. Oscillator outputs are in the `-1..1` range.
 
 [horizontal]
-saw:: (freq, phase0) -> saw/phasor oscillator with explicit phase offset
-w:: (freq) -> saw/phasor oscillator with phase0 = 0
-tri:: (freq, phase0) -> symmetric triangle oscillator with explicit phase offset
-t:: (freq) -> triangle oscillator with phase0 = 0
-pulse:: (freq, width, phase0) -> rectangular oscillator; `width` is the positive segment as a ratio of period
-p:: (freq, width) -> pulse oscillator with phase0 = 0
+saw:: (freq, phase0) -> band-limited saw oscillator with explicit phase offset; use `saw'` for the naive/raw variant
+w:: (freq) -> raw phasor with phase0 = 0, intended as a phase source
+tri:: (freq, phase0) -> band-limited symmetric triangle oscillator with explicit phase offset; use `tri'` for the naive variant
+t:: (freq) -> band-limited triangle oscillator with phase0 = 0; use `t'` for the naive variant
+pulse:: (freq, width, phase0) -> band-limited rectangular oscillator; `width` is the positive segment as a ratio of period; use `pulse'` for the naive variant
+p:: (freq, width) -> band-limited pulse oscillator with phase0 = 0; use `p'` for the naive variant
 sine:: (freq, phase0) -> sine oscillator with explicit phase offset
 s:: (freq) -> sine oscillator with phase0 = 0
 cosine:: (freq, phase0) -> cosine oscillator with explicit phase offset
 c:: (freq) -> cosine oscillator with phase0 = 0
 cycle, cy:: (cps) -> wrapped `0..1` phase, advanced by cycles-per-second input; negative CPS runs backwards
 
-Fast approximate variants are available for sine/cosine oscillators and trig functions: `s'`, `sine'`, `c'`, `cosine'`, `sin'`, `cos'`, `tan'`, `sinc'`.
+Fast/cheap variants are documented below for sine/cosine oscillators, trig functions, and naive discontinuous oscillators.
+
+[horizontal]
+s', sine':: (freq) -> fast/cheap sine oscillator with phase0 = 0
+c', cosine':: (freq) -> fast/cheap cosine oscillator with phase0 = 0
+saw':: (freq, phase0) -> naive/raw saw oscillator with explicit phase offset
+t', tri':: (freq) -> naive/raw triangle oscillator with phase0 = 0
+p', pulse':: (freq, width) -> naive/raw pulse oscillator with phase0 = 0
 
 === Math
 
-Binary arithmetic operations are available: `+`, `-`, `*`, `/`, `%`, `^`. Aliases are `add`, `sub`, `mul`, `div`, `mod`, `pow`. Division and reciprocal are safe: division by zero produces 0.0.
+Binary arithmetic operations are available as documented below. Division and reciprocal are safe: division by zero produces 0.0.
 
 The backslash op computes reciprocal; for example `16 \` produces `1/16`.
 
 [horizontal]
++, add:: (a, b) -> pairwise addition
+-, sub:: (a, b) -> pairwise subtraction
+*, mul:: (a, b) -> pairwise multiplication
+/, div:: (a, b) -> safe pairwise division
+%, mod:: (a, b) -> safe pairwise remainder
+^, pow:: (a, b) -> pairwise exponentiation
+\:: (x) -> safe reciprocal
 min:: (a, b) -> pairwise minimum
 max:: (a, b) -> pairwise maximum
 clamp:: (x, min, max) -> clamp x to the provided range
@@ -75,6 +90,10 @@ sin:: (x) -> sine of x radians
 cos:: (x) -> cosine of x radians
 tan:: (x) -> tangent of x radians
 sinc:: (x) -> sin(x) / x, with sinc(0) = 1
+sin':: (x) -> fast/cheap sine approximation
+cos':: (x) -> fast/cheap cosine approximation
+tan':: (x) -> fast/cheap tangent approximation
+sinc':: (x) -> fast/cheap sinc approximation
 sinh:: (x) -> hyperbolic sine
 cosh:: (x) -> hyperbolic cosine
 tanh:: (x) -> hyperbolic tangent
@@ -92,13 +111,17 @@ circle:: (x) -> same as range with c = -π and d = π
 db2amp, db2a:: (x) -> decibels to amplitude, `10^(x / 20)`
 amp2db, a2db:: (x) -> amplitude to decibels, `20 * log10(x)`
 freq2midi, f2m:: (x) -> frequency in Hz to MIDI pitch
-midi2freq, m2f:: (x) -> MIDI pitch to frequency in Hz; `#` is also an alias
+midi2freq, m2f, #:: (x) -> MIDI pitch to frequency in Hz
+scale:<NAME>:: (midi) -> snap MIDI to a named scale rooted at C; names: major/ionian, minor/aeolian, dorian, phrygian, lydian, mixolydian, locrian, majpent, minpent, chromatic, whole
+deg:<INTERVALS>:: (midi) -> snap MIDI to explicit comma-separated semitone degrees rooted at C, e.g. `deg:0,2,4,5,7,9,11`
 
 === Filters, delays, and time-domain effects
 
 [horizontal]
 lpf:: (x, freq) -> https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter[simple infinite impulse response low-pass filter]
 hpf:: (x, freq) -> https://en.wikipedia.org/wiki/High-pass_filter#Algorithmic_implementation[simple infinite impulse response high-pass filter]
+lag:: (x, time) -> one-pole smoother/portamento, time in seconds
+lag2:: (x, up, down) -> lag with separate rise/fall times
 bqlpf, l:: (x, freq, Q) -> biquad LPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
 bqhpf, h:: (x, freq, Q) -> biquad HPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
 bqbpf, bp:: (x, freq, Q) -> biquad band-pass filter using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
@@ -106,14 +129,17 @@ bqnotch, notch:: (x, freq, Q) -> biquad notch filter using https://shepazu.githu
 prime:: (x) -> delay x by one sample
 delay:<N>, dl:<N>:: (x, time) -> delay by `time` seconds; max delay buffer is <N> seconds, default 60
 feedback:<N>, fb:<N>:: (x, delay, gain) -> feedback echo; max delay is <N> seconds, default 60
-fbsat:<N>:: (x, delay, gain) -> like feedback, but the loop signal is saturated with tanh so it can never blow up; max delay <N> seconds, default 60
+verb, rev:: (input, time, damp) -> 8-line FDN reverb, wet only; time≈decay seconds, damp 0..1
+fbsat:<N>, fbs:<N>:: (x, delay, gain) -> like feedback, but the loop signal is saturated with tanh so it can never blow up; max delay <N> seconds, default 60
 conv:<N>:: (x, y) -> convolve two signals with an N-frame window
 convm:<N>:: (x, ...ys) -> convolve x with an N-frame kernel of y signals
-wah:: (gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass control
+wah:: (input, gate, freq) -> 4th-order wah effect with resonance freq; gate is bypass control
 norm:<N>:: (x) -> normalise signal within an <N>-frame window, default <N> is 256
 limit:<R>:: (x, threshold) -> peak limiter: instant-attack envelope follower with exponential release over <R> seconds (default 0.1); output never exceeds threshold
-sh, sample&hold:: (x, trigger) -> sample and hold
-ssh:: (x, trigger) -> smooth sample and hold, `x' * (1.0 - trigger) + x * trigger`
+comp:<release>:: (x, threshold, ratio) -> compressor, instant attack, exponential release
+sh, sample&hold:: (x, trigger) -> sample and hold on rising edge of trigger
+ssh:: (x, trigger) -> smooth sample and hold, `x' * (1.0 - trigger) + x * trigger` with trigger clamped to 0..1
+crush:: (x, bits, rate) -> bitcrush amplitude and optionally hold-resample to `rate` Hz; `bits` is clamped to 1..32
 
 === Patterns
 
@@ -144,6 +170,7 @@ dmetro, dm:: (period) -> emit 1.0 every given period in seconds, 0.0 otherwise
 metro_hold, mh:: (freq) -> like metro, but only apply frequency changes at the next trigger
 dmetro_hold, dmh:: (period) -> like dmetro, but only apply period changes at the next trigger
 oneshot, shot:: (period) -> emit 1.0 once after the given period in seconds, 0.0 otherwise
+chance:: (trig, prob) -> pass each rising-edge gate/trigger with probability `prob`, holding the decision for the gate duration; reproducible with `seed:<N>`
 
 === Envelopes and transitions
 
@@ -158,12 +185,15 @@ tquad:: (value, delta) -> quadratically smooth value changes over delta timefram
 [horizontal]
 pan1:: (input, position) -> pan between left and right channel
 pan2:: (left, right, position) -> pan left channel of one signal with left channel of another using left channel of position
-panx:: (left, right, position) -> pan left and right channels of inputs as two pairs of left and right and then output left channel of lefts' pan as left, and right channel of rights' pan as right
+panx:: (left, right, position) -> pan left and right channels of inputs as two pairs of left and right and then output left channel of lefts' pan as left, and right channel of rights' pan as right (rarely needed; prefer pan1/pan2/width)
+width:: (input, width) -> stereo width via mid/side; 0 mono, 1 unchanged, values outside 0..1 are allowed
 channel:<N>, ch:<N>:: (x) -> compute only channel N of signal and broadcast it to all channels
 
 === Modulation and waveshaping
 
 [horizontal]
+drive:: (x, amount) -> gain-compensated tanh saturation; amount around 1 is gentle, 10 is heavy
+fold:: (x, amount) -> triangle wavefolder scaled by amount and reflected into -1..1
 cheb2:: (x) -> Chebyshev polynomial of degree 2: `2x^2 - 1`
 cheb3:: (x) -> Chebyshev polynomial of degree 3: `4x^3 - 3x`
 cheb4:: (x) -> Chebyshev polynomial of degree 4: `8x^4 - 8x^2 + 1`

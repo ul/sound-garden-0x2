@@ -51,7 +51,10 @@ where
 
     let stream = device.build_output_stream(
         config,
-        move |data: &mut [T], _: &cpal::OutputCallbackInfo| write_data(data, channels, &mut vm),
+        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            audio_vm::enable_flush_to_zero();
+            write_data(data, channels, &mut vm)
+        },
         err_fn,
         None,
     )?;

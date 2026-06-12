@@ -163,6 +163,8 @@ impl Plugin for SoundGarden {
 
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process(&mut self, buffer: &mut vst::buffer::AudioBuffer<f32>) {
+        audio_vm::enable_flush_to_zero();
+
         if let Ok(program) = self.program_rx.pop() {
             let garbage = self.vm.load_program(program);
             if let Err(PushError::Full(garbage)) = self.garbage_tx.push(garbage) {
@@ -194,6 +196,8 @@ impl Plugin for SoundGarden {
 
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     fn process_f64(&mut self, buffer: &mut vst::buffer::AudioBuffer<f64>) {
+        audio_vm::enable_flush_to_zero();
+
         if let Ok(program) = self.program_rx.pop() {
             let garbage = self.vm.load_program(program);
             if let Err(PushError::Full(garbage)) = self.garbage_tx.push(garbage) {

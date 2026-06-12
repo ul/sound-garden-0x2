@@ -15,6 +15,7 @@ pub struct Yin {
     sample_rate: Sample,
     threshold: Sample,
     window: Buffer<Frame>,
+    last_pitch: Frame,
 }
 
 impl Yin {
@@ -28,6 +29,7 @@ impl Yin {
             sample_rate: Sample::from(sample_rate),
             threshold,
             window: Buffer::new(Default::default(), window_size),
+            last_pitch: [0.0; CHANNELS],
         }
     }
 
@@ -91,22 +93,57 @@ impl Yin {
 
 impl Op for Yin {
     fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = [0.0; CHANNELS];
         let input = stack.pop();
         self.window.push_back(input);
         if self.frame_number.is_multiple_of(self.period) {
-            for (channel, output) in frame.iter_mut().enumerate().take(CHANNELS) {
+            for channel in 0..CHANNELS {
                 self.difference(channel);
                 self.cumulative_mean_normalized_difference();
-                *output = match self.absolute_threshold() {
-                    Some(tau_estimate) => {
-                        self.sample_rate / self.parabolic_interpolation(tau_estimate)
-                    }
-                    None => 0.0,
+                if let Some(tau_estimate) = self.absolute_threshold() {
+                    self.last_pitch[channel] =
+                        self.sample_rate / self.parabolic_interpolation(tau_estimate);
                 }
             }
         }
         self.frame_number += 1;
-        stack.push(&frame);
+        stack.push(&self.last_pitch);
+    }
+
+    fn migrate(&mut self, other: &mut dyn Op) {
+        if let Some(other) = other.downcast_mut::<Self>() {
+            self.window.steal_same_size(&mut other.window);
+            self.frame_number = other.frame_number;
+            self.last_pitch = other.last_pitch;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::TAU;
+
+    fn perform(op: &mut Yin, input: Frame) -> Frame {
+        let mut stack = Stack::new();
+        stack.push(&input);
+        op.perform(&mut stack);
+        stack.pop()
+    }
+
+    #[test]
+    fn pitch_holds_estimate_between_analysis_frames() {
+        let sample_rate = 44_100;
+        let freq = 440.0;
+        let mut op = Yin::new(sample_rate, 1024, 64, 0.2);
+        let mut outputs = Vec::new();
+        for n in 0..4096 {
+            let x = (TAU * freq * n as Sample / sample_rate as Sample).sin();
+            outputs.push(perform(&mut op, [x, x])[0]);
+        }
+
+        for &y in outputs.iter().skip(2048) {
+            assert!(y > 0.0, "pitch estimate should be held, got {y}");
+            assert!((y - freq).abs() < 3.0, "expected {freq}, got {y}");
+        }
     }
 }

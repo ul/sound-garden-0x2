@@ -46,6 +46,8 @@ fn main() {
     vm.load_program(parse_program(&text, sample_rate));
     vm.play();
 
+    audio_vm::enable_flush_to_zero();
+
     let mut stats = Stats::new();
     let t = Instant::now();
     for _ in 0..((duration * (sample_rate as f64)) as _) {

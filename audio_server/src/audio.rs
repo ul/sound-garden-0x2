@@ -116,6 +116,7 @@ fn write_data<T>(
 ) where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
+    audio_vm::enable_flush_to_zero();
     while let Ok(command) = command_rx.pop() {
         match command {
             Command::Play(true) => vm.play(),

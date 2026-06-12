@@ -103,7 +103,7 @@ impl Waveform {
             "c'" => Some(Self::CosineFast),
             "s" => Some(Self::Sine),
             "s'" => Some(Self::SineFast),
-            "t" => Some(Self::Triangle),
+            "t'" => Some(Self::Triangle),
             _ => None,
         }
     }
@@ -413,6 +413,10 @@ fn compile_segment(
             "amp2db" | "a2db" => push_args!(id, Fn1, pure::amp2db),
             "c" => push_args!(id, Osc, sample_rate, pure::cosine),
             "c'" => push_args!(id, Osc, sample_rate, pure::cosine_fast),
+            "chance" => program.push(Statement {
+                id,
+                op: Box::new(Chance::with_seed(ctx.next_rng_seed())) as Box<dyn Op>,
+            }),
             "cheb2" => push_args!(id, Fn1, pure::cheb2),
             "cheb3" => push_args!(id, Fn1, pure::cheb3),
             "cheb4" => push_args!(id, Fn1, pure::cheb4),
@@ -426,22 +430,27 @@ fn compile_segment(
             "cosh" => push_args!(id, Fn1, pure::cosh),
             "cosine" => push_args!(id, OscPhase, sample_rate, pure::cosine),
             "cosine'" => push_args!(id, OscPhase, sample_rate, pure::cosine_fast),
+            "crush" => push_args!(id, Crush, sample_rate),
             "cycle" | "cy" => push_args!(id, Cycle, sample_rate),
             "db2amp" | "db2a" => push_args!(id, Fn1, pure::db2amp),
             "dm" | "dmetro" => push_args!(id, DMetro, sample_rate),
             "dmh" | "dmetro_hold" => push_args!(id, DMetroHold, sample_rate),
+            "drive" => push_args!(id, Fn2, pure::drive),
             "dup" => push!(id, Dup),
             "exp" => push_args!(id, Fn1, pure::exp),
             "biexp" => push_args!(id, Fn3, pure::biexp),
             "expexp" => push_args!(id, Fn5, pure::expexp),
             "explin" => push_args!(id, Fn5, pure::explin),
             "f2m" | "freq2midi" => push_args!(id, Fn1, pure::freq2midi),
+            "fold" => push_args!(id, Fn2, pure::fold),
             "bp" | "bqbpf" => push_args!(id, BiQuad, sample_rate, make_bpf_coefficients),
             "h" | "bqhpf" => push_args!(id, BiQuad, sample_rate, make_hpf_coefficients),
             "hpf" => push_args!(id, HPF, sample_rate),
             "impulse" => push_args!(id, Impulse, sample_rate),
             "in" | "input" => push_args!(id, Input, Arc::clone(&ctx.input)),
             "l" | "bqlpf" => push_args!(id, BiQuad, sample_rate, make_lpf_coefficients),
+            "lag" => push_args!(id, Lag, sample_rate),
+            "lag2" => push_args!(id, Lag2, sample_rate),
             "linexp" => push_args!(id, Fn5, pure::linexp),
             "linlin" | "project" => push_args!(id, Fn5, pure::linlin),
             "lpf" => push_args!(id, LPF, sample_rate),
@@ -457,6 +466,7 @@ fn compile_segment(
             "notch" | "bqnotch" => push_args!(id, BiQuad, sample_rate, make_notch_coefficients),
             "oneshot" | "shot" => push_args!(id, OneShot, sample_rate),
             "p" => push_args!(id, Pulse, sample_rate),
+            "p'" => push_args!(id, NaivePulse, sample_rate),
             "pan1" => push!(id, Pan1),
             "pan2" => push!(id, Pan2),
             "panx" => push!(id, Pan3),
@@ -466,13 +476,20 @@ fn compile_segment(
             "pop" => push!(id, Pop),
             "prime" => push!(id, Prime),
             "pulse" => push_args!(id, PulsePhase, sample_rate),
+            "pulse'" => push_args!(id, NaivePulsePhase, sample_rate),
             "q" | "quantize" => push_args!(id, Fn2, pure::quantize),
             "r" | "range" => push_args!(id, Fn3, pure::range),
+            "rnd" => program.push(Statement {
+                id,
+                op: Box::new(Rnd::with_seed(ctx.next_rng_seed())) as Box<dyn Op>,
+            }),
             "rot" => push!(id, Rot),
+            "rev" | "verb" => push_args!(id, Reverb, sample_rate),
             "round" => push_args!(id, Fn1, pure::round),
             "s" => push_args!(id, Osc, sample_rate, pure::sine),
             "s'" => push_args!(id, Osc, sample_rate, pure::sine_fast),
-            "saw" => push_args!(id, Phasor0, sample_rate),
+            "saw" => push_args!(id, PolyBlepSawPhase, sample_rate),
+            "saw'" => push_args!(id, Phasor0, sample_rate),
             "sh" | "sample&hold" => push!(id, SampleAndHold),
             "ssh" => push!(id, SmoothSampleAndHold),
             "silence" => push_args!(id, Constant, 0.0),
@@ -523,17 +540,20 @@ fn compile_segment(
             }),
             "sr" => push_args!(id, Constant, sample_rate as _),
             "swap" => push!(id, Swap),
-            "t" => push_args!(id, Osc, sample_rate, pure::triangle),
+            "t" => push_args!(id, PolyBlepTriangle, sample_rate),
+            "t'" => push_args!(id, Osc, sample_rate, pure::triangle),
             "tan" => push_args!(id, Fn1, pure::tan),
             "tan'" => push_args!(id, Fn1, pure::tan_fast),
             "tanh" => push_args!(id, Fn1, pure::tanh),
-            "tri" => push_args!(id, OscPhase, sample_rate, pure::triangle),
+            "tri" => push_args!(id, PolyBlepTrianglePhase, sample_rate),
+            "tri'" => push_args!(id, OscPhase, sample_rate, pure::triangle),
             "tline" => push_args!(id, Transition, sample_rate, pure::linear_curve),
             "tquad" => push_args!(id, Transition, sample_rate, pure::quadratic_curve),
             "uniexp" => push_args!(id, Fn3, pure::uniexp),
             "unit" => push_args!(id, Fn1, pure::unit),
             "w" => push_args!(id, Phasor, sample_rate),
             "wah" => push_args!(id, WahPedal, sample_rate),
+            "width" => push!(id, Width),
             "wrap" => push_args!(id, Fn1, pure::wrap),
             _ => match op.parse::<Sample>() {
                 Ok(x) => push_args!(id, Constant, x),
@@ -610,7 +630,7 @@ fn compile_segment(
                             ),
                             None => push_args!(id, Feedback, sample_rate, 60.0),
                         },
-                        "fbsat" => {
+                        "fbsat" | "fbs" => {
                             let max_delay = tokens
                                 .get(1)
                                 .and_then(|x| x.parse::<f64>().ok())
@@ -752,9 +772,49 @@ fn compile_segment(
                             }
                             None => push_args!(id, Limit, sample_rate, 0.1),
                         },
+                        "comp" => match tokens.get(1) {
+                            Some(x) => match x.parse::<f64>() {
+                                Ok(release) => push_args!(id, Comp, sample_rate, release),
+                                Err(_) => {
+                                    log::warn!("Can't parse {} as compressor release", x);
+                                    push_args!(id, Comp, sample_rate, 0.1);
+                                }
+                            },
+                            None => push_args!(id, Comp, sample_rate, 0.1),
+                        },
                         "norm" => match tokens.get(1) {
                             Some(x) => push_args!(id, Normalise, x.parse::<usize>().unwrap_or(256)),
                             None => push_args!(id, Normalise, 256),
+                        },
+                        "scale" => match tokens.get(1).and_then(|name| ScaleQuantizer::named(name))
+                        {
+                            Some(scale) => program.push(Statement {
+                                id,
+                                op: Box::new(scale) as Box<dyn Op>,
+                            }),
+                            None => {
+                                log::warn!(
+                                    "Unknown scale: {}",
+                                    tokens.get(1).copied().unwrap_or("")
+                                );
+                                push!(id, Noop);
+                            }
+                        },
+                        "deg" => match tokens
+                            .get(1)
+                            .and_then(|degrees| ScaleQuantizer::parse_degrees(degrees))
+                        {
+                            Some(scale) => program.push(Statement {
+                                id,
+                                op: Box::new(scale) as Box<dyn Op>,
+                            }),
+                            None => {
+                                log::warn!(
+                                    "Invalid scale degrees: {}",
+                                    tokens.get(1).copied().unwrap_or("")
+                                );
+                                push!(id, Noop);
+                            }
                         },
                         "pat" => {
                             let pattern = tokens.get(1).copied().unwrap_or("");
@@ -839,18 +899,26 @@ fn compile_segment(
     false
 }
 
+fn help_item(line: &str) -> Option<(&str, &str)> {
+    let (terms, definition) = line.split_once("::")?;
+    if terms.is_empty() || definition.is_empty() || terms.starts_with('=') || terms.starts_with('[')
+    {
+        return None;
+    }
+    Some((terms, definition.trim()))
+}
+
+fn help_key(term: &str) -> String {
+    term.split(':').next().unwrap().to_owned()
+}
+
 pub fn get_help() -> HashMap<String, String> {
     let mut result = HashMap::new();
-    for item in Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::(?P<definition>.+)")
-        .unwrap()
-        .captures_iter(HELP)
-    {
-        let definition = item.name("definition").unwrap().as_str().trim();
-        for term in item.name("term").unwrap().as_str().split(", ") {
-            result.insert(
-                term.split(':').next().unwrap().to_owned(),
-                definition.to_owned(),
-            );
+    for line in HELP.lines() {
+        if let Some((terms, definition)) = help_item(line) {
+            for term in terms.split(", ") {
+                result.insert(help_key(term), definition.to_owned());
+            }
         }
     }
     result
@@ -859,7 +927,6 @@ pub fn get_help() -> HashMap<String, String> {
 pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
     let mut result = Vec::new();
     let group_re = Regex::new("=== (.+)").unwrap();
-    let item_re = Regex::new(r"(?P<term>(\w+(:<\w+>)*(, )*)+)::").unwrap();
     let mut current_group = None;
     for line in HELP.split('\n') {
         if let Some(m) = group_re.captures(line) {
@@ -867,16 +934,10 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
                 result.push(group);
             }
             current_group = Some((m.get(1).unwrap().as_str().to_owned(), Vec::new()));
-        } else if let Some(m) = item_re.captures(line)
+        } else if let Some((terms, _)) = help_item(line)
             && let Some(group) = &mut current_group
         {
-            group.1.extend(
-                m.name("term")
-                    .unwrap()
-                    .as_str()
-                    .split(", ")
-                    .map(|x| x.to_owned()),
-            );
+            group.1.extend(terms.split(", ").map(|x| x.to_owned()));
         }
     }
     result
@@ -1485,6 +1546,49 @@ mod tests {
     }
 
     #[test]
+    fn compile_program_registers_dynamics_and_spatial_ops() {
+        assert_eq!(
+            run_once(&[op(1, "1"), op(2, "0"), op(3, "lag")], &mut Context::new()),
+            [1.0, 1.0]
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "1"), op(2, "0"), op(3, "0"), op(4, "lag2")],
+                &mut Context::new()
+            ),
+            [1.0, 1.0]
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "2"), op(2, "1"), op(3, "2"), op(4, "comp:0.1")],
+                &mut Context::new()
+            )[0],
+            2.0 * (1.0f64 / 2.0).sqrt()
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "1"), op(2, "0.5"), op(3, "0.5"), op(4, "verb")],
+                &mut Context::new()
+            ),
+            [0.0, 0.0]
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "1"), op(2, "0.5"), op(3, "0.5"), op(4, "rev")],
+                &mut Context::new()
+            ),
+            [0.0, 0.0]
+        );
+        let mut context = Context::new();
+        context.input[0].store(1.0f64.to_bits(), Ordering::Relaxed);
+        context.input[1].store(0.0f64.to_bits(), Ordering::Relaxed);
+        assert_eq!(
+            run_once(&[op(1, "input"), op(2, "0"), op(3, "width")], &mut context),
+            [0.5, 0.5]
+        );
+    }
+
+    #[test]
     fn compile_program_ignores_blank_ops_and_supports_dig_shorthand() {
         let mut context = Context::new();
 
@@ -1701,6 +1805,24 @@ mod tests {
             run_frames(&[op(1, "seed:43"), op(2, "noise")], 100, 16)
         );
         let _ = run_frames(&[op(1, "noise")], 100, 1);
+    }
+
+    #[test]
+    fn new_random_and_scale_ops_compile_and_obey_seed() {
+        let rnd_ops = [op(1, "seed:42"), op(2, "1"), op(3, "rnd")];
+        assert_eq!(run_frames(&rnd_ops, 100, 4), run_frames(&rnd_ops, 100, 4));
+
+        assert_eq!(
+            run_once(&[op(1, "61"), op(2, "scale:major")], &mut Context::new()),
+            [60.0, 60.0]
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "61.6"), op(2, "deg:0,2,4,5,7,9,11")],
+                &mut Context::new()
+            ),
+            [62.0, 62.0]
+        );
     }
 
     #[test]
@@ -2106,6 +2228,9 @@ mod tests {
             help.get("add").map(String::as_str)
         );
         assert!(help.contains_key("metro"));
+        assert!(help.contains_key("s'"));
+        assert!(help.contains_key("#"));
+        assert!(help.contains_key("sample&hold"));
 
         let groups = get_op_groups();
         assert!(groups.iter().any(|(group, terms)| group == "Triggers"

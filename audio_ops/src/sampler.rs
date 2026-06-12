@@ -34,9 +34,10 @@ impl Op for TableReader {
 
     fn migrate(&mut self, other: &mut dyn Op) {
         if let Some(other) = other.downcast_mut::<Self>()
-            && self.table.len() == other.table.len() {
-                self.table = Arc::clone(&other.table);
-            }
+            && self.table.len() == other.table.len()
+        {
+            self.table = Arc::clone(&other.table);
+        }
     }
 }
 

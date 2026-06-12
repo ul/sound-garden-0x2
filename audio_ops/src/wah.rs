@@ -50,12 +50,9 @@ impl Op for WahPedal {
         let gate = stack.pop();
         let input = stack.pop();
         for (&i, o, &gate, &freq) in izip!(&input, &mut frame, &gate, &freq) {
-            let inputs = [[i as _], [0.0]];
-            let mut outputs = [[0.0], [0.0]];
             self.dsp.fCheckbox0 = if gate > 0.0 { 1.0 } else { 0.0 };
             self.dsp.fHslider0 = freq as _;
-            self.dsp.compute(1, &inputs, &mut outputs);
-            *o = outputs[0][0] as _;
+            *o = self.dsp.compute_sample(i as _) as _;
         }
         stack.push(&frame);
     }
@@ -142,31 +139,52 @@ impl Dsp {
         self.instance_init(sample_rate);
     }
 
-    fn compute(&mut self, count: i32, inputs: &[[f32; 1]], outputs: &mut [[f32; 1]]) {
-        let mut iSlow0: i32 = (self.fCheckbox0 as i32);
-        let mut fSlow1: f32 = (0.001 * self.fHslider0);
-        for i in 0..count {
-            let mut fTemp0: f32 = inputs[0][i as usize];
-            self.fRec5[0] = (fSlow1 + (0.999 * self.fRec5[1]));
-            let mut fTemp1: f32 = (self.fConst0 * self.fRec5[0]);
-            let mut fTemp2: f32 = (1.0 - fTemp1);
-            self.fRec4[0] = ((if (iSlow0 == 1) { 0.0 } else { fTemp0 } + (fTemp2 * self.fRec4[1]))
-                - (3.2 * self.fRec0[1]));
-            self.fRec3[0] = (self.fRec4[0] + (fTemp2 * self.fRec3[1]));
-            self.fRec2[0] = (self.fRec3[0] + (fTemp2 * self.fRec2[1]));
-            self.fRec1[0] = (self.fRec2[0] + (self.fRec1[1] * fTemp2));
-            self.fRec0[0] = (self.fRec1[0] * f32::powf(fTemp1, 4.0));
-            outputs[0][i as usize] = if (iSlow0 == 1) {
-                fTemp0
-            } else {
-                (4.0 * self.fRec0[0])
-            };
-            self.fRec5[1] = self.fRec5[0];
-            self.fRec4[1] = self.fRec4[0];
-            self.fRec3[1] = self.fRec3[0];
-            self.fRec2[1] = self.fRec2[0];
-            self.fRec1[1] = self.fRec1[0];
-            self.fRec0[1] = self.fRec0[0];
+    fn compute_sample(&mut self, input: f32) -> f32 {
+        let iSlow0: i32 = self.fCheckbox0 as i32;
+        let fSlow1: f32 = 0.001 * self.fHslider0;
+        self.fRec5[0] = fSlow1 + (0.999 * self.fRec5[1]);
+        let fTemp1: f32 = self.fConst0 * self.fRec5[0];
+        let fTemp2: f32 = 1.0 - fTemp1;
+        self.fRec4[0] = ((if iSlow0 == 1 { 0.0 } else { input } + (fTemp2 * self.fRec4[1]))
+            - (3.2 * self.fRec0[1]));
+        self.fRec3[0] = self.fRec4[0] + (fTemp2 * self.fRec3[1]);
+        self.fRec2[0] = self.fRec3[0] + (fTemp2 * self.fRec2[1]);
+        self.fRec1[0] = self.fRec2[0] + (self.fRec1[1] * fTemp2);
+        let f_temp1_squared = fTemp1 * fTemp1;
+        self.fRec0[0] = self.fRec1[0] * (f_temp1_squared * f_temp1_squared);
+        let output = if iSlow0 == 1 {
+            input
+        } else {
+            4.0 * self.fRec0[0]
+        };
+        self.fRec5[1] = self.fRec5[0];
+        self.fRec4[1] = self.fRec4[0];
+        self.fRec3[1] = self.fRec3[0];
+        self.fRec2[1] = self.fRec2[0];
+        self.fRec1[1] = self.fRec1[0];
+        self.fRec0[1] = self.fRec0[0];
+        output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wah_output_is_finite_and_nonzero_for_driven_input() {
+        let mut wah = WahPedal::new(44_100);
+        let mut last = [0.0; CHANNELS];
+        for _ in 0..256 {
+            let mut stack = Stack::new();
+            stack.push(&[1.0, 1.0]);
+            stack.push(&[0.0, 0.0]);
+            stack.push(&[800.0, 800.0]);
+            wah.perform(&mut stack);
+            last = stack.pop();
+            assert!(last[0].is_finite());
+            assert!(last[1].is_finite());
         }
+        assert!(last[0].abs() > 1e-6 || last[1].abs() > 1e-6);
     }
 }

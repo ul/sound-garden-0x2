@@ -5,6 +5,30 @@ use crate::pure;
 use audio_vm::{CHANNELS, Op, Stack};
 use itertools::izip;
 
+pub struct Width;
+
+impl Default for Width {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Width {
+    pub fn new() -> Self {
+        Width {}
+    }
+}
+
+impl Op for Width {
+    fn perform(&mut self, stack: &mut Stack) {
+        let width = stack.pop()[0];
+        let input = stack.pop();
+        let mid = (input[0] + input[1]) * 0.5;
+        let side = (input[0] - input[1]) * 0.5;
+        stack.push(&[mid + width * side, mid - width * side]);
+    }
+}
+
 pub struct Pan1;
 
 /// Pan left and right channels of input signal.
@@ -91,5 +115,31 @@ impl Op for Pan3 {
             }
         }
         stack.push(&frame);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn perform_width(input: [f64; CHANNELS], width: f64) -> [f64; CHANNELS] {
+        let mut op = Width::new();
+        let mut stack = Stack::new();
+        stack.push(&input);
+        stack.push(&[width; CHANNELS]);
+        op.perform(&mut stack);
+        stack.pop()
+    }
+
+    #[test]
+    fn width_zero_makes_mono() {
+        let output = perform_width([0.75, -0.25], 0.0);
+        assert_eq!(output[0], output[1]);
+        assert_eq!(output, [0.25, 0.25]);
+    }
+
+    #[test]
+    fn width_one_is_identity() {
+        assert_eq!(perform_width([0.75, -0.25], 1.0), [0.75, -0.25]);
     }
 }

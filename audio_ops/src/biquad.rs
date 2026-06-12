@@ -7,6 +7,8 @@ use itertools::izip;
 type MakeCoefficients =
     fn(Sample, Sample, Sample) -> (Sample, Sample, Sample, Sample, Sample, Sample);
 
+type Coefficients = (Sample, Sample, Sample, Sample, Sample, Sample);
+
 pub fn make_lpf_coefficients(
     _sin_o: Sample,
     cos_o: Sample,
@@ -53,23 +55,32 @@ pub fn make_notch_coefficients(
 
 pub struct BiQuad {
     make_coefficients: MakeCoefficients,
+    sample_rate: Sample,
     sample_angular_period: Sample,
     x1: Frame,
     x2: Frame,
     y1: Frame,
     y2: Frame,
+    last_frequency: Frame,
+    last_q: Frame,
+    coefficients: [Coefficients; CHANNELS],
 }
 
 impl BiQuad {
     pub fn new(sample_rate: u32, make_coefficients: MakeCoefficients) -> Self {
-        let sample_angular_period = 2.0 * std::f64::consts::PI / Sample::from(sample_rate);
+        let sample_rate = Sample::from(sample_rate);
+        let sample_angular_period = 2.0 * std::f64::consts::PI / sample_rate;
         BiQuad {
             make_coefficients,
+            sample_rate,
             sample_angular_period,
             x1: [0.0; CHANNELS],
             x2: [0.0; CHANNELS],
             y1: [0.0; CHANNELS],
             y2: [0.0; CHANNELS],
+            last_frequency: [Sample::NAN; CHANNELS],
+            last_q: [Sample::NAN; CHANNELS],
+            coefficients: [(0.0, 0.0, 0.0, 1.0, 0.0, 0.0); CHANNELS],
         }
     }
 }
@@ -79,22 +90,33 @@ impl Op for BiQuad {
         let q = stack.pop();
         let cut_off_freq = stack.pop();
         let input = stack.pop();
-        for (y, &x, &frequency, &q, x1, x2, y2) in izip!(
+        for (y, &x, &frequency, &q, x1, x2, y2, last_frequency, last_q, coefficients) in izip!(
             &mut self.y1,
             &input,
             &cut_off_freq,
             &q,
             &mut self.x1,
             &mut self.x2,
-            &mut self.y2
+            &mut self.y2,
+            &mut self.last_frequency,
+            &mut self.last_q,
+            &mut self.coefficients
         ) {
             let y1 = *y;
+            let frequency = frequency.clamp(1.0, 0.49 * self.sample_rate);
+            let q = q.max(0.01);
 
-            let o = frequency * self.sample_angular_period;
-            let sin_o = o.sin();
-            let cos_o = o.cos();
-            let alpha = sin_o / (2.0 * q);
-            let (b0, b1, b2, a0, a1, a2) = (self.make_coefficients)(sin_o, cos_o, alpha);
+            if frequency != *last_frequency || q != *last_q {
+                let o = frequency * self.sample_angular_period;
+                let sin_o = o.sin();
+                let cos_o = o.cos();
+                let alpha = sin_o / (2.0 * q);
+                *coefficients = (self.make_coefficients)(sin_o, cos_o, alpha);
+                *last_frequency = frequency;
+                *last_q = q;
+            }
+
+            let (b0, b1, b2, a0, a1, a2) = *coefficients;
             *y = (x * b0 + *x1 * b1 + *x2 * b2 - y1 * a1 - *y2 * a2) / a0;
 
             *x2 = *x1;
@@ -110,6 +132,9 @@ impl Op for BiQuad {
             self.y1 = other.y1;
             self.x2 = other.x2;
             self.y2 = other.y2;
+            self.last_frequency = other.last_frequency;
+            self.last_q = other.last_q;
+            self.coefficients = other.coefficients;
         }
     }
 }
@@ -160,5 +185,19 @@ mod tests {
 
         assert!(magnitude_at(coeffs, 1_000.0, sample_rate) < 1e-12);
         assert!((magnitude_at(coeffs, 0.0, sample_rate) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn absurd_frequency_and_q_stay_finite() {
+        let mut filter = BiQuad::new(48_000, make_lpf_coefficients);
+        let mut stack = Stack::new();
+        for _ in 0..256 {
+            stack.push(&[1.0; CHANNELS]);
+            stack.push(&[1.0e12; CHANNELS]);
+            stack.push(&[-1.0e12; CHANNELS]);
+            filter.perform(&mut stack);
+            let output = stack.pop();
+            assert!(output.iter().all(|x| x.is_finite()));
+        }
     }
 }
