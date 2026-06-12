@@ -3,7 +3,6 @@ use audio_ops::*;
 #[cfg(test)]
 use audio_vm::Frame;
 use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
-use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use regex::Regex;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
@@ -484,20 +483,10 @@ fn compile_segment(
             "sine" => push_args!(id, OscPhase, sample_rate, pure::sine),
             "sine'" => push_args!(id, OscPhase, sample_rate, pure::sine_fast),
             "sinh" => push_args!(id, Fn1, pure::sinh),
-            "spectral_shuffle" => {
-                let mut rng = Box::new(
-                    ctx.next_rng_seed()
-                        .map_or_else(rand::make_rng::<SmallRng>, SmallRng::seed_from_u64),
-                );
-                push_args!(
-                    id,
-                    SpectralTransform,
-                    2048, // window_size
-                    64,   // period
-                    0,    // controls
-                    Box::new(move |_, freqs, _, _| freqs[1..].shuffle(&mut rng)),
-                )
-            }
+            "spectral_shuffle" => program.push(Statement {
+                id,
+                op: Box::new(SpectralTransform::shuffle(0, ctx.next_rng_seed())) as Box<dyn Op>,
+            }),
             "st1" => {
                 push_args!(
                     id,
@@ -556,6 +545,19 @@ fn compile_segment(
                             },
                             None => unreachable!(),
                         },
+                        "spectral_shuffle" => {
+                            let locality = tokens
+                                .get(1)
+                                .and_then(|x| x.parse::<usize>().ok())
+                                .unwrap_or(0);
+                            program.push(Statement {
+                                id,
+                                op: Box::new(SpectralTransform::shuffle(
+                                    locality,
+                                    ctx.next_rng_seed(),
+                                )) as Box<dyn Op>,
+                            });
+                        }
                         "dig" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Dig, n),
@@ -1567,6 +1569,34 @@ mod tests {
             ),
             [6.0, 6.0]
         );
+    }
+
+    #[test]
+    fn compile_program_runs_spectral_shuffle_contracts() {
+        let a = run_frames(
+            &[
+                op(1, "seed:7"),
+                op(2, "noise"),
+                op(3, "1"),
+                op(4, "1"),
+                op(5, "spectral_shuffle"),
+            ],
+            48_000,
+            4096,
+        );
+        assert!(a.iter().flatten().all(|x| x.is_finite()));
+        let b = run_frames(
+            &[
+                op(1, "seed:7"),
+                op(2, "noise"),
+                op(3, "0.5"),
+                op(4, "0"),
+                op(5, "spectral_shuffle:8"),
+            ],
+            48_000,
+            4096,
+        );
+        assert!(b.iter().flatten().all(|x| x.is_finite()));
     }
 
     #[test]

@@ -6,6 +6,7 @@
 //! Source to connect: input, preceded by zero or more control signals.
 use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
+use rand::{Rng, SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
 use rustfft::{
@@ -16,6 +17,9 @@ use rustfft::{
 use std::collections::VecDeque;
 
 pub type TransformFn = Box<dyn FnMut(usize, &mut [Complex<Sample>], &[Sample], &[bool]) + Send>;
+
+pub const DEFAULT_WINDOW_SIZE: usize = 2048;
+pub const DEFAULT_HOP: usize = 64;
 
 pub struct SpectralTransform {
     input_buffers: Vec<VecDeque<Complex<Sample>>>,
@@ -79,6 +83,58 @@ impl SpectralTransform {
             control_fired: vec![false; n_controls],
             transform,
         }
+    }
+
+    pub fn shuffle(locality: usize, seed: Option<u64>) -> Self {
+        let mut rng = seed.map_or_else(rand::make_rng::<SmallRng>, SmallRng::seed_from_u64);
+        let mut permutation = Vec::<usize>::new();
+        let mut initialized = false;
+        Self::new(
+            DEFAULT_WINDOW_SIZE,
+            DEFAULT_HOP,
+            2,
+            Box::new(move |channel, freqs, values, fired| {
+                let nyquist = freqs.len() - 1;
+                if channel == 0 && (!initialized || fired.get(1).copied().unwrap_or(false)) {
+                    initialized = true;
+                    permutation.clear();
+                    permutation.extend(0..freqs.len());
+                    let amount = values.first().copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                    if amount > 0.0 && nyquist > 1 {
+                        let total = nyquist - 1;
+                        let block_size = if locality == 0 {
+                            total
+                        } else {
+                            locality.max(1)
+                        };
+                        let mut block_start = 1;
+                        while block_start < nyquist {
+                            let block_end = (block_start + block_size).min(nyquist);
+                            let block_len = block_end - block_start;
+                            let selected = (amount * block_len as Sample).round() as usize;
+                            if selected > 1 {
+                                let mut bins = (block_start..block_end).collect::<Vec<_>>();
+                                bins.shuffle(&mut rng);
+                                bins.truncate(selected);
+                                let mut destinations = bins.clone();
+                                destinations.shuffle(&mut rng);
+                                for (&src, &dst) in bins.iter().zip(&destinations) {
+                                    permutation[src] = dst;
+                                }
+                            }
+                            block_start = block_end;
+                        }
+                    }
+                }
+
+                if permutation.len() == freqs.len() {
+                    let input = freqs.to_vec();
+                    for k in 1..nyquist {
+                        freqs[permutation[k]] = input[k];
+                    }
+                }
+            }),
+        )
     }
 
     fn process_hop(&mut self, values: &[Sample], fired: &[bool]) {
@@ -182,11 +238,23 @@ mod tests {
     const H: usize = 64;
 
     fn run_op(op: &mut SpectralTransform, input: &[Sample]) -> Vec<Sample> {
+        let controls = vec![vec![0.0; input.len()]; op.n_controls];
+        run_op_controls(op, input, &controls)
+    }
+
+    fn run_op_controls(
+        op: &mut SpectralTransform,
+        input: &[Sample],
+        controls: &[Vec<Sample>],
+    ) -> Vec<Sample> {
         let mut stack = Stack::new();
         let mut out = Vec::with_capacity(input.len());
-        for &x in input {
+        for (i, &x) in input.iter().enumerate() {
             stack.reset();
             stack.push(&[x, x]);
+            for control in controls {
+                stack.push(&[control[i], control[i]]);
+            }
             op.perform(&mut stack);
             out.push(stack.pop()[0]);
         }
@@ -201,6 +269,17 @@ mod tests {
 
     fn rms(xs: &[Sample]) -> Sample {
         (xs.iter().map(|x| x * x).sum::<Sample>() / xs.len() as Sample).sqrt()
+    }
+
+    fn fft_magnitudes(input: &[Sample]) -> Vec<Sample> {
+        let mut fft = Radix4::new(input.len(), Forward);
+        let mut scratch = vec![Complex::zero(); input.len()];
+        let mut buffer = input.iter().copied().map(Complex::from).collect::<Vec<_>>();
+        fft.process_with_scratch(&mut buffer, &mut scratch);
+        buffer[..(input.len() / 2 + 1)]
+            .iter()
+            .map(|x| x.norm())
+            .collect()
     }
 
     fn corr(a: &[Sample], b: &[Sample]) -> Sample {
@@ -241,6 +320,72 @@ mod tests {
         assert!(out.iter().all(|x| x.is_finite()));
         let mean = out[N * 3..].iter().sum::<Sample>() / (out.len() - N * 3) as Sample;
         assert!((mean - 0.25).abs() < 1e-3, "mean {mean}");
+    }
+
+    #[test]
+    fn spectral_shuffle_amount_zero_matches_identity() {
+        let input = sine(440.0, N * 5);
+        let controls = vec![vec![0.0; input.len()], vec![1.0; input.len()]];
+        let mut identity = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _| {}));
+        let mut shuffle = SpectralTransform::shuffle(0, Some(42));
+        let a = run_op(&mut identity, &input);
+        let b = run_op_controls(&mut shuffle, &input, &controls);
+        let diff = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum::<Sample>();
+        assert!(diff < 1e-9, "diff {diff}");
+    }
+
+    #[test]
+    fn spectral_shuffle_is_seeded_and_stable_without_trigger() {
+        let input = sine(440.0, N * 5);
+        let controls = vec![vec![1.0; input.len()], vec![0.0; input.len()]];
+        let mut a = SpectralTransform::shuffle(0, Some(42));
+        let mut b = SpectralTransform::shuffle(0, Some(42));
+        let mut c = SpectralTransform::shuffle(0, Some(43));
+        let out_a = run_op_controls(&mut a, &input, &controls);
+        let out_b = run_op_controls(&mut b, &input, &controls);
+        let out_c = run_op_controls(&mut c, &input, &controls);
+        assert_eq!(out_a, out_b);
+        let diff = out_a[N * 3..]
+            .iter()
+            .zip(&out_c[N * 3..])
+            .map(|(x, y)| (x - y).abs())
+            .sum::<Sample>();
+        assert!(diff > 1e-3, "diff {diff}");
+    }
+
+    #[test]
+    fn spectral_shuffle_locality_limits_bin_motion() {
+        let k = 100usize;
+        let input = sine(k as Sample * SR / N as Sample, N * 6);
+        let controls = vec![vec![1.0; input.len()], vec![0.0; input.len()]];
+        let mut shuffle = SpectralTransform::shuffle(8, Some(7));
+        let out = run_op_controls(&mut shuffle, &input, &controls);
+        let mags = fft_magnitudes(&out[N * 4..N * 5]);
+        let max_bin = (1..(mags.len() - 1))
+            .max_by(|&a, &b| mags[a].total_cmp(&mags[b]))
+            .unwrap();
+        assert!(max_bin.abs_diff(k) <= 8, "max_bin {max_bin}");
+    }
+
+    #[test]
+    fn spectral_shuffle_catches_one_sample_trigger_between_hops() {
+        let input = sine(440.0, N * 7);
+        let amount = vec![1.0; input.len()];
+        let mut trig = vec![0.0; input.len()];
+        trig[N * 3 + 1] = 1.0;
+        let controls_trigger = vec![amount.clone(), trig];
+        let controls_none = vec![amount, vec![0.0; input.len()]];
+        let mut a = SpectralTransform::shuffle(0, Some(42));
+        let mut b = SpectralTransform::shuffle(0, Some(42));
+        let out_trigger = run_op_controls(&mut a, &input, &controls_trigger);
+        let out_none = run_op_controls(&mut b, &input, &controls_none);
+        let start = N * 4;
+        let diff = out_trigger[start..]
+            .iter()
+            .zip(&out_none[start..])
+            .map(|(x, y)| (x - y).abs())
+            .sum::<Sample>();
+        assert!(diff > 1e-3, "diff {diff}");
     }
 
     #[test]
