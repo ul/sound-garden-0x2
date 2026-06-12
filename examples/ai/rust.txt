@@ -1,0 +1,21 @@
+;rust ;machines-dreaming-of-the-sea
+seed:13
+2.4 cycle >ph
+;engine-bass ;wavefolded-saw ;the-fold-breathes
+<ph pat:A1,A1,A1,G1 m2f >f
+<f 0 saw 0.07 s 1 + 1.5 * fold
+<ph gate:xxx.xx.x 0.004 0.12 0.6 0.05 adsr * 0.55 *
+;diminished-siren ;an-lfo-quantized-by-deg ;then-lag-melts-the-steps
+0.04 s unit 24 * 45 + deg:0,3,6,9 0.08 lag m2f s 0.15 *
++
+;machine-percussion ;crushed-noise
+<ph trig:x.x.x.xx 0.0015 impulse noise * 3 4000 crush 2500 1 h 0.4 *
++
+;rust-never-sleeps
+1.8 drive 0.6 *
+0.35 0.4 fbsat:1
+;factory-hall
+=dry 3.5 0.3 verb 1.4 width 0.35 * <dry +
+0.5 4 comp:0.1
+0.8 *
+0.9 limit

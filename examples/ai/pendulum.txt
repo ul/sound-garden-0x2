@@ -1,0 +1,16 @@
+;pendulum ;fm-bass
+0.25 cycle >ph
+;root-line ;alternating-fifth ;lag-glides-the-semitones
+<ph pat:A1,A1,C2,<E2;G2> 0.04 lag m2f >f
+<ph gate:x.xx 0.01 0.2 0.6 0.4 adsr >env
+;modulator-2.01-ratio ;index-follows-envelope
+<f 2.01 * s <f * 0.8 * <env *
+<f + s
+<env * 0.5 *
+;growl
+2 drive 0.7 *
+;dub-echo
+0.75 0.35 fbsat:2
+;glue ;gentle-compression
+0.45 3 comp:0.15
+0.9 limit

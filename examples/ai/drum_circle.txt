@@ -1,0 +1,19 @@
+;drum-circle ;kick-snare-hat
+seed:5
+2 cycle >ph
+;kick ;cubed-impulse-pitch-sweep ;162hz-to-42hz
+<ph trig:x..x..x. 0.002 impulse >k
+<k 3 ^ 120 * 42 + s <k *
+;snare ;band-passed-noise-burst ;a-flash-of-room
+<ph trig:....x... 0.004 impulse noise * 1800 2 bp =sn 0.9 0.5 verb 0.18 * <sn + 0.8 *
++
+;hats ;off-beat ;crushed-to-grit
+<ph trig:..x|[.x].x.<x;[xx]> 0.0008 impulse noise * 6000 hpf 5 9000 crush 0.3 *
++
+;ghost-hats ;chance-decides-each-one
+<ph trig:.x.x.x.x 0.3 chance 0.0005 impulse noise * 8000 hpf 0.12 *
++
+;bus-glue
+0.5 3 comp:0.1
+0.8 *
+0.9 limit

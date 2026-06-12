@@ -1,0 +1,23 @@
+;ghost-choir ;chords-die ;their-spectra-haunt-the-silence
+seed:303
+0.22 cycle >ph
+;chord-root ;alternates-each-cycle
+<ph pat:<C3;Eb3;G3;F3> m2f >f
+;one-second-swell ;three-of-silence
+<ph gate:x... 0.4 0.3 0.8 0.8 adsr >env
+;choir ;three-partials ;root-fifth-octave
+<f s <f 3/2 * s + <f 2 * s + 3 / <env * =dry
+;ghost ;freeze-the-dying-chord ;sustain-through-the-gap
+<ph gate:.xxx spectral_freeze
+;spectral-drift ;new-local-scramble-each-cycle
+0.7 <ph trig:x... spectral_shuffle:12
+;ghost-blooms-then-dies-before-the-next-chord
+<ph gate:.xxx 0.8 1.8 0 0.5 adsr *
+0.5 *
+;the-ghost-is-wider-than-the-living
+1.7 width
+;living-voice-in-front
+<dry 0.55 * +
+;a-stone-nave
+=mix 4 0.6 verb 0.3 * <mix +
+0.9 limit
