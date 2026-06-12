@@ -494,7 +494,8 @@ fn compile_segment(
                     SpectralTransform,
                     2048, // window_size
                     64,   // period
-                    Box::new(move |freqs| freqs.shuffle(&mut rng)),
+                    0,    // controls
+                    Box::new(move |_, freqs, _, _| freqs[1..].shuffle(&mut rng)),
                 )
             }
             "st1" => {
@@ -503,15 +504,12 @@ fn compile_segment(
                     SpectralTransform,
                     2048, // window_size
                     64,   // period
-                    Box::new(|freqs| {
-                        let mut max = 0.0;
-                        let mut max_idx = 0;
-                        for (i, freq) in freqs.iter().enumerate() {
-                            if freq.re > max {
-                                max = freq.re;
-                                max_idx = i;
-                            }
-                        }
+                    0,    // controls
+                    Box::new(|_, freqs, _, _| {
+                        let nyquist = freqs.len() - 1;
+                        let max_idx = (1..nyquist)
+                            .max_by(|&a, &b| freqs[a].norm_sqr().total_cmp(&freqs[b].norm_sqr()))
+                            .unwrap_or(0);
                         for (i, freq) in freqs.iter_mut().enumerate() {
                             if i != max_idx {
                                 *freq = Default::default();
@@ -526,7 +524,8 @@ fn compile_segment(
                     SpectralTransform,
                     2048, // window_size
                     64,   // period
-                    Box::new(|freqs| freqs.reverse()),
+                    0,    // controls
+                    Box::new(|_, freqs, _, _| freqs[1..].reverse()),
                 )
             }
             "sr" => push_args!(id, Constant, sample_rate as _),
