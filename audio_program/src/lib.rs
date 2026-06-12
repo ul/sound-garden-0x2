@@ -494,7 +494,7 @@ fn compile_segment(
                     2048, // window_size
                     64,   // period
                     0,    // controls
-                    Box::new(|_, freqs, _, _| {
+                    Box::new(|_, _, freqs, _, _| {
                         let nyquist = freqs.len() - 1;
                         let max_idx = (1..nyquist)
                             .max_by(|&a, &b| freqs[a].norm_sqr().total_cmp(&freqs[b].norm_sqr()))
@@ -514,7 +514,7 @@ fn compile_segment(
                     2048, // window_size
                     64,   // period
                     0,    // controls
-                    Box::new(|_, freqs, _, _| freqs[1..].reverse()),
+                    Box::new(reverse_half_spectrum),
                 )
             }
             "spectral_freeze" => program.push(Statement {
@@ -1445,6 +1445,26 @@ mod tests {
         (0..frames).map(|_| vm.next_frame()).collect()
     }
 
+    fn channel(frames: &[Frame], ch: usize) -> Vec<Sample> {
+        frames.iter().map(|frame| frame[ch]).collect()
+    }
+
+    fn rms(xs: &[Sample]) -> Sample {
+        (xs.iter().map(|x| x * x).sum::<Sample>() / xs.len() as Sample).sqrt()
+    }
+
+    fn peak(xs: &[Sample]) -> Sample {
+        xs.iter().map(|x| x.abs()).fold(0.0, Sample::max)
+    }
+
+    fn dc(xs: &[Sample]) -> Sample {
+        xs.iter().sum::<Sample>() / xs.len() as Sample
+    }
+
+    fn clipped(xs: &[Sample]) -> bool {
+        xs.iter().any(|x| x.abs() > 1.0)
+    }
+
     #[test]
     fn compile_program_evaluates_stack_arithmetic_and_aliases() {
         let mut context = Context::new();
@@ -1576,20 +1596,70 @@ mod tests {
     }
 
     #[test]
-    fn compile_program_runs_spectral_freeze() {
+    fn compile_program_spectral_freeze_gate_low_is_passthrough() {
         let frames = run_frames(
             &[
-                op(1, "seed:9"),
-                op(2, "440"),
+                op(1, "seed:1"),
+                op(2, "c4"),
                 op(3, "s"),
-                op(4, "1"),
-                op(5, "spectral_freeze"),
+                op(4, "0.3"),
+                op(5, "*"),
+                op(6, "0"),
+                op(7, "spectral_freeze"),
             ],
             48_000,
-            4096,
+            3 * audio_ops::DEFAULT_WINDOW_SIZE,
         );
-        assert!(frames.iter().flatten().all(|x| x.is_finite()));
-        assert!(frames.iter().flatten().map(|x| x.abs()).sum::<Sample>() > 0.0);
+        let samples = channel(&frames, 0);
+        let steady = &samples[(2 * audio_ops::DEFAULT_WINDOW_SIZE)..];
+        assert!(steady.iter().all(|x| x.is_finite()));
+        assert!((peak(steady) - 0.3).abs() < 0.03, "peak {}", peak(steady));
+        assert!((rms(steady) - 0.21).abs() < 0.03, "rms {}", rms(steady));
+    }
+
+    #[test]
+    fn compile_program_spectral_freeze_gate_high_sustains_signal() {
+        let frames = run_frames(
+            &[
+                op(1, "seed:1"),
+                op(2, "c4"),
+                op(3, "s"),
+                op(4, "0.3"),
+                op(5, "*"),
+                op(6, "1"),
+                op(7, "spectral_freeze"),
+            ],
+            48_000,
+            4 * audio_ops::DEFAULT_WINDOW_SIZE,
+        );
+        let samples = channel(&frames, 0);
+        let steady = &samples[(3 * audio_ops::DEFAULT_WINDOW_SIZE)..];
+        let level = rms(steady);
+        assert!(steady.iter().all(|x| x.is_finite()));
+        assert!(level > 0.105 && level < 0.42, "rms {level}");
+        assert!(dc(steady).abs() < 0.05, "dc {}", dc(steady));
+    }
+
+    #[test]
+    fn compile_program_spectral_reverse_has_bounded_level() {
+        let frames = run_frames(
+            &[
+                op(1, "seed:1"),
+                op(2, "c4"),
+                op(3, "s"),
+                op(4, "0.3"),
+                op(5, "*"),
+                op(6, "spectral_reverse"),
+            ],
+            48_000,
+            3 * audio_ops::DEFAULT_WINDOW_SIZE,
+        );
+        let samples = channel(&frames, 0);
+        let steady = &samples[(2 * audio_ops::DEFAULT_WINDOW_SIZE)..];
+        let p = peak(steady);
+        assert!(steady.iter().all(|x| x.is_finite()));
+        assert!((0.15..=0.6).contains(&p), "peak {p}");
+        assert!(!clipped(steady));
     }
 
     #[test]
@@ -1603,9 +1673,10 @@ mod tests {
                 op(5, "spectral_shuffle"),
             ],
             48_000,
-            4096,
+            3 * audio_ops::DEFAULT_WINDOW_SIZE,
         );
         assert!(a.iter().flatten().all(|x| x.is_finite()));
+        assert!(a.iter().flatten().any(|x| x.abs() > 1e-6));
         let b = run_frames(
             &[
                 op(1, "seed:7"),
@@ -1615,9 +1686,10 @@ mod tests {
                 op(5, "spectral_shuffle:8"),
             ],
             48_000,
-            4096,
+            3 * audio_ops::DEFAULT_WINDOW_SIZE,
         );
         assert!(b.iter().flatten().all(|x| x.is_finite()));
+        assert!(b.iter().flatten().any(|x| x.abs() > 1e-6));
     }
 
     #[test]

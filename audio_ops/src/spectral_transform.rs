@@ -6,7 +6,7 @@
 //! Source to connect: input, preceded by zero or more control signals.
 use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
-use rand::{RngExt, SeedableRng, rngs::SmallRng, seq::SliceRandom};
+use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
 use rustfft::{
@@ -16,10 +16,33 @@ use rustfft::{
 };
 use std::collections::VecDeque;
 
-pub type TransformFn = Box<dyn FnMut(usize, &mut [Complex<Sample>], &[Sample], &[bool]) + Send>;
+pub type TransformFn =
+    Box<dyn FnMut(usize, usize, &mut [Complex<Sample>], &[Sample], &[bool]) + Send>;
 
 pub const DEFAULT_WINDOW_SIZE: usize = 2048;
 pub const DEFAULT_HOP: usize = 64;
+
+pub fn reverse_half_spectrum(
+    _channel: usize,
+    frame_number: usize,
+    freqs: &mut [Complex<Sample>],
+    _values: &[Sample],
+    _fired: &[bool],
+) {
+    let nyquist = freqs.len() - 1;
+    if nyquist <= 1 {
+        return;
+    }
+
+    let input = freqs.to_vec();
+    let n = nyquist * 2;
+    for k in 1..nyquist {
+        let src = nyquist - k;
+        let phase = std::f64::consts::TAU * (k as Sample - src as Sample) * frame_number as Sample
+            / n as Sample;
+        freqs[k] = input[src] * Complex::from_polar(1.0, phase);
+    }
+}
 
 pub struct SpectralTransform {
     input_buffers: Vec<VecDeque<Complex<Sample>>>,
@@ -93,7 +116,7 @@ impl SpectralTransform {
             DEFAULT_WINDOW_SIZE,
             DEFAULT_HOP,
             2,
-            Box::new(move |channel, freqs, values, fired| {
+            Box::new(move |channel, _, freqs, values, fired| {
                 let nyquist = freqs.len() - 1;
                 if channel == 0 && (!initialized || fired.get(1).copied().unwrap_or(false)) {
                     initialized = true;
@@ -138,42 +161,49 @@ impl SpectralTransform {
     }
 
     pub fn freeze(seed: Option<u64>) -> Self {
-        let mut rng = seed.map_or_else(rand::make_rng::<SmallRng>, SmallRng::seed_from_u64);
+        let _ = seed;
         let mut previous_gate = false;
         let mut rising_hop = false;
-        let mut phases = Vec::<Sample>::new();
-        let mut captured = vec![Vec::<Sample>::new(); CHANNELS];
+        let mut captured_magnitudes = vec![Vec::<Sample>::new(); CHANNELS];
+        let mut captured_phases = vec![Vec::<Sample>::new(); CHANNELS];
+        let mut capture_frames = [0usize; CHANNELS];
         Self::new(
             DEFAULT_WINDOW_SIZE,
             DEFAULT_HOP,
             1,
-            Box::new(move |channel, freqs, values, fired| {
+            Box::new(move |channel, frame_number, freqs, values, fired| {
                 let nyquist = freqs.len() - 1;
                 let gate_high = values.first().copied().unwrap_or(0.0) > 0.0;
                 if channel == 0 {
                     rising_hop =
                         fired.first().copied().unwrap_or(false) && !previous_gate && gate_high;
                     previous_gate = gate_high;
-                    if gate_high {
-                        phases.clear();
-                        phases.resize(freqs.len(), 0.0);
-                        for phase in &mut phases[1..nyquist] {
-                            *phase = rng.random_range(0.0..std::f64::consts::TAU);
-                        }
-                    }
                 }
 
-                let captured_is_empty = captured[channel].len() != freqs.len()
-                    || captured[channel].iter().all(|&mag| mag <= Sample::EPSILON);
-                if rising_hop || (gate_high && captured_is_empty) {
-                    captured[channel] = freqs.iter().map(|bin| bin.norm()).collect();
+                let captured_is_empty = captured_magnitudes[channel].len() != freqs.len()
+                    || captured_magnitudes[channel]
+                        .iter()
+                        .all(|&mag| mag <= Sample::EPSILON);
+                let should_capture = gate_high
+                    && frame_number >= DEFAULT_WINDOW_SIZE
+                    && (rising_hop || captured_is_empty);
+                if should_capture {
+                    captured_magnitudes[channel] = freqs.iter().map(|bin| bin.norm()).collect();
+                    captured_phases[channel] = freqs.iter().map(|bin| bin.arg()).collect();
+                    capture_frames[channel] = frame_number;
+                    captured_magnitudes[channel][0] = 0.0;
+                    captured_magnitudes[channel][nyquist] = 0.0;
                 }
 
-                if gate_high && captured[channel].len() == freqs.len() {
+                if gate_high && captured_magnitudes[channel].len() == freqs.len() {
+                    let n = nyquist * 2;
+                    let frame_offset = frame_number.wrapping_sub(capture_frames[channel]) as Sample;
                     freqs[0] = Complex::zero();
                     freqs[nyquist] = Complex::zero();
                     for k in 1..nyquist {
-                        freqs[k] = Complex::from_polar(captured[channel][k], phases[k]);
+                        let phase = captured_phases[channel][k]
+                            + std::f64::consts::TAU * k as Sample * frame_offset / n as Sample;
+                        freqs[k] = Complex::from_polar(captured_magnitudes[channel][k], phase);
                     }
                 }
             }),
@@ -194,7 +224,13 @@ impl SpectralTransform {
             self.fft
                 .process_with_scratch(&mut self.freq_buffer, &mut self.scratch);
 
-            (self.transform)(channel, &mut self.freq_buffer[..half], values, fired);
+            (self.transform)(
+                channel,
+                self.frame_number,
+                &mut self.freq_buffer[..half],
+                values,
+                fired,
+            );
 
             self.freq_buffer[0].im = 0.0;
             self.freq_buffer[half - 1].im = 0.0;
@@ -344,7 +380,7 @@ mod tests {
     #[test]
     fn identity_reconstructs_sine_after_warmup() {
         let input = sine(440.0, N * 5);
-        let mut op = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _| {}));
+        let mut op = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _, _| {}));
         let out = run_op(&mut op, &input);
         assert!(out.iter().all(|x| x.is_finite()));
         let start = N * 2;
@@ -358,7 +394,7 @@ mod tests {
     #[test]
     fn identity_preserves_dc_after_warmup() {
         let input = vec![0.25; N * 4];
-        let mut op = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _| {}));
+        let mut op = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _, _| {}));
         let out = run_op(&mut op, &input);
         assert!(out.iter().all(|x| x.is_finite()));
         let mean = out[N * 3..].iter().sum::<Sample>() / (out.len() - N * 3) as Sample;
@@ -369,7 +405,7 @@ mod tests {
     fn spectral_shuffle_amount_zero_matches_identity() {
         let input = sine(440.0, N * 5);
         let controls = vec![vec![0.0; input.len()], vec![1.0; input.len()]];
-        let mut identity = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _| {}));
+        let mut identity = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _, _| {}));
         let mut shuffle = SpectralTransform::shuffle(0, Some(42));
         let a = run_op(&mut identity, &input);
         let b = run_op_controls(&mut shuffle, &input, &controls);
@@ -435,7 +471,7 @@ mod tests {
     fn spectral_freeze_gate_low_matches_identity() {
         let input = sine(440.0, N * 5);
         let controls = vec![vec![0.0; input.len()]];
-        let mut identity = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _| {}));
+        let mut identity = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _, _| {}));
         let mut freeze = SpectralTransform::freeze(Some(42));
         let a = run_op(&mut identity, &input);
         let b = run_op_controls(&mut freeze, &input, &controls);
@@ -480,13 +516,12 @@ mod tests {
     #[test]
     fn reverse_and_st1_are_finite_with_plausible_energy() {
         let input = sine(440.0, N * 4);
-        let mut reverse =
-            SpectralTransform::new(N, H, 0, Box::new(|_, freqs, _, _| freqs[1..].reverse()));
+        let mut reverse = SpectralTransform::new(N, H, 0, Box::new(reverse_half_spectrum));
         let mut st1 = SpectralTransform::new(
             N,
             H,
             0,
-            Box::new(|_, freqs, _, _| {
+            Box::new(|_, _, freqs, _, _| {
                 let nyq = freqs.len() - 1;
                 let max_idx = (1..nyq)
                     .max_by(|&a, &b| freqs[a].norm_sqr().total_cmp(&freqs[b].norm_sqr()))
