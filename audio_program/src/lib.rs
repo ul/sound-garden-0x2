@@ -517,6 +517,10 @@ fn compile_segment(
                     Box::new(|_, freqs, _, _| freqs[1..].reverse()),
                 )
             }
+            "spectral_freeze" => program.push(Statement {
+                id,
+                op: Box::new(SpectralTransform::freeze(ctx.next_rng_seed())) as Box<dyn Op>,
+            }),
             "sr" => push_args!(id, Constant, sample_rate as _),
             "swap" => push!(id, Swap),
             "t" => push_args!(id, Osc, sample_rate, pure::triangle),
@@ -1569,6 +1573,23 @@ mod tests {
             ),
             [6.0, 6.0]
         );
+    }
+
+    #[test]
+    fn compile_program_runs_spectral_freeze() {
+        let frames = run_frames(
+            &[
+                op(1, "seed:9"),
+                op(2, "440"),
+                op(3, "s"),
+                op(4, "1"),
+                op(5, "spectral_freeze"),
+            ],
+            48_000,
+            4096,
+        );
+        assert!(frames.iter().flatten().all(|x| x.is_finite()));
+        assert!(frames.iter().flatten().map(|x| x.abs()).sum::<Sample>() > 0.0);
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! Source to connect: input, preceded by zero or more control signals.
 use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
-use rand::{Rng, SeedableRng, rngs::SmallRng, seq::SliceRandom};
+use rand::{RngExt, SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
 use rustfft::{
@@ -131,6 +131,49 @@ impl SpectralTransform {
                     let input = freqs.to_vec();
                     for k in 1..nyquist {
                         freqs[permutation[k]] = input[k];
+                    }
+                }
+            }),
+        )
+    }
+
+    pub fn freeze(seed: Option<u64>) -> Self {
+        let mut rng = seed.map_or_else(rand::make_rng::<SmallRng>, SmallRng::seed_from_u64);
+        let mut previous_gate = false;
+        let mut rising_hop = false;
+        let mut phases = Vec::<Sample>::new();
+        let mut captured = vec![Vec::<Sample>::new(); CHANNELS];
+        Self::new(
+            DEFAULT_WINDOW_SIZE,
+            DEFAULT_HOP,
+            1,
+            Box::new(move |channel, freqs, values, fired| {
+                let nyquist = freqs.len() - 1;
+                let gate_high = values.first().copied().unwrap_or(0.0) > 0.0;
+                if channel == 0 {
+                    rising_hop =
+                        fired.first().copied().unwrap_or(false) && !previous_gate && gate_high;
+                    previous_gate = gate_high;
+                    if gate_high {
+                        phases.clear();
+                        phases.resize(freqs.len(), 0.0);
+                        for phase in &mut phases[1..nyquist] {
+                            *phase = rng.random_range(0.0..std::f64::consts::TAU);
+                        }
+                    }
+                }
+
+                let captured_is_empty = captured[channel].len() != freqs.len()
+                    || captured[channel].iter().all(|&mag| mag <= Sample::EPSILON);
+                if rising_hop || (gate_high && captured_is_empty) {
+                    captured[channel] = freqs.iter().map(|bin| bin.norm()).collect();
+                }
+
+                if gate_high && captured[channel].len() == freqs.len() {
+                    freqs[0] = Complex::zero();
+                    freqs[nyquist] = Complex::zero();
+                    for k in 1..nyquist {
+                        freqs[k] = Complex::from_polar(captured[channel][k], phases[k]);
                     }
                 }
             }),
@@ -272,7 +315,7 @@ mod tests {
     }
 
     fn fft_magnitudes(input: &[Sample]) -> Vec<Sample> {
-        let mut fft = Radix4::new(input.len(), Forward);
+        let fft = Radix4::new(input.len(), Forward);
         let mut scratch = vec![Complex::zero(); input.len()];
         let mut buffer = input.iter().copied().map(Complex::from).collect::<Vec<_>>();
         fft.process_with_scratch(&mut buffer, &mut scratch);
@@ -386,6 +429,52 @@ mod tests {
             .map(|(x, y)| (x - y).abs())
             .sum::<Sample>();
         assert!(diff > 1e-3, "diff {diff}");
+    }
+
+    #[test]
+    fn spectral_freeze_gate_low_matches_identity() {
+        let input = sine(440.0, N * 5);
+        let controls = vec![vec![0.0; input.len()]];
+        let mut identity = SpectralTransform::new(N, H, 0, Box::new(|_, _, _, _| {}));
+        let mut freeze = SpectralTransform::freeze(Some(42));
+        let a = run_op(&mut identity, &input);
+        let b = run_op_controls(&mut freeze, &input, &controls);
+        let diff = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum::<Sample>();
+        assert!(diff < 1e-9, "diff {diff}");
+    }
+
+    #[test]
+    fn spectral_freeze_sustains_captured_sine_after_input_goes_silent() {
+        let capture = N * 3;
+        let len = capture + N + 48_000 + N;
+        let mut input = sine(440.0, len);
+        for x in &mut input[(capture + H)..] {
+            *x = 0.0;
+        }
+        let mut gate = vec![0.0; len];
+        gate[capture..].fill(1.0);
+        let mut freeze = SpectralTransform::freeze(Some(9));
+        let out = run_op_controls(&mut freeze, &input, &[gate]);
+        assert!(out.iter().all(|x| x.is_finite()));
+        let captured = rms(&out[(capture + N)..(capture + N + 4096)]);
+        let sustained = rms(&out[(capture + N + 24_000)..(capture + N + 48_000)]);
+        let db = 20.0 * (sustained / captured).log10();
+        assert!(
+            db.abs() <= 6.0,
+            "captured {captured}, sustained {sustained}, {db} dB"
+        );
+    }
+
+    #[test]
+    fn spectral_freeze_seed_reproducible() {
+        let input = sine(440.0, N * 5);
+        let controls = vec![vec![1.0; input.len()]];
+        let mut a = SpectralTransform::freeze(Some(42));
+        let mut b = SpectralTransform::freeze(Some(42));
+        assert_eq!(
+            run_op_controls(&mut a, &input, &controls),
+            run_op_controls(&mut b, &input, &controls)
+        );
     }
 
     #[test]
