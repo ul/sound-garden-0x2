@@ -974,10 +974,11 @@ impl SoundGardenApp {
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 0.0, BACKGROUND_COLOR);
             self.paint_cursor(&painter, rect.min);
+            let comment_node_ids = dropped_quotation_node_ids(&self.state.nodes);
 
             for node in self.state.nodes.iter() {
                 self.paint_pattern_highlight(&painter, rect.min, node);
-                let color = if node.text.starts_with(';') {
+                let color = if comment_node_ids.contains(&node.id) {
                     COMMENT_COLOR
                 } else if self.state.draft_nodes.contains(&node.id) {
                     NODE_DRAFT_COLOR
@@ -1457,6 +1458,41 @@ fn default_cycles() -> Vec<Vec<String>> {
     .iter()
     .map(|cycle| cycle.iter().map(|s| s.to_string()).collect())
     .collect()
+}
+
+fn dropped_quotation_node_ids(nodes: &[Node]) -> Vec<Id> {
+    let mut sorted = nodes.iter().collect::<Vec<_>>();
+    sorted.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
+
+    let mut result = Vec::new();
+    let mut quote_start = None;
+    let mut quote_depth = 0usize;
+    for (index, node) in sorted.iter().enumerate() {
+        if node.text.starts_with('[') {
+            if quote_depth == 0 {
+                quote_start = Some(index);
+            }
+            quote_depth += 1;
+        }
+
+        if quote_depth > 0 && node.text.ends_with(']') {
+            quote_depth -= 1;
+            if quote_depth == 0 {
+                if sorted
+                    .get(index + 1)
+                    .is_some_and(|next| next.text == "drop")
+                {
+                    if let Some(start) = quote_start.take() {
+                        result.extend(sorted[start..=index].iter().map(|node| node.id));
+                        result.push(sorted[index + 1].id);
+                    }
+                } else {
+                    quote_start = None;
+                }
+            }
+        }
+    }
+    result
 }
 
 fn render_nodes_text<'a>(nodes: impl Iterator<Item = &'a Node>) -> String {

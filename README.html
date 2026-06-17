@@ -571,7 +571,7 @@ Sound Garden lingo), you can easily make your sine wave more funky by modulating
 <div class="paragraph">
 <p>Take some time to meditate on what happens here.
 That&#8217;s it about Sound Garden as a language (not really, it has few
-more tricks in its sleeve to be revealed in <a href="#_templates">Templates</a> section!). Please find list of available ops
+more tricks in its sleeve to be revealed in <a href="#Templates">[Templates]</a> section!). Please find list of available ops
 <a href="https://github.com/ul/sound-garden-0x2/tree/master/audio_program/src/help.adoc">here</a>.
 Now its time to dive into Sound Garden as a livecoding env.</p>
 </div>
@@ -850,17 +850,67 @@ active cells:</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_templates">Templates</h3>
+<h3 id="_polyphony">Polyphony</h3>
 <div class="paragraph">
-<p>Templates is syntactic sugar for abbreviating repetitive patterns.
-Template content is defined between square brackets followed by the template name.
-When Sound Garden encounters template name in the program down the line (including other templates),
-it substitutes that name with the template content.
-For example, the following</p>
+<p>A single pattern lane drives one voice: when a new note triggers, the previous note&#8217;s tail is cut.
+To let tails ring (or play overlapping gated notes), wrap the voice in a quotation and hand it to <code>poly:N</code>.
+Square brackets collect compile-time quotations. <code>poly:N</code> consumes the preceding quotation as a voice body,
+runs N copies of it, and sums their outputs:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>[ dup s swap c * ] yay
+<pre>1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4 .2 *</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>poly</code> consumes a value signal and a control signal. On a rising edge of the control signal it
+allocates the next voice round-robin and latches the current value into it; each voice body then runs
+every sample against a stack seeded with <code>(value, ctl)</code>. The most recently allocated voice receives
+the live control signal as-is, other voices receive 0. This makes <code>poly</code> gate-transparent: a trig
+body sees a one-sample impulse, while a gate body sees the full gate including its fall, so <code>adsr</code>
+releases work naturally:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>1 cycle pat:60,64,67,72 m2f 1 cycle gate:x.xx [ swap s swap 0.01 0.1 0.7 0.3 adsr * ] poly:4 .2 *</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Control amplitude passes through unchanged, so gates can carry velocity. There is no note-off or
+free-voice detection: if tails get stolen, raise N. Named templates work as voice bodies too:
+<code>lead poly:4</code> pushes the registered <code>lead</code> quotation and lets <code>poly:4</code> consume it.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_compile_time_quotations_and_templates">Compile-time quotations and templates</h3>
+<div class="paragraph">
+<p>Square brackets collect a compile-time quotation. If the following word consumes it, that word decides
+what to do with the quotation; otherwise the quotation auto-expands inline. For example:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ 440 s ] 0.2 *</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>is equivalent to:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>440 s 0.2 *</pre>
+</div>
+</div>
+<div class="paragraph">
+<p><code>def:&lt;NAME&gt;</code> registers the preceding quotation as a template; <code>:&lt;NAME&gt;</code> is equivalent sugar. Writing the
+template name later pushes the registered quotation, which can auto-expand inline or be consumed by a
+quotation-taking word such as <code>poly:N</code> or <code>drop</code>.</p>
+</div>
+<div class="paragraph">
+<p>For example, the following</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ dup s swap c * ] def:yay
 440 yay 220 yay +</pre>
 </div>
 </div>
@@ -876,13 +926,21 @@ For example, the following</p>
 <p>Templates are livecoding-friendly, and replacing <code>s</code> in the template definition with <code>t</code>
 would produce expanded `t`s with the same identity as corresponding `s`s before, preserving phase.</p>
 </div>
+<div class="paragraph">
+<p>Dropped quotations are comments and may contain whitespace:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ bassline notes with spaces ] drop</pre>
+</div>
+</div>
 </div>
 </div>
 </div>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-06-10 08:57:51 +1000
+Last updated 2026-06-18 08:24:58 +1000
 </div>
 </div>
 </body>

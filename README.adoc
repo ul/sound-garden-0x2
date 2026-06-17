@@ -177,8 +177,8 @@ The `cpat`, `cgate`, and `ctrig` forms are CPS-consuming conveniences equivalent
 === Polyphony
 A single pattern lane drives one voice: when a new note triggers, the previous note's tail is cut.
 To let tails ring (or play overlapping gated notes), wrap the voice in a quotation and hand it to `poly:N`.
-A bracket group immediately before `poly` is compiled as a voice body instead of being spliced as a template;
-`poly:N` runs N copies of it and sums their outputs:
+Square brackets collect compile-time quotations. `poly:N` consumes the preceding quotation as a voice body,
+runs N copies of it, and sums their outputs:
 -----
 1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4 .2 *
 -----
@@ -193,16 +193,26 @@ releases work naturally:
 -----
 Control amplitude passes through unchanged, so gates can carry velocity. There is no note-off or
 free-voice detection: if tails get stolen, raise N. Named templates work as voice bodies too:
-`lead poly:4`.
+`lead poly:4` pushes the registered `lead` quotation and lets `poly:4` consume it.
 
-=== Templates
-Templates is syntactic sugar for abbreviating repetitive patterns.
-Template content is defined between square brackets followed by the template name.
-When Sound Garden encounters template name in the program down the line (including other templates),
-it substitutes that name with the template content.
+=== Compile-time quotations and templates
+Square brackets collect a compile-time quotation. If the following word consumes it, that word decides
+what to do with the quotation; otherwise the quotation auto-expands inline. For example:
+-----
+[ 440 s ] 0.2 *
+-----
+is equivalent to:
+-----
+440 s 0.2 *
+-----
+
+`def:<NAME>` registers the preceding quotation as a template; `:<NAME>` is equivalent sugar. Writing the
+template name later pushes the registered quotation, which can auto-expand inline or be consumed by a
+quotation-taking word such as `poly:N` or `drop`.
+
 For example, the following
 -----
-[ dup s swap c * ] yay
+[ dup s swap c * ] def:yay
 440 yay 220 yay +
 -----
 will be expanded into
@@ -211,3 +221,8 @@ will be expanded into
 -----
 Templates are livecoding-friendly, and replacing `s` in the template definition with `t`
 would produce expanded `t`s with the same identity as corresponding `s`s before, preserving phase.
+
+Dropped quotations are comments and may contain whitespace:
+-----
+[ bassline notes with spaces ] drop
+-----

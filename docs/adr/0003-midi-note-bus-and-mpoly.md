@@ -15,7 +15,7 @@ The current `adsr` op treats gate amplitude as a threshold/hold signal; it does 
 Goal: plug a MIDI keyboard into standalone Sound Garden and write idiomatic programs such as:
 
 ```text
-;midi-sine-keys
+[ midi sine keys ] drop
 [ 0.005 0.1 0.7 0.3 adsr rot m2f s * * ] mpoly:8
 0.2 *
 0.9 limit
@@ -147,7 +147,7 @@ If a patch is edited from `poly:N` to `mpoly:N`, no allocator migration is attem
 
 ## Compiler changes
 
-- Treat `mpoly` and `mpoly:<N>` as quotation consumers in `is_quotation_consumer`.
+- Treat `mpoly` and `mpoly:<N>` as quotation consumers, parallel to `poly:N`.
 - Add `compile_mpoly(op, body, sample_rate, ctx) -> MPoly`.
 - `mpoly` without preceding quotation logs a warning and compiles to zero-output `MPoly::empty()`.
 - Invalid `N`, `N == 0`, empty body, or malformed argument compile to zero-output with warning.
@@ -178,7 +178,7 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 ### Sine keys
 
 ```text
-;midi-sine-keys
+[ midi sine keys ] drop
 [ 0.005 0.1 0.7 0.3 adsr rot m2f s * * ] mpoly:8
 0.2 *
 0.9 limit
@@ -187,7 +187,7 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 ### Detuned triangle lead
 
 ```text
-;midi-triangle-lead ;note-velocity-gate
+[ midi triangle lead note velocity gate ] drop
 [ 0.005 0.1 0.7 0.25 adsr rot m2f dup t swap 2 * t 0.25 * + * * ] mpoly:6
 0.22 *
 =dry 4 0.5 verb 0.35 * <dry 0.7 * +
@@ -197,7 +197,7 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 ### MIDI lead over sequenced bass
 
 ```text
-;midi-over-sequence ;play-lead-while-bass-runs
+[ midi over sequence play lead while bass runs ] drop
 0.25 cycle >ph
 <ph pat:A1,A1,C2,E2 0.04 lag m2f >f
 <ph gate:x.xx 0.01 0.2 0.6 0.4 adsr >env

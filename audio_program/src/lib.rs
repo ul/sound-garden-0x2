@@ -219,8 +219,21 @@ fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
 const QUOTE_OPEN: &str = "\u{1}(";
 const QUOTE_CLOSE: &str = "\u{1})";
 
+fn template_definition_name(op: &str) -> Option<&str> {
+    if let Some(name) = op.strip_prefix("def:") {
+        (!name.is_empty()).then_some(name)
+    } else if let Some(name) = op.strip_prefix(':') {
+        (!name.is_empty()).then_some(name)
+    } else {
+        None
+    }
+}
+
 fn is_quotation_consumer(op: &str) -> bool {
-    op == "poly" || op.starts_with("poly:")
+    op == "drop"
+        || op == "poly"
+        || op.starts_with("poly:")
+        || template_definition_name(op).is_some()
 }
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
@@ -277,7 +290,7 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
         };
         let body = &ops[i + 1..close];
         match ops.get(close + 1) {
-            Some(consumer) if is_quotation_consumer(&consumer.op) => {
+            Some(consumer) if consumer.op == "poly" || consumer.op.starts_with("poly:") => {
                 program.push(Statement {
                     id: consumer.id,
                     op: Box::new(compile_poly(&consumer.op, body, sample_rate, ctx)),
@@ -285,7 +298,7 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
                 i = close + 2;
             }
             _ => {
-                log::warn!("Quotation is not followed by a quotation consumer; ignoring it.");
+                log::warn!("Quotation marker is not followed by poly; ignoring it.");
                 i = close + 1;
             }
         }
@@ -560,15 +573,6 @@ fn compile_segment(
                 Err(_) => {
                     let tokens = op.split(':').collect::<Vec<_>>();
                     match tokens[0] {
-                        "" if tokens.len() > 1 => match tokens.get(1) {
-                            Some(x) => match x.parse::<usize>() {
-                                Ok(n) => push_args!(id, Dig, n),
-                                Err(_) => {
-                                    log::warn!("Can't parse {} as depth", x);
-                                }
-                            },
-                            None => unreachable!(),
-                        },
                         "spectral_shuffle" => {
                             let locality = tokens
                                 .get(1)
@@ -943,66 +947,61 @@ pub fn get_op_groups() -> Vec<(String, Vec<String>)> {
     result
 }
 
+fn push_term_ops(stack: &mut Vec<TextOp>, term: Term) {
+    for op in term.ops.into_iter().rev() {
+        stack.push(op);
+    }
+}
+
+fn instantiate_term(term: &Term, result: &mut Vec<TextOp>, salt: u64) -> Option<Term> {
+    if term.holes > result.len() {
+        return None;
+    }
+
+    // Steal ops from the output to fill the holes.
+    let mut holes = result.drain((result.len() - term.holes)..);
+    let mut ops = Vec::with_capacity(term.ops.len());
+    for t in &term.ops {
+        // Hole filling already has its own unique id,
+        // no need to change it...
+        ops.push(if t.op.contains('?') {
+            holes.next().unwrap()
+        // ...but term literals have to be salted,
+        // as they are copied every time term is encountered.
+        } else {
+            let mut t = t.clone();
+            t.id = t.id.overflowing_add(salt).0;
+            t
+        });
+    }
+    Some(Term { holes: 0, ops })
+}
+
 fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
-    let stmts = stmts
-        .iter()
-        .filter(|stmt| !stmt.op.starts_with(';'))
-        .cloned()
-        .collect::<Vec<_>>();
     let mut result: Vec<TextOp> = Vec::new();
     let mut new_term: Option<Term> = None;
     // Depth of nested bracket groups inside the group being collected.
     let mut bracket_depth = 0usize;
     let mut terms: HashMap<String, Term> = Default::default();
-    let mut stack: Vec<TextOp> = stmts;
+    let mut pending_quotes: Vec<Term> = Vec::new();
+    let mut stack: Vec<TextOp> = stmts.to_vec();
     stack.reverse();
-    while let Some(stmt) = stack.pop() {
-        // This is a known term, let's rewrite it...
+
+    while !stack.is_empty() || !pending_quotes.is_empty() {
+        let Some(stmt) = stack.pop() else {
+            for term in pending_quotes.drain(..).rev() {
+                push_term_ops(&mut stack, term);
+            }
+            continue;
+        };
+
+        // This is a known term: instantiate it as a pending compile-time
+        // quotation unless we are collecting another quotation.
         if let Some(term) = terms.get(&stmt.op) {
-            // ...but not when we are defining a new term.
             if let Some(term) = new_term.as_mut() {
                 term.ops.push(stmt);
-            } else if term.holes <= result.len() {
-                // Steal ops from the output to fill the holes.
-                let mut holes = result.drain((result.len() - term.holes)..);
-                // Not pushing rewrited terms directly onto the stack
-                // as we need to reverse them.
-                let mut rewrite = Vec::new();
-                for t in &term.ops {
-                    // Hole filling already has its own unique id,
-                    // no need to change it...
-                    rewrite.push(if t.op.contains("?") {
-                        holes.next().unwrap()
-                    // ...but term literals have to be salted,
-                    // as they are copied every time term is encountered.
-                    } else {
-                        let mut t = t.clone();
-                        t.id = t.id.overflowing_add(stmt.id).0;
-                        t
-                    });
-                }
-                // A term used directly before a quotation consumer acts as
-                // a quotation: wrap its expansion in quote markers.
-                let quoted = stack
-                    .last()
-                    .is_some_and(|next| is_quotation_consumer(&next.op));
-                if quoted {
-                    stack.push(TextOp {
-                        id: 0,
-                        op: QUOTE_CLOSE.to_string(),
-                    });
-                }
-                // Push rewrites onto the stack, not result,
-                // to have them processed (as may contain further terms).
-                for op in rewrite.drain(..).rev() {
-                    stack.push(op);
-                }
-                if quoted {
-                    stack.push(TextOp {
-                        id: 0,
-                        op: QUOTE_OPEN.to_string(),
-                    });
-                }
+            } else if let Some(term) = instantiate_term(term, &mut result, stmt.id) {
+                pending_quotes.push(term);
             }
         } else if stmt.op.starts_with("[") {
             if let Some(term) = new_term.as_mut() {
@@ -1030,29 +1029,8 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                 if let Some(term) = new_term.as_mut() {
                     term.ops.push(stmt);
                 }
-            } else if let Some(term) = new_term.take()
-                && let Some(op) = stack.pop()
-            {
-                if is_quotation_consumer(&op.op) {
-                    // A bracket group before a quotation consumer is a
-                    // quotation, not a template definition: replay its body
-                    // wrapped in quote markers so the compiler can extract
-                    // it (and expand templates inside it on the way).
-                    stack.push(op);
-                    stack.push(TextOp {
-                        id: 0,
-                        op: QUOTE_CLOSE.to_string(),
-                    });
-                    for op in term.ops.into_iter().rev() {
-                        stack.push(op);
-                    }
-                    stack.push(TextOp {
-                        id: 0,
-                        op: QUOTE_OPEN.to_string(),
-                    });
-                } else {
-                    terms.insert(op.op, term);
-                }
+            } else if let Some(term) = new_term.take() {
+                pending_quotes.push(term);
             }
         } else if stmt.op.ends_with("]") && !stmt.op.contains(':') {
             if new_term.is_some() {
@@ -1065,12 +1043,49 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                     op: stmt.op.chars().take(stmt.op.len() - 1).collect(),
                 });
             }
-        } else {
-            if let Some(term) = new_term.as_mut() {
-                if stmt.op.contains("?") {
-                    term.holes += 1;
+        } else if let Some(term) = new_term.as_mut() {
+            if stmt.op.contains('?') {
+                term.holes += 1;
+            }
+            term.ops.push(stmt);
+        } else if is_quotation_consumer(&stmt.op) && !pending_quotes.is_empty() {
+            let quote = pending_quotes.pop().unwrap();
+            if !pending_quotes.is_empty() {
+                // Preserve source order: older pending quotations auto-expand
+                // before this consumer handles the newest quotation.
+                let older = std::mem::replace(&mut pending_quotes, vec![quote]);
+                stack.push(stmt);
+                for term in older.into_iter().rev() {
+                    push_term_ops(&mut stack, term);
                 }
-                term.ops.push(stmt);
+            } else if let Some(name) = template_definition_name(&stmt.op) {
+                terms.insert(name.to_owned(), quote);
+            } else if stmt.op == "drop" {
+                // Explicitly discard the pending quotation. This is the
+                // comment form: `[ arbitrary words ] drop`.
+            } else {
+                // A quotation before `poly` is compiled into a voice body:
+                // replay its body wrapped in quote markers so the compiler
+                // can extract it (and expand templates inside it on the way).
+                stack.push(stmt);
+                stack.push(TextOp {
+                    id: 0,
+                    op: QUOTE_CLOSE.to_string(),
+                });
+                push_term_ops(&mut stack, quote);
+                stack.push(TextOp {
+                    id: 0,
+                    op: QUOTE_OPEN.to_string(),
+                });
+            }
+        } else {
+            if !pending_quotes.is_empty() {
+                // No consumer took the pending quotations: auto-expand them
+                // inline before the current word.
+                stack.push(stmt);
+                for term in pending_quotes.drain(..).rev() {
+                    push_term_ops(&mut stack, term);
+                }
             } else {
                 result.push(stmt);
             }
@@ -1267,6 +1282,7 @@ fn const_value(op: &OptimizedOp) -> Option<Sample> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 struct Term {
     holes: usize,
     ops: Vec<TextOp>,
@@ -1291,7 +1307,7 @@ mod tests {
                 },
                 TextOp {
                     id: 100,
-                    op: "foo".to_string()
+                    op: "def:foo".to_string()
                 },
                 TextOp {
                     id: 1000,
@@ -1307,7 +1323,7 @@ mod tests {
                 },
                 TextOp {
                     id: 1000000,
-                    op: "bar".to_string()
+                    op: "def:bar".to_string()
                 },
                 TextOp {
                     id: 10000000,
@@ -1589,7 +1605,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_program_ignores_blank_ops_and_supports_dig_shorthand() {
+    fn compile_program_ignores_blank_ops_and_supports_dig() {
         let mut context = Context::new();
 
         assert_eq!(
@@ -1600,8 +1616,12 @@ mod tests {
             [3.0, 3.0]
         );
         assert_eq!(
-            run_once(&[op(1, "1"), op(2, "2"), op(3, ":2")], &mut context),
+            run_once(&[op(1, "1"), op(2, "2"), op(3, "dig:2")], &mut context),
             [1.0, 1.0]
+        );
+        assert_eq!(
+            run_once(&[op(1, "1"), op(2, "2"), op(3, ":2")], &mut context),
+            [2.0, 2.0]
         );
     }
 
@@ -1642,41 +1662,45 @@ mod tests {
     }
 
     #[test]
-    fn compile_program_drops_comment_tokens() {
+    fn compile_program_drops_dropped_quotations() {
         let mut context = Context::new();
         assert_eq!(
             run_once(
                 &[
                     op(1, "440"),
-                    op(2, ";hello"),
-                    op(3, "s"),
-                    op(4, ";world-this-is-a-comment"),
+                    op(2, "["),
+                    op(3, "hello"),
+                    op(4, "including"),
+                    op(5, "whitespace"),
+                    op(6, "]"),
+                    op(7, "drop"),
+                    op(8, "s"),
+                    op(9, "[world"),
+                    op(10, "this"),
+                    op(11, "is"),
+                    op(12, "a"),
+                    op(13, "comment]"),
+                    op(14, "drop"),
                 ],
                 &mut context,
             ),
-            run_once(&[op(1, "440"), op(3, "s")], &mut Context::new())
-        );
-        assert_eq!(
-            run_once(
-                &[op(1, "1"), op(2, ";"), op(3, "2"), op(4, "+")],
-                &mut context
-            ),
-            [3.0, 3.0]
+            run_once(&[op(1, "440"), op(8, "s")], &mut Context::new())
         );
     }
 
     #[test]
-    fn comments_inside_templates_and_quotations_are_ignored() {
+    fn quotations_auto_expand_and_dropped_nested_comments_are_ignored() {
         let mut context = Context::new();
         assert_eq!(
             run_once(
                 &[
                     op(1, "["),
-                    op(2, ";ignored"),
-                    op(3, "1"),
+                    op(2, "["),
+                    op(3, "ignored"),
                     op(4, "]"),
-                    op(5, "one"),
-                    op(6, "one"),
+                    op(5, "drop"),
+                    op(6, "1"),
+                    op(7, "]"),
                 ],
                 &mut context,
             ),
@@ -1688,10 +1712,13 @@ mod tests {
                     op(1, "5"),
                     op(2, "1"),
                     op(3, "["),
-                    op(4, ";ignored"),
-                    op(5, "+"),
+                    op(4, "["),
+                    op(5, "ignored"),
                     op(6, "]"),
-                    op(7, "poly:1"),
+                    op(7, "drop"),
+                    op(8, "+"),
+                    op(9, "]"),
+                    op(10, "poly:1"),
                 ],
                 &mut Context::new(),
             ),
@@ -2085,13 +2112,27 @@ mod tests {
                     op(1, "["),
                     op(2, "+"),
                     op(3, "]"),
-                    op(4, "lead"),
+                    op(4, "def:lead"),
                     op(5, "5"),
                     op(6, "1"),
                     op(7, "lead"),
                     op(8, "poly:2"),
                 ],
                 &mut context
+            ),
+            [6.0, 6.0]
+        );
+        assert_eq!(
+            run_once(
+                &[
+                    op(1, "[?"),
+                    op(2, "2"),
+                    op(3, "*]"),
+                    op(4, ":double"),
+                    op(5, "3"),
+                    op(6, "double"),
+                ],
+                &mut Context::new()
             ),
             [6.0, 6.0]
         );

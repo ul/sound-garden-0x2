@@ -1,17 +1,17 @@
-;rain ;resonant-droplets
-;remove-seed ;for-fresh-rain-every-run
+[ rain resonant droplets ] drop
+[ remove seed for fresh rain every run ] drop
 seed:11
 9 cycle trig:x|.x|..|x. >tr
-;not-every-cloud-lets-go ;chance-thins-the-storm
+[ not every cloud lets go chance thins the storm ] drop
 <tr 0.75 chance >tr
-;rnd-holds-a-new-resonance-per-drop
+[ rnd holds a new resonance per drop ] drop
 <tr rnd 400 5000 uniexp >f
 noise <tr 0.001 impulse *
-;narrow-band-pass-ping
+[ narrow band pass ping ] drop
 <f 20 bp <f 20 bp 4 *
-;distant-echoes
+[ distant echoes ] drop
 0.31 0.5 fbsat:1
-;wet-streets ;short-dark-room
+[ wet streets short dark room ] drop
 =dry 2.2 0.75 verb 0.5 * <dry +
 2 *
 0.9 limit

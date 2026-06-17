@@ -1,31 +1,31 @@
-;night-walk ;a-stray-melody ;rnd-wanders-scale-keeps-it-honest
-;remove-seed ;to-wander-anew
+[ night walk a stray melody rnd wanders scale keeps it honest ] drop
+[ remove seed to wander anew ] drop
 seed:7
 1.6 cycle >ph
 <ph trig:x.x.x..x.x.xx..x >tr
-;every-step-a-new-pitch ;snapped-to-dorian
+[ every step a new pitch snapped to dorian ] drop
 <tr rnd 24 * 50 + scale:dorian >n
-;four-voice-lead ;each-tail-keeps-its-own-pitch
+[ four voice lead each tail keeps its own pitch ] drop
 <n m2f
 <tr
 [ swap dup t swap 2 * t 0.25 * + swap 0.18 impulse * ] poly:4
 0.25 *
-;a-gliding-shadow ;one-octave-down ;lag2-quick-up-slow-down
+[ a gliding shadow one octave down lag2 quick up slow down ] drop
 <n 12 - 0.01 0.25 lag2 m2f s
 <tr 0.6 impulse * 0.25 *
 +
-;a-high-answer ;only-sometimes
+[ a high answer only sometimes ] drop
 <tr 0.4 chance >tr2
 <tr2 rnd 12 * 62 + scale:dorian m2f
 <tr2
 [ swap dup s swap 3 * s 0.2 * + swap 0.5 impulse * ] poly:2
 0.25 *
 +
-;when-tails-pile-up ;comp-leans-on-them-softly
+[ when tails pile up comp leans on them softly ] drop
 0.4 2.5 comp:0.25
-;footsteps-echo
+[ footsteps echo ] drop
 0.46 0.4 fbsat:2
-;empty-streets-at-3am
+[ empty streets at 3am ] drop
 =dry 6 0.55 verb 1.5 width 0.5 * <dry +
 0.35 *
 0.9 limit

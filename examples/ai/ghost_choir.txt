@@ -1,23 +1,23 @@
-;ghost-choir ;chords-die ;their-spectra-haunt-the-silence
+[ ghost choir chords die their spectra haunt the silence ] drop
 seed:303
 0.22 cycle >ph
-;chord-root ;alternates-each-cycle
+[ chord root alternates each cycle ] drop
 <ph pat:<C3;Eb3;G3;F3> m2f >f
-;one-second-swell ;three-of-silence
+[ one second swell three of silence ] drop
 <ph gate:x... 0.4 0.3 0.8 0.8 adsr >env
-;choir ;three-partials ;root-fifth-octave
+[ choir three partials root fifth octave ] drop
 <f s <f 3/2 * s + <f 2 * s + 3 / <env * =dry
-;ghost ;freeze-the-dying-chord ;sustain-through-the-gap
+[ ghost freeze the dying chord sustain through the gap ] drop
 <ph gate:.xxx spectral_freeze
-;spectral-drift ;new-local-scramble-each-cycle
+[ spectral drift new local scramble each cycle ] drop
 0.7 <ph trig:x... spectral_shuffle:12
-;ghost-blooms-then-dies-before-the-next-chord
+[ ghost blooms then dies before the next chord ] drop
 <ph gate:.xxx 0.8 1.8 0 0.5 adsr *
 0.5 *
-;the-ghost-is-wider-than-the-living
+[ the ghost is wider than the living ] drop
 1.7 width
-;living-voice-in-front
+[ living voice in front ] drop
 <dry 0.55 * +
-;a-stone-nave
+[ a stone nave ] drop
 =mix 4 0.6 verb 0.3 * <mix +
 0.9 limit

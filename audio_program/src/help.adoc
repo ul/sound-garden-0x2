@@ -7,9 +7,13 @@ Unknown words, stack underflow, and stack overflow are tolerated by the VM and e
 [horizontal]
 return, ret, !:: stop compiling/evaluating the program here; the current stack/audio output is used and all following words are ignored
 
-=== Comments
+=== Compile-time quotations, templates, and comments
 
-Any word starting with `;` is ignored by the compiler, e.g. `;bassline` or `;slow-attack`. Comments are single words (use dashes inside one comment word, or several `;` words); this matches the editor where every node is one word.
+Square brackets collect a compile-time quotation. If the next word consumes it, that word decides what to do with the quotation; otherwise the quotation auto-expands inline. For example, `[ 440 s ] 0.2 *` is equivalent to `440 s 0.2 *`.
+
+[horizontal]
+def:<NAME>:: consume the preceding quotation and register it as a named template; sugar: `:<NAME>`, e.g. `[ dup s swap c * ] def:yay` or `[ dup s swap c * ] :yay`; writing `yay` later pushes that quotation, which can auto-expand inline or be consumed by another compile-time word
+drop:: consume and discard the preceding quotation; this is the comment form, e.g. `[ bassline notes with spaces ] drop`
 
 === Reproducibility
 
@@ -37,7 +41,7 @@ pop:: (a) -> remove top element
 dup:: (a) -> a a
 swap:: (a, b) -> b a
 rot:: (a, b, c) -> b c a
-dig:<N>, :<N>:: take Nth element from the top and put it on the top
+dig:<N>:: take Nth element from the top and put it on the top
 bury:<N>:: take the top element and put it as Nth from the top
 
 === Oscillators and phases
@@ -157,7 +161,7 @@ ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTER
 
 === Polyphony
 
-A bracket group immediately before `poly` is a quotation: it is compiled into a voice body instead of being spliced as a template. `poly:N` runs N copies of the body and sums their outputs. On a rising edge of the control signal it allocates the next voice (round-robin) and latches the current value into it; the most recently allocated voice receives the live control signal as-is (a trig body sees a one-sample impulse, a gate body sees the full gate including its fall, so `adsr` releases work), other voices receive 0. Control amplitude passes through, so gates can carry velocity. Each voice body starts from a stack of `(value, ctl)`. Named templates work as bodies too: `lead poly:4`.
+`poly:N` consumes the preceding compile-time quotation as a voice body, runs N copies of the body, and sums their outputs. On a rising edge of the control signal it allocates the next voice (round-robin) and latches the current value into it; the most recently allocated voice receives the live control signal as-is (a trig body sees a one-sample impulse, a gate body sees the full gate including its fall, so `adsr` releases work), other voices receive 0. Control amplitude passes through, so gates can carry velocity. Each voice body starts from a stack of `(value, ctl)`. Named templates work as bodies too: `lead poly:4` pushes the registered `lead` quotation and lets `poly:4` consume it.
 
 [horizontal]
 poly:<N>:: (value, ctl) -> sum of N voices of the preceding quotation, e.g. `1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4`

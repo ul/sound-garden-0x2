@@ -1,15 +1,15 @@
-;garden-bells ;six-voice-euclidean-bells
+[ garden bells six voice euclidean bells ] drop
 0.4 cycle >ph
-;hexatonic-arp ;alternating-top-note
+[ hexatonic arp alternating top note ] drop
 <ph pat:C4,E4,G4,B4,D5,<A4;F#4> m2f
 <ph trig:x(5,8)
-;voice-is-sine ;plus-third-harmonic ;ping-envelope
+[ voice is sine plus third harmonic ping envelope ] drop
 [ swap dup s swap 3 * s 0.3 * + swap 0.02 impulse * ] poly:6
-;dotted-eighth-echo
+[ dotted eighth echo ] drop
 0.375 0.45 fbsat:2
-;evening-air ;long-bloom
+[ evening air long bloom ] drop
 =dry 5 0.45 verb 0.4 * <dry +
-;slow-auto-pan ;then-open-the-field
+[ slow auto pan then open the field ] drop
 0.05 s 0.6 * pan1
 1.3 width
 0.4 *

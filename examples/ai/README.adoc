@@ -12,8 +12,8 @@ or render to a file (with level statistics):
 $ render_program 30 out.wav --stats < examples/ai/garden_bells.txt
 ----
 
-The pieces are annotated with `;comment` words and every one ends with a
-`limit` safety stage. Pieces that use randomness pin a `seed:<N>` so renders
+The pieces are annotated with dropped quotations like `[ notes with spaces ] drop`
+and every one ends with a `limit` safety stage. Pieces that use randomness pin a `seed:<N>` so renders
 are reproducible — delete the seed word for a fresh take every run.
 
 == garden_bells.txt

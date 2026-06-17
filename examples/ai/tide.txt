@@ -1,15 +1,15 @@
-;tide ;detuned-saw-drone
-;band-limited-saws ;no-aliasing-in-the-undertow
+[ tide detuned saw drone ] drop
+[ band limited saws no aliasing in the undertow ] drop
 55 0 saw 55.4 0 saw + 110.7 0 saw + 3 /
-;slow-cutoff-sweep ;180-to-1500hz
+[ slow cutoff sweep 180 to 1500hz ] drop
 0.05 s 180 1500 r 0.9 l
-;breathing-notch ;phaser-like-movement
+[ breathing notch phaser like movement ] drop
 0.03 s 300 900 r 4 notch
-;warm-saturation
+[ warm saturation ] drop
 1.4 drive
-;drift-across-the-stereo-field
+[ drift across the stereo field ] drop
 0.07 s 0.8 * pan1
-;sea-cave ;wet-wide-blend
+[ sea cave wet wide blend ] drop
 =dry 8 0.7 verb 1.6 width 0.45 * <dry 0.8 * +
 0.34 *
 0.9 limit
