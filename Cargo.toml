@@ -19,7 +19,6 @@ members = [
     "sound_garden_format",
     "sound_garden_program",
     "sound_garden_types",
-    "sound_garden_vst",
     "thread_worker"
 ]
 
@@ -49,7 +48,6 @@ simple_logger = "5.2.0"
 smallvec = "1.15.1"
 snap = "1.1.1"
 symphonia = { version = "0.6.0", features = ["all"] }
-vst = "0.4.0"
 
 alloc_counter = "0.0.4"
 
