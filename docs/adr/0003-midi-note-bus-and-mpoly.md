@@ -10,24 +10,23 @@ Sound Garden currently has pattern-driven polyphony via `poly:N`: `<value> <ctl>
 
 That design is excellent for sequenced patterns and one-lane triggers/gates, but it cannot represent normal keyboard chords. A single control signal cannot say "C's gate fell while E and G are still held". Proper MIDI therefore needs the deferred multi-lane generalization: independent note-on/note-off lifetimes per voice.
 
-The current `adsr` op treats gate amplitude as a threshold/hold signal; it does not scale the envelope by gate amplitude. Therefore MIDI velocity must be exposed explicitly, not hidden only in the gate level.
+Envelope-like trigger/gate ops should treat positive input amplitude as expressive control amplitude, not merely as a boolean threshold. Updating `adsr` and `impulse` this way lets MIDI velocity travel through the normal gate path instead of requiring a MIDI-specific velocity stack lane.
 
 Goal: plug a MIDI keyboard into standalone Sound Garden and write idiomatic programs such as:
 
 ```text
 [ midi sine keys ] drop
-[ 0.005 0.1 0.7 0.3 adsr rot m2f s * * ] mpoly:8
+[ 0.005 0.1 0.7 0.3 adsr swap m2f s * ] mpoly:8
 0.2 *
 0.9 limit
 ```
 
-The voice body starts with `[note, velocity, gate]`:
+The voice body starts with `[note, gate]`:
 
 - `note`: latched MIDI note number, e.g. 60 for C4.
-- `velocity`: latched normalized note-on velocity `0..1`.
-- `gate`: per-voice gate, `1` while held and `0` after note-off. It is intentionally not velocity-scaled; use `velocity` explicitly for loudness/brightness.
+- `gate`: per-voice gate — positive amplitude equals normalized note-on velocity `0..1` while held, `0` after note-off. Envelopes (`adsr`, `impulse`) scale their peak/amplitude by the positive gate value, so velocity controls dynamics without an explicit velocity variable.
 
-The example above computes `adsr(gate, ...)`, rotates `[note, velocity, env]` to `[velocity, env, note]`, converts note to frequency, makes a sine, then multiplies by envelope and velocity.
+The example above: `adsr` pops gate, envelope peaks at velocity level, leaving `[note, env]`; `swap m2f` converts note to frequency, leaving `[env, freq]`; `s *` makes a sine and multiplies by the velocity-scaled envelope.
 
 ## Decision
 
@@ -40,7 +39,7 @@ Add a MIDI-specific quotation consumer named `mpoly:N`.
 `mpoly:N` owns `N` voices. Each active voice runs the body every sample against a stack seeded with:
 
 ```text
-[note, velocity, gate]
+[note, gate]
 ```
 
 The top frame after the body runs is that voice's audio output. `mpoly` sums all voice outputs and pushes exactly one frame. Empty or malformed `mpoly` compiles to a forgiving zero-output op that consumes no stack input and pushes silence.
@@ -72,18 +71,27 @@ The selected voice latches:
 
 - MIDI channel,
 - MIDI note number,
-- normalized velocity,
-- gate = `1`.
+- gate = normalized velocity (positive, `0..1`).
 
 On note-off, or note-on with velocity 0:
 
 - Find a held voice with matching channel + note.
 - Set its gate to `0` and mark it released.
-- Keep note and velocity latched so the voice body can finish its release tail at the correct pitch and dynamics.
+- Keep note and velocity latched internally so migration/diagnostics can preserve voice identity and the voice body can finish its release tail at the correct pitch. Envelope ops preserve their own release level after the gate falls.
 
 If multiple held voices have the same channel + note, release the oldest matching held voice. This gives deterministic behavior for repeated same-note presses.
 
-If a held voice must be stolen, force a clean retrigger for edge-sensitive body ops such as `adsr`: route `gate = 0` for one sample, then route `gate = 1` on the following sample with the new note/velocity. This costs one sample of latency only on steals and avoids ADSR missing the new attack because its previous gate was already positive.
+If a held voice must be stolen, force a clean retrigger for edge-sensitive body ops such as `adsr`: route `gate = 0` for one sample, then route `gate = velocity` on the following sample with the new note/velocity. This costs one sample of latency only on steals and avoids ADSR missing the new attack because its previous gate was already positive.
+
+## Envelope/control amplitude semantics
+
+To make velocity-scaled gates useful beyond MIDI, update envelope-like trigger/gate ops to preserve positive input amplitude:
+
+- `adsr` treats `gate <= 0` as release/off and `gate > 0` as held. On a rising edge, it latches the positive gate amplitude as the envelope peak. Attack runs from `0` to that peak; decay runs from that peak to `peak * sustain`; release starts from the current envelope level when the gate falls. Positive gate changes while already held do not retrigger.
+- `impulse` treats `trigger <= 0` as idle and `trigger > 0` as a trigger. On a rising edge, it latches the positive trigger amplitude and scales the whole impulse by that latched amplitude. Positive trigger changes while already held do not retrigger.
+- Continuous smoothing/value ops such as `transition` already operate on input amplitude directly and need no MIDI-specific change.
+
+These semantics align `mpoly` with existing `poly` gate transparency: gate amplitude can carry velocity/accent, while edge detection remains threshold-based.
 
 ## Runtime architecture
 
@@ -97,7 +105,7 @@ struct MidiEvent {
     kind: MidiEventKind,
     channel: u8,      // 0..15
     note: u8,         // 0..127
-    velocity: f64,    // 0..1, only meaningful for NoteOn
+    velocity: f64,   // 0..1, only meaningful for NoteOn; becomes gate amplitude
 }
 ```
 
@@ -138,7 +146,7 @@ Programs compiled for `play_program` or `render_program` get an empty MIDI sourc
 
 `MPoly::migrate` steals from the previous `MPoly` when the op type and node id match:
 
-- voice allocation state: channel, note, velocity, gate, held/released state, trigger/release order, pending retrigger flags,
+- voice allocation state: channel, note, gate (velocity), held/released state, trigger/release order, pending retrigger flags,
 - per-voice body state by `(voice index, node id)` via existing `migrate_program_state`.
 
 Growing `mpoly:N` preserves existing voices and adds inactive fresh voices. Shrinking drops highest-index voices. Held notes in surviving voices keep sounding across commits; body edits preserve oscillator/envelope/filter state just like top-level edits and existing `poly` bodies.
@@ -179,7 +187,7 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 
 ```text
 [ midi sine keys ] drop
-[ 0.005 0.1 0.7 0.3 adsr rot m2f s * * ] mpoly:8
+[ 0.005 0.1 0.7 0.3 adsr swap m2f s * ] mpoly:8
 0.2 *
 0.9 limit
 ```
@@ -187,8 +195,8 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 ### Detuned triangle lead
 
 ```text
-[ midi triangle lead note velocity gate ] drop
-[ 0.005 0.1 0.7 0.25 adsr rot m2f dup t swap 2 * t 0.25 * + * * ] mpoly:6
+[ midi triangle lead note gate ] drop
+[ 0.005 0.1 0.7 0.25 adsr swap m2f dup t swap 2 * t 0.25 * + * ] mpoly:6
 0.22 *
 =dry 4 0.5 verb 0.35 * <dry 0.7 * +
 0.9 limit
@@ -205,7 +213,7 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 <f + s <env * 0.5 *
 2 drive 0.7 *
 0.45 3 comp:0.15 >bass
-[ 0.005 0.1 0.7 0.25 adsr rot m2f dup t swap 2 * t 0.25 * + * * ] mpoly:6
+[ 0.005 0.1 0.7 0.25 adsr swap m2f dup t swap 2 * t 0.25 * + * ] mpoly:6
 0.22 *
 <bass +
 =dry 4 0.5 verb 0.35 * <dry 0.7 * +
@@ -229,9 +237,9 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 
 Unit tests for `MPoly` should cover:
 
-- note-on allocates a voice and seeds `[note, velocity, gate]`,
+- note-on allocates a voice and seeds `[note, gate]`,
 - note-off releases only the matching voice while other held chord notes continue,
-- velocity is latched and available independently of gate,
+- note-on velocity is exposed as the positive gate amplitude,
 - repeated same-note behavior,
 - voice stealing and forced retrigger,
 - migration preserves held notes and per-voice body state,
