@@ -294,15 +294,17 @@ impl Op for SpectralTransform {
 
     fn migrate(&mut self, other: &mut dyn Op) {
         if let Some(other) = other.downcast_mut::<Self>()
-            && self.window_size == other.window_size && self.n_controls == other.n_controls {
-                self.input_buffers = other.input_buffers.clone();
-                self.ola_buffers = other.ola_buffers.clone();
-                self.ola_pos = other.ola_pos;
-                self.frame_number = other.frame_number;
-                self.control_fired = other.control_fired.clone();
-                // The transform closure owns op-specific state (permutations,
-                // freeze captures, RNG streams) and is intentionally not migrated.
-            }
+            && self.window_size == other.window_size
+            && self.n_controls == other.n_controls
+        {
+            self.input_buffers = other.input_buffers.clone();
+            self.ola_buffers = other.ola_buffers.clone();
+            self.ola_pos = other.ola_pos;
+            self.frame_number = other.frame_number;
+            self.control_fired = other.control_fired.clone();
+            // The transform closure owns op-specific state (permutations,
+            // freeze captures, RNG streams) and is intentionally not migrated.
+        }
     }
 }
 
