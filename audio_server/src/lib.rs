@@ -4,16 +4,27 @@ use crossbeam_channel::{Receiver, Sender};
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rtrb::RingBuffer;
 use serde::{Deserialize, Serialize};
-use std::{sync::atomic::Ordering, time::Duration};
+use std::{
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 use thread_worker::Worker;
 
 mod audio;
+mod midi;
 mod record;
 
 const CHANNEL_CAPACITY: usize = 64;
 /// It's about 500ms, should be more than enough for write cycle of ~10ms.
 const RECORD_BUFFER_CAPACITY: usize = 48000;
 const OSCILLOSCOPE_POLL_MS: u64 = 10;
+
+#[derive(Clone, Debug, Default)]
+pub struct Options {
+    pub midi: MidiInputSelection,
+}
+
+pub use midi::{MidiInputSelection, list_inputs as list_midi_inputs};
 
 #[derive(Clone, Debug)]
 pub struct Monitor {
@@ -35,12 +46,34 @@ pub enum Msg {
 pub use Msg as Message;
 
 pub fn run(rx: Receiver<Msg>, tx: Sender<Monitor>) {
+    run_with_options(rx, tx, Options::default())
+}
+
+pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options) {
     let vm = VM::new();
     let monitor = vm.monitor();
     let pattern_monitor = vm.pattern_monitor();
     let (producer, consumer) = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
     let (mut command_tx, command_rx) = RingBuffer::<audio::Command>::new(CHANNEL_CAPACITY);
     let (garbage_tx, mut garbage_rx) = RingBuffer::<Program>::new(CHANNEL_CAPACITY);
+    let mut ctx = Context::default();
+    let midi_frame = Arc::clone(&ctx.midi);
+    let (midi_connection, midi_rx) = match midi::open_input(&options.midi) {
+        Ok(Some((connection, consumer, name))) => {
+            log::info!("Connected MIDI input: {name}");
+            (Some(connection), Some(consumer))
+        }
+        Ok(None) => {
+            if !matches!(options.midi, MidiInputSelection::None) {
+                log::warn!("No MIDI input connected.");
+            }
+            (None, None)
+        }
+        Err(err) => {
+            log::warn!("MIDI input unavailable: {err}");
+            (None, None)
+        }
+    };
 
     std::thread::spawn(move || {
         loop {
@@ -52,7 +85,10 @@ pub fn run(rx: Receiver<Msg>, tx: Sender<Monitor>) {
     });
 
     let player = Worker::spawn("Player", CHANNEL_CAPACITY, move |i, o| {
-        audio::main(vm, producer, command_rx, garbage_tx, i, o).unwrap();
+        audio::main(
+            vm, producer, command_rx, garbage_tx, midi_rx, midi_frame, i, o,
+        )
+        .unwrap();
     });
     let sample_rate = player.receiver().recv().unwrap();
 
@@ -94,7 +130,7 @@ pub fn run(rx: Receiver<Msg>, tx: Sender<Monitor>) {
         },
     );
 
-    let mut ctx = Context::default();
+    let _midi_connection = midi_connection;
     for msg in rx {
         match msg {
             Msg::Play(x) => {

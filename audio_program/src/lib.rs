@@ -24,6 +24,7 @@ pub struct Context {
     pub params: [Arc<AtomicSample>; PARAMETERS],
     pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, RandomState>,
     pub variables: HashMap<String, Arc<AtomicFrame>, RandomState>,
+    pub midi: Arc<MidiFrameEvents>,
     pub seed: Option<u64>,
     pub rng_counter: u64,
 }
@@ -35,6 +36,7 @@ impl Context {
             params: Default::default(),
             tables: HashMap::with_hasher(RandomState::new()),
             variables: HashMap::with_hasher(RandomState::new()),
+            midi: Arc::new(MidiFrameEvents::new()),
             seed: None,
             rng_counter: 0,
         }
@@ -233,6 +235,8 @@ fn is_quotation_consumer(op: &str) -> bool {
     op == "drop"
         || op == "poly"
         || op.starts_with("poly:")
+        || op == "mpoly"
+        || op.starts_with("mpoly:")
         || template_definition_name(op).is_some()
 }
 
@@ -297,8 +301,15 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
                 });
                 i = close + 2;
             }
+            Some(consumer) if consumer.op == "mpoly" || consumer.op.starts_with("mpoly:") => {
+                program.push(Statement {
+                    id: consumer.id,
+                    op: Box::new(compile_mpoly(&consumer.op, body, sample_rate, ctx)),
+                });
+                i = close + 2;
+            }
             _ => {
-                log::warn!("Quotation marker is not followed by poly; ignoring it.");
+                log::warn!("Quotation marker is not followed by poly/mpoly; ignoring it.");
                 i = close + 1;
             }
         }
@@ -312,30 +323,58 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
 /// node id). Invalid argument or empty body compiles to a forgiving
 /// zero-voice op which preserves stack shape.
 fn compile_poly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Poly {
-    let Some(voices) = op
-        .split(':')
-        .nth(1)
-        .and_then(|n| n.parse::<usize>().ok())
-        .filter(|&n| n > 0)
-    else {
+    let Some(voices) = parse_voice_count(op) else {
         log::warn!(
             "Can't parse voice count in {}; compiling to a zero-voice poly.",
             op
         );
         return Poly::empty();
     };
-    let bodies: Vec<_> = (0..voices)
-        .map(|_| {
-            let mut voice = Vec::new();
-            compile_ops(body, sample_rate, ctx, &mut voice);
-            voice.into_boxed_slice()
-        })
-        .collect();
+    let bodies = compile_voice_bodies(voices, body, sample_rate, ctx);
     if bodies.first().is_none_or(|body| body.is_empty()) {
         log::warn!("Empty poly voice body; compiling to a zero-voice poly.");
         return Poly::empty();
     }
     Poly::new(bodies)
+}
+
+fn compile_mpoly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) -> MPoly {
+    let midi = Arc::clone(&ctx.midi);
+    let Some(voices) = parse_voice_count(op) else {
+        log::warn!(
+            "Can't parse voice count in {}; compiling to a zero-output mpoly.",
+            op
+        );
+        return MPoly::empty(midi);
+    };
+    let bodies = compile_voice_bodies(voices, body, sample_rate, ctx);
+    if bodies.first().is_none_or(|body| body.is_empty()) {
+        log::warn!("Empty mpoly voice body; compiling to a zero-output mpoly.");
+        return MPoly::empty(midi);
+    }
+    MPoly::new(bodies, midi)
+}
+
+fn parse_voice_count(op: &str) -> Option<usize> {
+    op.split(':')
+        .nth(1)
+        .and_then(|n| n.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+}
+
+fn compile_voice_bodies(
+    voices: usize,
+    body: &[TextOp],
+    sample_rate: u32,
+    ctx: &mut Context,
+) -> Vec<Box<[Statement]>> {
+    (0..voices)
+        .map(|_| {
+            let mut voice = Vec::new();
+            compile_ops(body, sample_rate, ctx, &mut voice);
+            voice.into_boxed_slice()
+        })
+        .collect()
 }
 
 fn compile_segment(
@@ -888,6 +927,15 @@ fn compile_segment(
                                 "poly without a preceding quotation; compiling to a zero-voice poly."
                             );
                             push_args!(id, Poly, Vec::new());
+                        }
+                        "mpoly" => {
+                            log::warn!(
+                                "mpoly without a preceding quotation; compiling to a zero-output mpoly."
+                            );
+                            program.push(Statement {
+                                id,
+                                op: Box::new(MPoly::empty(Arc::clone(&ctx.midi))) as Box<dyn Op>,
+                            });
                         }
                         "" => {
                             // Empty op (blank node) — silently skip.
@@ -2099,6 +2147,44 @@ mod tests {
                 &mut context
             ),
             [6.0, 6.0]
+        );
+    }
+
+    #[test]
+    fn compile_program_runs_mpoly_quotation_from_midi_events() {
+        let mut context = Context::new();
+        let midi = Arc::clone(&context.midi);
+        let mut vm = audio_vm::VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(compile_program(
+            &[op(1, "["), op(2, "+"), op(3, "]"), op(4, "mpoly:2")],
+            100,
+            &mut context,
+        ));
+        vm.play();
+
+        midi.set_events(&[MidiEvent::note_on(0, 60, 0.5)]);
+        assert_eq!(vm.next_frame(), [60.5, 60.5]);
+        midi.set_events(&[MidiEvent::note_on(0, 64, 0.25)]);
+        assert_eq!(vm.next_frame(), [124.75, 124.75]);
+        midi.set_events(&[MidiEvent::note_off(0, 60)]);
+        assert_eq!(vm.next_frame(), [124.25, 124.25]);
+    }
+
+    #[test]
+    fn compile_program_forgives_invalid_mpoly_forms_without_consuming_stack() {
+        let mut context = Context::new();
+
+        assert_eq!(
+            run_once(&[op(1, "5"), op(2, "mpoly:4")], &mut context),
+            [0.0, 0.0]
+        );
+        assert_eq!(
+            run_once(
+                &[op(1, "5"), op(2, "["), op(3, "]"), op(4, "mpoly:2")],
+                &mut context
+            ),
+            [0.0, 0.0]
         );
     }
 

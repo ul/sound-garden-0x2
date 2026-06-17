@@ -1,9 +1,10 @@
 use anyhow::Result;
-use audio_ops::pure::clip;
+use audio_ops::{MAX_MIDI_EVENTS_PER_FRAME, MidiEvent, MidiFrameEvents, pure::clip};
 use audio_vm::{CHANNELS, Program, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
 use rtrb::{Consumer, Producer, PushError};
+use std::sync::Arc;
 
 pub enum Command {
     Play(bool),
@@ -17,6 +18,8 @@ pub fn main(
     producer: Producer<Sample>,
     command_rx: Consumer<Command>,
     garbage_tx: Producer<Program>,
+    midi_rx: Option<Consumer<MidiEvent>>,
+    midi_frame: Arc<MidiFrameEvents>,
     rx: Receiver<()>,
     tx: Sender<u32>,
 ) -> Result<()> {
@@ -45,6 +48,8 @@ pub fn main(
             producer,
             command_rx,
             garbage_tx,
+            midi_rx,
+            midi_frame,
             rx,
         ),
         cpal::SampleFormat::I16 => run::<i16>(
@@ -54,6 +59,8 @@ pub fn main(
             producer,
             command_rx,
             garbage_tx,
+            midi_rx,
+            midi_frame,
             rx,
         ),
         cpal::SampleFormat::U16 => run::<u16>(
@@ -63,6 +70,8 @@ pub fn main(
             producer,
             command_rx,
             garbage_tx,
+            midi_rx,
+            midi_frame,
             rx,
         ),
         sample_format => Err(anyhow::anyhow!(
@@ -78,6 +87,8 @@ fn run<T>(
     mut producer: Producer<Sample>,
     mut command_rx: Consumer<Command>,
     mut garbage_tx: Producer<Program>,
+    mut midi_rx: Option<Consumer<MidiEvent>>,
+    midi_frame: Arc<MidiFrameEvents>,
     rx: Receiver<()>,
 ) -> Result<()>
 where
@@ -95,6 +106,8 @@ where
                 &mut producer,
                 &mut command_rx,
                 &mut garbage_tx,
+                midi_rx.as_mut(),
+                &midi_frame,
             )
         },
         err_fn,
@@ -113,6 +126,8 @@ fn write_data<T>(
     producer: &mut Producer<Sample>,
     command_rx: &mut Consumer<Command>,
     garbage_tx: &mut Producer<Program>,
+    mut midi_rx: Option<&mut Consumer<MidiEvent>>,
+    midi_frame: &MidiFrameEvents,
 ) where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
@@ -133,7 +148,19 @@ fn write_data<T>(
         }
     }
 
+    let mut midi_events = [MidiEvent::note_off(0, 0); MAX_MIDI_EVENTS_PER_FRAME];
     for frame in output.chunks_mut(channels) {
+        let mut midi_count = 0;
+        if let Some(midi_rx) = midi_rx.as_deref_mut() {
+            while midi_count < midi_events.len() {
+                let Ok(event) = midi_rx.pop() else {
+                    break;
+                };
+                midi_events[midi_count] = event;
+                midi_count += 1;
+            }
+        }
+        midi_frame.set_events(&midi_events[..midi_count]);
         for (sample, &value) in frame.iter_mut().zip(vm.next_frame().iter()) {
             let value = clip(value);
             *sample = T::from_sample(value as f32);

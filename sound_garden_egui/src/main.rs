@@ -51,7 +51,26 @@ fn main() -> Result<()> {
                 .value_name("PORT")
                 .help("Port to send programs to"),
         )
+        .arg(
+            Arg::new("midi")
+                .long("midi")
+                .value_name("DEVICE")
+                .help("Connect a MIDI input for the embedded audio server: 'auto', device index, or case-insensitive name substring."),
+        )
+        .arg(
+            Arg::new("list-midi")
+                .long("list-midi")
+                .action(clap::ArgAction::SetTrue)
+                .help("List available MIDI input devices and exit."),
+        )
         .get_matches();
+
+    if matches.get_flag("list-midi") {
+        for line in audio_server::list_midi_inputs()? {
+            println!("{line}");
+        }
+        return Ok(());
+    }
 
     let filename = matches
         .get_one::<String>("FILENAME")
@@ -59,6 +78,17 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
 
     let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
+
+    let midi = matches
+        .get_one::<String>("midi")
+        .map(|selection| {
+            if selection == "auto" {
+                audio_server::MidiInputSelection::Auto
+            } else {
+                audio_server::MidiInputSelection::Match(selection.clone())
+            }
+        })
+        .unwrap_or_default();
 
     let audio_control = if let Some(port) = matches.get_one::<String>("audio-port") {
         let address = format!("127.0.0.1:{}", port);
@@ -76,7 +106,9 @@ fn main() -> Result<()> {
             },
         )
     } else {
-        Worker::spawn("Audio", 1, audio_server::run)
+        Worker::spawn("Audio", 1, move |rx, tx| {
+            audio_server::run_with_options(rx, tx, audio_server::Options { midi });
+        })
     };
 
     let app = SoundGardenApp::new(

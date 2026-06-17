@@ -14,6 +14,7 @@ pub struct ADSR {
     sample_period: Sample,
     current_level: Frame,
     release_start_level: Frame,
+    peak_level: Frame,
 }
 
 impl ADSR {
@@ -26,17 +27,19 @@ impl ADSR {
             sample_period: Sample::from(sample_rate).recip(),
             current_level: [0.0; CHANNELS],
             release_start_level: [0.0; CHANNELS],
+            peak_level: [0.0; CHANNELS],
         }
     }
 
-    fn decay_level(delta: Sample, d: Sample, s: Sample) -> Sample {
+    fn decay_level(delta: Sample, d: Sample, peak: Sample, s: Sample) -> Sample {
+        let sustain = peak * s;
         if d <= 0.0 {
-            return s;
+            return sustain;
         }
-        let distance = 1.0 - s;
-        let level = s + distance * (-EXP_SEGMENT_TAU * delta / d).exp();
-        if (level - s).abs() <= distance.abs() * SNAP_EPSILON {
-            s
+        let distance = peak - sustain;
+        let level = sustain + distance * (-EXP_SEGMENT_TAU * delta / d).exp();
+        if (level - sustain).abs() <= distance.abs() * SNAP_EPSILON {
+            sustain
         } else {
             level
         }
@@ -76,6 +79,7 @@ impl Op for ADSR {
             gate_frame_off,
             current_level,
             release_start_level,
+            peak_level,
         ) in izip!(
             &mut frame,
             &gate,
@@ -87,10 +91,12 @@ impl Op for ADSR {
             &mut self.gate_frame_on,
             &mut self.gate_frame_off,
             &mut self.current_level,
-            &mut self.release_start_level
+            &mut self.release_start_level,
+            &mut self.peak_level
         ) {
             if *last_gate <= 0.0 && gate > 0.0 {
                 *gate_frame_on = self.frame;
+                *peak_level = gate;
             }
             if *last_gate > 0.0 && gate <= 0.0 {
                 *gate_frame_off = self.frame;
@@ -105,10 +111,10 @@ impl Op for ADSR {
                     let delta = now - on;
 
                     if a > 0.0 && delta < a {
-                        level = delta / a;
+                        level = *peak_level * delta / a;
                     } else {
                         let delta = (delta - a.max(0.0)).max(0.0);
-                        level = Self::decay_level(delta, d, s);
+                        level = Self::decay_level(delta, d, *peak_level, s);
                     }
                 } else if *gate_frame_off >= *gate_frame_on {
                     let off = *gate_frame_off as Sample * self.sample_period;
@@ -132,6 +138,7 @@ impl Op for ADSR {
             self.last_gate = other.last_gate;
             self.current_level = other.current_level;
             self.release_start_level = other.release_start_level;
+            self.peak_level = other.peak_level;
         }
     }
 }
@@ -170,6 +177,26 @@ mod tests {
         assert!(
             mid < linear_midpoint,
             "{mid} should be below {linear_midpoint}"
+        );
+    }
+
+    #[test]
+    fn gate_amplitude_scales_attack_decay_and_sustain() {
+        let sr = 1000;
+        let mut op = ADSR::new(sr);
+        let mut y = 0.0;
+        for _ in 0..100 {
+            y = perform(&mut op, 0.5, 0.001, 0.01, 0.8, 0.05);
+        }
+        assert!(
+            y > 0.39 && y <= 0.5,
+            "sustain should be velocity-scaled: {y}"
+        );
+        // Changing positive gate amplitude while held should not retrigger or change the latched peak.
+        let changed = perform(&mut op, 1.0, 0.001, 0.01, 0.8, 0.05);
+        assert!(
+            (changed - y).abs() < 0.02,
+            "held gate amplitude should be latched: {changed} vs {y}"
         );
     }
 

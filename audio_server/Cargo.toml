@@ -21,6 +21,8 @@ cpal.workspace = true
 clap.workspace = true
 crossbeam-channel.workspace = true
 hound.workspace = true
+log.workspace = true
+midir.workspace = true
 rtrb.workspace = true
 serde.workspace = true
 audio_ops = { path = "../audio_ops" }

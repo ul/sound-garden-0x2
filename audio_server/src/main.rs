@@ -1,5 +1,7 @@
 use anyhow::Result;
-use audio_server::{Message, Monitor, run};
+use audio_server::{
+    Message, MidiInputSelection, Monitor, Options, list_midi_inputs, run_with_options,
+};
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use rkyv::{from_bytes, rancor::Error};
@@ -28,12 +30,40 @@ fn main() -> Result<()> {
                 .value_name("SCOPE_PORT")
                 .help("Port to send oscilloscope samples."),
         )
+        .arg(Arg::new("midi").long("midi").value_name("DEVICE").help(
+            "Connect a MIDI input: 'auto', device index, or case-insensitive name substring.",
+        ))
+        .arg(
+            Arg::new("list-midi")
+                .long("list-midi")
+                .action(clap::ArgAction::SetTrue)
+                .help("List available MIDI input devices and exit."),
+        )
         .get_matches();
+
+    if matches.get_flag("list-midi") {
+        for line in list_midi_inputs()? {
+            println!("{line}");
+        }
+        return Ok(());
+    }
 
     let scope_port = matches
         .get_one::<String>("scope-port")
         .and_then(|s| s.parse::<u16>().ok());
-    let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, run);
+    let midi = matches
+        .get_one::<String>("midi")
+        .map(|selection| {
+            if selection == "auto" {
+                MidiInputSelection::Auto
+            } else {
+                MidiInputSelection::Match(selection.clone())
+            }
+        })
+        .unwrap_or_default();
+    let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, move |rx, tx| {
+        run_with_options(rx, tx, Options { midi });
+    });
 
     let oscilloscope = if let Some(port) = scope_port {
         Worker::spawn(

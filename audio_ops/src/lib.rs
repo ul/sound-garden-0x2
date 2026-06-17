@@ -13,6 +13,7 @@ mod input;
 mod lag;
 mod limit;
 mod metro;
+mod midi;
 mod noise;
 mod noop;
 mod normalise;
@@ -37,8 +38,8 @@ mod yin;
 
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, crush::*, delay::*, envelopes::*,
-    feedback::*, filters::*, function::*, input::*, lag::*, limit::*, metro::*, noise::*, noop::*,
-    normalise::*, osc::*, pan::*, param::*, pattern::*, phasor::*, poly::*, pulse::*, random::*,
-    reverb::*, sample_and_hold::*, sampler::*, scale::*, spectral_transform::*, stack::*,
-    variable::*, wah::*, yin::*,
+    feedback::*, filters::*, function::*, input::*, lag::*, limit::*, metro::*, midi::*, noise::*,
+    noop::*, normalise::*, osc::*, pan::*, param::*, pattern::*, phasor::*, poly::*, pulse::*,
+    random::*, reverb::*, sample_and_hold::*, sampler::*, scale::*, spectral_transform::*,
+    stack::*, variable::*, wah::*, yin::*,
 };

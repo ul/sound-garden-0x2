@@ -163,8 +163,11 @@ ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTER
 
 `poly:N` consumes the preceding compile-time quotation as a voice body, runs N copies of the body, and sums their outputs. On a rising edge of the control signal it allocates the next voice (round-robin) and latches the current value into it; the most recently allocated voice receives the live control signal as-is (a trig body sees a one-sample impulse, a gate body sees the full gate including its fall, so `adsr` releases work), other voices receive 0. Control amplitude passes through, so gates can carry velocity. Each voice body starts from a stack of `(value, ctl)`. Named templates work as bodies too: `lead poly:4` pushes the registered `lead` quotation and lets `poly:4` consume it.
 
+`mpoly:N` consumes the preceding quotation as a MIDI voice body. It consumes no stack inputs; each voice starts from `(note, gate)`, where `note` is the latched MIDI note number and `gate` is note-on velocity while held and 0 after note-off.
+
 [horizontal]
 poly:<N>:: (value, ctl) -> sum of N voices of the preceding quotation, e.g. `1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4`
+mpoly:<N>:: () -> sum of N MIDI-driven voices of the preceding quotation, e.g. `[ 0.005 0.1 0.7 0.3 adsr swap m2f s * ] mpoly:8`
 
 === Triggers
 
@@ -179,8 +182,8 @@ chance:: (trig, prob) -> pass each rising-edge gate/trigger with probability `pr
 === Envelopes and transitions
 
 [horizontal]
-impulse:: (trigger, apex) -> generate exponential impulse which reaches 1.0 in apex seconds and then fades
-adsr:: (gate, a, d, s, r) -> classic ADSR envelope
+impulse:: (trigger, apex) -> generate exponential impulse which reaches the trigger amplitude in apex seconds and then fades; trigger amplitude is latched on the rising edge
+adsr:: (gate, a, d, s, r) -> classic ADSR envelope; positive gate amplitude is latched on the rising edge as the envelope peak
 tline:: (value, delta) -> linearly smooth value changes over delta timeframe
 tquad:: (value, delta) -> quadratically smooth value changes over delta timeframe
 
