@@ -169,6 +169,14 @@ ctrig:<PATTERN>:: (cps) -> convenience form of `cycle` followed by `trig:<PATTER
 poly:<N>:: (value, ctl) -> sum of N voices of the preceding quotation, e.g. `1 cycle pat:60,64,67,72 m2f 1 cycle trig:x.xx [ swap s swap 0.01 impulse * ] poly:4`
 mpoly:<N>:: () -> sum of N MIDI-driven voices of the preceding quotation, e.g. `[ 0.005 0.1 0.7 0.3 adsr swap m2f s * ] mpoly:8`
 
+=== MIDI controllers
+
+Knobs, faders and the pitch-bend wheel of a connected MIDI device as signals, from any MIDI channel. Values are shared by the whole program and survive commits, so a knob stays where it is when code changes; a newly compiled control starts at the knob's current value rather than gliding up to it. Until a control first moves, including in offline renders, it outputs its default. Controls glide over 10 ms so 7-bit MIDI steps don't zipper; primed forms are raw.
+
+[horizontal]
+cc:<N>:<DEFAULT>, cc':<N>:<DEFAULT>:: () -> MIDI controller N (0..127) as 0..1, e.g. `cc:74 200 4000 uniexp` for a cutoff on a knob; DEFAULT (0..1, default 0) is output until the controller first moves; `cc'` is the raw stepped value
+bend, bend':: () -> pitch bend as -1..1 (0 until the wheel moves), e.g. `bend 2 * +` on a note number for ±2 semitones, also inside `mpoly` bodies; `bend'` is the raw value
+
 === Triggers
 
 [horizontal]

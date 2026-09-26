@@ -67,6 +67,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let (garbage_tx, mut garbage_rx) = RingBuffer::<Program>::new(CHANNEL_CAPACITY);
     let mut ctx = Context::default();
     let midi_frame = Arc::clone(&ctx.midi);
+    let midi_controls = Arc::clone(&ctx.midi_controls);
     let (midi_connection, midi_rx) = match midi::open_input(&options.midi) {
         Ok(Some((connection, consumer, name))) => {
             log::info!("Connected MIDI input: {name}");
@@ -103,6 +104,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
             recording: Arc::clone(&recording_flag),
             midi_rx,
             midi_frame,
+            midi_controls,
         };
         audio::main(engine, i, o).unwrap();
     });

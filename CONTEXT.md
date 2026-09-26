@@ -16,6 +16,10 @@ Voice body semantics: the body is an ordinary program compiled by the same compi
 
 Naming and docs: `poly:N` is canonical with no alias and no default N in v1. Help gets a new "Polyphony" group. Canonical examples use `impulse` for the trig-driven voice body and `adsr` for the gate-driven one, e.g. `1 cycle pat:60,64,67,72 1 cycle trig:x.xx [ swap m2f s swap 0.01 impulse * ] poly:4 .2 *` and `1 cycle pat:60,64,67,72 1 cycle gate:x.xx [ swap m2f s swap 0.01 0.1 0.7 0.3 adsr * ] poly:4 .2 *`. Architectural rationale recorded in `docs/adr/0002-polyphony-container-op.md`.
 
+### MIDI controller
+
+A MIDI controller (knob, fader, pitch-bend wheel) is exposed as a signal op, `cc:N:DEFAULT` (`0..1`) or `bend` (`-1..1`), from any channel. Its value lives in a shared store updated at each message's frame, not in the op, so it persists across live edits the way a physical knob does; a control that hasn't moved yet outputs its default (also what offline renders hear). Unprimed forms glide over 10 ms; primed forms (`cc'`, `bend'`) are raw. Rationale in `docs/adr/0006-midi-controllers.md`.
+
 ### Grain
 
 A grain is a short, Hann-windowed snippet of recorded sound started by a trigger. Grain ops latch position, duration, rate and trigger amplitude per channel when a grain starts, then play it through independently of later input changes. `grain:NAME:N` reads a table (from `wt:`, `ft:`, or an audio file path); `granulate:SECONDS:N` reads a rolling buffer of its own input and never lets a grain read audio that hasn't been written yet or has already been overwritten. Both hold at most N grains and replace the oldest when full. Rationale in `docs/adr/0004-granular-synthesis.md`.

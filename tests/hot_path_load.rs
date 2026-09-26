@@ -107,6 +107,7 @@ const REALTIME_PROGRAMS: &[&str] = &[
     "[ swap m2f s swap 0.01 0.1 0.7 0.3 adsr * ] mpoly:4",
     "110 s 1 wt:loop:1 pop noise 0.05 * 0.2 + 0.08 1 200 metro grain:loop:4",
     "110 s 0.3 0.05 -1.5 200 metro granulate:1:4",
+    "cc:74:0.5 200 4000 uniexp 110 0 saw swap 0.7 l 60 bend 2 * + m2f s cc':1 * +",
 ];
 
 #[test]

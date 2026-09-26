@@ -25,6 +25,8 @@ pub struct Context {
     pub tables: HashMap<String, Arc<Vec<AtomicFrame>>, RandomState>,
     pub variables: HashMap<String, Arc<AtomicFrame>, RandomState>,
     pub midi: Arc<MidiFrameEvents>,
+    /// Latest MIDI controller/bend values; persists across compiles.
+    pub midi_controls: Arc<MidiControls>,
     pub seed: Option<u64>,
     pub rng_counter: u64,
 }
@@ -37,6 +39,7 @@ impl Context {
             tables: HashMap::with_hasher(RandomState::new()),
             variables: HashMap::with_hasher(RandomState::new()),
             midi: Arc::new(MidiFrameEvents::new()),
+            midi_controls: Arc::new(MidiControls::new()),
             seed: None,
             rng_counter: 0,
         }
@@ -488,6 +491,15 @@ fn compile_segment(
             "%" | "mod" => push_args!(id, Fn2, pure::modulo),
             "adsr" => push_args!(id, ADSR, sample_rate),
             "amp2db" | "a2db" => push_args!(id, Fn1, pure::amp2db),
+            "bend" | "bend'" => push_args!(
+                id,
+                MidiControl,
+                sample_rate,
+                Arc::clone(&ctx.midi_controls),
+                ControlSource::Bend,
+                0.0,
+                op == "bend"
+            ),
             "c" => push_args!(id, Osc, sample_rate, pure::cosine),
             "c'" => push_args!(id, Osc, sample_rate, pure::cosine_fast),
             "chance" => program.push(Statement {
@@ -761,6 +773,33 @@ fn compile_segment(
                                 log::warn!("Missing table file parameter.");
                             }
                         },
+                        "cc" | "cc'" => {
+                            let controller = tokens
+                                .get(1)
+                                .and_then(|x| x.parse::<u8>().ok())
+                                .filter(|&n| (n as usize) < MIDI_CONTROLLERS);
+                            let default = match tokens.get(2) {
+                                None => Some(0.0),
+                                Some(x) => x.parse::<Sample>().ok().filter(|x| x.is_finite()),
+                            };
+                            match (controller, default) {
+                                (Some(controller), Some(default)) => push_args!(
+                                    id,
+                                    MidiControl,
+                                    sample_rate,
+                                    Arc::clone(&ctx.midi_controls),
+                                    ControlSource::Controller(controller),
+                                    default.clamp(0.0, 1.0),
+                                    tokens[0] == "cc"
+                                ),
+                                _ => {
+                                    log::warn!(
+                                        "{op}: expected cc:<0..127>:<DEFAULT 0..1>; outputting 0."
+                                    );
+                                    push_args!(id, Constant, 0.0)
+                                }
+                            }
+                        }
                         "grain" => {
                             let name = tokens.get(1).copied().unwrap_or_default();
                             let table = find_or_load_table(name, ctx);
@@ -2499,9 +2538,9 @@ mod tests {
     }
 
     #[test]
-    fn help_documents_grain_ops() {
+    fn help_documents_grain_and_midi_control_ops() {
         let help = get_help();
-        for op in ["grain", "granulate"] {
+        for op in ["grain", "granulate", "cc", "cc'", "bend", "bend'"] {
             assert!(
                 help.keys().any(|key| key == op),
                 "{op} missing from help: {:?}",
@@ -2509,6 +2548,47 @@ mod tests {
                     .filter(|k| k.starts_with("gr"))
                     .collect::<Vec<_>>()
             );
+        }
+    }
+
+    #[test]
+    fn midi_controls_read_the_shared_store_with_defaults() {
+        let mut context = Context::new();
+        let controls = Arc::clone(&context.midi_controls);
+        let run = |source: &str, context: &mut Context| run_once(&words(source), context);
+
+        // Before any MIDI arrives: the default (0 when omitted), bend centred.
+        assert_eq!(run("cc:74", &mut context), [0.0, 0.0]);
+        assert_eq!(run("cc:74:0.4", &mut context), [0.4, 0.4]);
+        assert_eq!(
+            run("cc':74:1.5", &mut context),
+            [1.0, 1.0],
+            "default clamps to 0..1"
+        );
+        assert_eq!(run("bend bend' +", &mut context), [0.0, 0.0]);
+
+        controls.set_controller(74, 0.6);
+        controls.set_bend(-0.25);
+        assert_eq!(run("cc:74:0.4", &mut context), [0.6, 0.6]);
+        assert_eq!(run("cc':74", &mut context), [0.6, 0.6]);
+        assert_eq!(run("bend", &mut context), [-0.25, -0.25]);
+        assert_eq!(run("bend'", &mut context), [-0.25, -0.25]);
+    }
+
+    #[test]
+    fn invalid_cc_forms_push_zero_and_keep_stack_shape() {
+        for source in [
+            "9 cc",
+            "9 cc:128",
+            "9 cc:-1",
+            "9 cc:x",
+            "9 cc:7:nope",
+            "9 cc':300",
+        ] {
+            let mut ops = words(source);
+            assert_eq!(run_frames(&ops, 100, 1)[0], [0.0, 0.0], "{source}");
+            ops.push(op(1000, "pop"));
+            assert_eq!(run_frames(&ops, 100, 1)[0], [9.0, 9.0], "{source}");
         }
     }
 }

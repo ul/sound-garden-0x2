@@ -115,7 +115,7 @@ The MIDI callback must not allocate in the steady state. If the ring is full, dr
 
 The audio callback owns the ring consumer. At the start of each output frame, before `vm.next_frame()`, it drains queued MIDI events into a fixed-capacity per-frame event buffer shared with compiled `mpoly` ops. The buffer is non-consuming from the op perspective so multiple `mpoly` instances can respond to the same keyboard events.
 
-Initial implementation may apply all drained events at the next audio frame. Sample-accurate MIDI timestamps inside an audio buffer are deferred.
+Initial implementation may apply all drained events at the next audio frame. (Since implemented: events are stamped with their arrival time and placed at the same relative position within the next audio buffer, a constant one-buffer delay instead of up to a buffer of jitter.)
 
 The per-frame buffer must be fixed-capacity and real-time safe. A practical v1 design is:
 
@@ -223,13 +223,13 @@ When `sound_garden_egui --audio-port ...` sends programs to an external `audio_s
 ## Deferred
 
 - Sustain pedal / CC64.
-- Pitch bend.
-- Mod wheel / arbitrary CC ops.
+- ~~Pitch bend.~~ Done: `bend`, see ADR 0006.
+- ~~Mod wheel / arbitrary CC ops.~~ Done: `cc:N`, see ADR 0006.
 - Channel filtering and per-channel split/layer ops.
 - Aftertouch, poly aftertouch, MPE.
 - MIDI clock / transport sync.
 - Hotplug/reconnect UI.
-- Sample-accurate MIDI timestamps within audio buffers.
+- ~~Sample-accurate MIDI timestamps within audio buffers.~~ Done (arrival-time placement, one-buffer delay).
 - VST/CLAP/AU host MIDI input. The current workspace does not contain a VST crate; standalone keyboard support comes first.
 - MIDI file import/render support.
 

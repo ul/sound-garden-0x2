@@ -1,6 +1,6 @@
-use crate::midi::TimedMidiEvent;
+use crate::midi::{MidiMessage, TimedMidiEvent};
 use anyhow::Result;
-use audio_ops::{MAX_MIDI_EVENTS_PER_FRAME, MidiEvent, MidiFrameEvents, pure::clip};
+use audio_ops::{MAX_MIDI_EVENTS_PER_FRAME, MidiControls, MidiEvent, MidiFrameEvents, pure::clip};
 use audio_vm::{CHANNELS, Program, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
@@ -29,7 +29,10 @@ pub struct Engine {
     pub record_tx: Producer<Sample>,
     pub recording: Arc<AtomicBool>,
     pub midi_rx: Option<Consumer<TimedMidiEvent>>,
+    /// Notes for the current frame, read by `mpoly`.
     pub midi_frame: Arc<MidiFrameEvents>,
+    /// Controller and bend values, updated at each message's frame.
+    pub midi_controls: Arc<MidiControls>,
 }
 
 /// State carried from one audio callback to the next.
@@ -152,17 +155,27 @@ impl Engine {
         for (index, frame) in output.chunks_mut(channels).enumerate() {
             if let Some(midi_rx) = self.midi_rx.as_mut() {
                 let mut midi_count = 0;
-                while midi_count < midi_events.len() {
-                    let Ok(timed) = midi_rx.peek() else {
-                        break;
-                    };
-                    // Events are in arrival order; stop at the first one that
+                while let Ok(&timed) = midi_rx.peek() {
+                    // Messages are in arrival order; stop at the first one that
                     // belongs to a later frame or arrived during this callback.
                     if timed.at >= now || target_frame(timed.at) > index {
                         break;
                     }
-                    midi_events[midi_count] = timed.event;
-                    midi_count += 1;
+                    match timed.message {
+                        MidiMessage::Note(event) => {
+                            if midi_count == midi_events.len() {
+                                // This frame's note slots are full; the rest
+                                // wait for the next frame, in order.
+                                break;
+                            }
+                            midi_events[midi_count] = event;
+                            midi_count += 1;
+                        }
+                        MidiMessage::Controller { controller, value } => {
+                            self.midi_controls.set_controller(controller, value)
+                        }
+                        MidiMessage::Bend(value) => self.midi_controls.set_bend(value),
+                    }
                     midi_rx.pop().ok();
                 }
                 if midi_count > 0 || state.midi_frame_dirty {
@@ -227,6 +240,7 @@ mod tests {
                 recording: Arc::new(AtomicBool::new(false)),
                 midi_rx: Some(midi_rx),
                 midi_frame: Arc::clone(&ctx.midi),
+                midi_controls: Arc::clone(&ctx.midi_controls),
             },
             state: CallbackState::default(),
             record_rx,
@@ -256,8 +270,12 @@ mod tests {
         /// Queue an event that arrived `fraction` of a period after the
         /// previous callback started.
         fn midi_at(&mut self, fraction: f64, event: MidiEvent) {
+            self.message_at(fraction, MidiMessage::Note(event));
+        }
+
+        fn message_at(&mut self, fraction: f64, message: MidiMessage) {
             let at = self.clock - PERIOD + PERIOD.mul_f64(fraction);
-            self.midi_tx.push(TimedMidiEvent { at, event }).unwrap();
+            self.midi_tx.push(TimedMidiEvent { at, message }).unwrap();
         }
 
         fn recorded(&mut self) -> usize {
@@ -327,5 +345,48 @@ mod tests {
         assert!(!h.state.midi_frame_dirty);
         let mut events = [MidiEvent::note_off(0, 0); MAX_MIDI_EVENTS_PER_FRAME];
         assert_eq!(h.engine.midi_frame.copy_events(&mut events), 0);
+    }
+
+    #[test]
+    fn knob_and_bend_change_on_the_frame_they_arrived_at() {
+        let mut h = harness("cc':74:0.25 bend' +", 4);
+        assert_eq!(h.left(4), [0.25; 4], "default before the knob moves");
+        h.message_at(
+            0.5,
+            MidiMessage::Controller {
+                controller: 74,
+                value: 0.75,
+            },
+        );
+        h.message_at(0.75, MidiMessage::Bend(-0.5));
+        assert_eq!(h.left(4), [0.25, 0.25, 0.75, 0.25]);
+    }
+
+    #[test]
+    fn controller_values_survive_a_program_reload() {
+        let mut h = harness("cc':1", 4);
+        h.callback(4);
+        h.message_at(
+            0.0,
+            MidiMessage::Controller {
+                controller: 1,
+                value: 0.5,
+            },
+        );
+        assert_eq!(h.left(2), [0.5; 2]);
+
+        // Commit a different program reading the same knob: it starts where
+        // the knob is, not at its default. (The harness compiles with its own
+        // context; share the controller store like audio_server does.)
+        let mut ctx = Context::new();
+        ctx.midi_controls = Arc::clone(&h.engine.midi_controls);
+        let ops = [TextOp {
+            id: 99,
+            op: "cc':1:0.1".to_owned(),
+        }];
+        h.engine
+            .vm
+            .load_program(compile_program(&ops, 48_000, &mut ctx));
+        assert_eq!(h.left(2), [0.5; 2]);
     }
 }
