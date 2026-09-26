@@ -1,12 +1,16 @@
+use crate::midi::TimedMidiEvent;
 use anyhow::Result;
 use audio_ops::{MAX_MIDI_EVENTS_PER_FRAME, MidiEvent, MidiFrameEvents, pure::clip};
 use audio_vm::{CHANNELS, Program, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
 use rtrb::{Consumer, Producer, PushError};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
 };
 
 pub enum Command {
@@ -24,8 +28,19 @@ pub struct Engine {
     /// Output samples for the recorder, pushed only while `recording` is set.
     pub record_tx: Producer<Sample>,
     pub recording: Arc<AtomicBool>,
-    pub midi_rx: Option<Consumer<MidiEvent>>,
+    pub midi_rx: Option<Consumer<TimedMidiEvent>>,
     pub midi_frame: Arc<MidiFrameEvents>,
+}
+
+/// State carried from one audio callback to the next.
+#[derive(Default)]
+struct CallbackState {
+    /// Whether midi_frame still holds the previous frame's events and must be
+    /// cleared; lets frames without MIDI skip touching the shared slots.
+    midi_frame_dirty: bool,
+    /// Start of the previous callback: MIDI that arrived since then is spread
+    /// over the current buffer at the same relative position.
+    previous_callback: Option<Instant>,
 }
 
 pub fn main(engine: Engine, rx: Receiver<()>, tx: Sender<u32>) -> Result<()> {
@@ -67,13 +82,11 @@ where
 {
     let channels = config.channels as usize;
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
-    // Whether midi_frame still holds the previous frame's events and must be
-    // cleared; lets frames without MIDI skip touching the shared slots.
-    let mut midi_frame_dirty = false;
+    let mut state = CallbackState::default();
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            engine.write_data(data, channels, &mut midi_frame_dirty)
+            engine.write_data(data, channels, &mut state, Instant::now())
         },
         err_fn,
         None,
@@ -85,8 +98,15 @@ where
 }
 
 impl Engine {
-    fn write_data<T>(&mut self, output: &mut [T], channels: usize, midi_frame_dirty: &mut bool)
-    where
+    /// `now` is when this callback started; it is a parameter so tests can
+    /// drive the clock.
+    fn write_data<T>(
+        &mut self,
+        output: &mut [T],
+        channels: usize,
+        state: &mut CallbackState,
+        now: Instant,
+    ) where
         T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
     {
         audio_vm::enable_flush_to_zero();
@@ -110,20 +130,44 @@ impl Engine {
         let record =
             self.recording.load(Ordering::Acquire) && self.record_tx.slots() >= output.len();
 
+        // MIDI that arrived during the previous callback period is placed at
+        // the same relative position within this buffer: a constant one-period
+        // delay instead of up to a period of jitter from bunching every event
+        // onto the first frame.
+        let frames = output.len() / channels.max(1);
+        let window = state
+            .previous_callback
+            .map(|start| (start, now.saturating_duration_since(start)));
+        state.previous_callback = Some(now);
+        let target_frame = |at: Instant| match window {
+            Some((start, period)) if !period.is_zero() && at > start => {
+                let position = (at - start).as_secs_f64() / period.as_secs_f64();
+                ((position * frames as f64) as usize).min(frames.saturating_sub(1))
+            }
+            // First callback, or events left over from earlier periods.
+            _ => 0,
+        };
+
         let mut midi_events = [MidiEvent::note_off(0, 0); MAX_MIDI_EVENTS_PER_FRAME];
-        for frame in output.chunks_mut(channels) {
+        for (index, frame) in output.chunks_mut(channels).enumerate() {
             if let Some(midi_rx) = self.midi_rx.as_mut() {
                 let mut midi_count = 0;
                 while midi_count < midi_events.len() {
-                    let Ok(event) = midi_rx.pop() else {
+                    let Ok(timed) = midi_rx.peek() else {
                         break;
                     };
-                    midi_events[midi_count] = event;
+                    // Events are in arrival order; stop at the first one that
+                    // belongs to a later frame or arrived during this callback.
+                    if timed.at >= now || target_frame(timed.at) > index {
+                        break;
+                    }
+                    midi_events[midi_count] = timed.event;
                     midi_count += 1;
+                    midi_rx.pop().ok();
                 }
-                if midi_count > 0 || *midi_frame_dirty {
+                if midi_count > 0 || state.midi_frame_dirty {
                     self.midi_frame.set_events(&midi_events[..midi_count]);
-                    *midi_frame_dirty = midi_count > 0;
+                    state.midi_frame_dirty = midi_count > 0;
                 }
             }
             for (sample, &value) in frame.iter_mut().zip(self.vm.next_frame().iter()) {
@@ -142,22 +186,33 @@ mod tests {
     use super::*;
     use audio_program::{Context, TextOp, compile_program};
     use rtrb::RingBuffer;
+    use std::time::Duration;
+
+    const PERIOD: Duration = Duration::from_millis(10);
 
     struct Harness {
         engine: Engine,
+        state: CallbackState,
         record_rx: Consumer<Sample>,
-        midi_tx: rtrb::Producer<MidiEvent>,
-        midi_frame_dirty: bool,
+        midi_tx: Producer<TimedMidiEvent>,
+        /// Start of the next callback.
+        clock: Instant,
     }
 
-    fn harness(record_capacity: usize) -> Harness {
+    fn harness(source: &str, record_capacity: usize) -> Harness {
+        let mut ctx = Context::new();
+        let ops = source
+            .split_whitespace()
+            .enumerate()
+            .map(|(index, op)| TextOp {
+                id: index as u64 + 1,
+                op: op.to_owned(),
+            })
+            .collect::<Vec<_>>();
         let mut vm = VM::new();
         vm.set_xfade_duration(0.0);
-        let ops = [TextOp {
-            id: 1,
-            op: "0.5".to_owned(),
-        }];
-        vm.load_program(compile_program(&ops, 48_000, &mut Context::new()));
+        vm.set_declick_duration(0.0);
+        vm.load_program(compile_program(&ops, 48_000, &mut ctx));
         vm.play();
         let (_command_tx, command_rx) = RingBuffer::new(4);
         let (garbage_tx, _garbage_rx) = RingBuffer::new(4);
@@ -171,20 +226,38 @@ mod tests {
                 record_tx,
                 recording: Arc::new(AtomicBool::new(false)),
                 midi_rx: Some(midi_rx),
-                midi_frame: Arc::new(MidiFrameEvents::new()),
+                midi_frame: Arc::clone(&ctx.midi),
             },
+            state: CallbackState::default(),
             record_rx,
             midi_tx,
-            midi_frame_dirty: false,
+            clock: Instant::now(),
         }
     }
 
     impl Harness {
+        /// Run one callback of `frames` frames; callbacks are PERIOD apart.
         fn callback(&mut self, frames: usize) -> Vec<f32> {
             let mut output = vec![0.0f32; frames * CHANNELS];
             self.engine
-                .write_data(&mut output, CHANNELS, &mut self.midi_frame_dirty);
+                .write_data(&mut output, CHANNELS, &mut self.state, self.clock);
+            self.clock += PERIOD;
             output
+        }
+
+        /// Left channel of one callback.
+        fn left(&mut self, frames: usize) -> Vec<f32> {
+            self.callback(frames)
+                .into_iter()
+                .step_by(CHANNELS)
+                .collect()
+        }
+
+        /// Queue an event that arrived `fraction` of a period after the
+        /// previous callback started.
+        fn midi_at(&mut self, fraction: f64, event: MidiEvent) {
+            let at = self.clock - PERIOD + PERIOD.mul_f64(fraction);
+            self.midi_tx.push(TimedMidiEvent { at, event }).unwrap();
         }
 
         fn recorded(&mut self) -> usize {
@@ -194,16 +267,15 @@ mod tests {
             }
             count
         }
-
-        fn midi_frame_len(&self) -> usize {
-            let mut events = [MidiEvent::note_off(0, 0); MAX_MIDI_EVENTS_PER_FRAME];
-            self.engine.midi_frame.copy_events(&mut events)
-        }
     }
+
+    /// A voice body that outputs its gate, so the output shows which frame
+    /// each note-on/off landed on.
+    const GATE_PROBE: &str = "[ swap pop ] mpoly:1";
 
     #[test]
     fn records_only_while_recording_and_only_whole_callbacks() {
-        let mut h = harness(64);
+        let mut h = harness("0.5", 64);
         assert_eq!(h.callback(8), [0.5; 16]);
         assert_eq!(h.recorded(), 0);
 
@@ -219,15 +291,41 @@ mod tests {
     }
 
     #[test]
-    fn midi_frame_is_written_for_events_and_cleared_once_after() {
-        let mut h = harness(4);
-        h.midi_tx.push(MidiEvent::note_on(0, 60, 1.0)).unwrap();
-        // The event lands on the callback's first frame and is cleared on the
-        // next one, so after a multi-frame callback the slots are empty.
+    fn midi_lands_at_its_relative_position_one_period_later() {
+        let mut h = harness(GATE_PROBE, 4);
+        h.callback(8);
+        h.midi_at(0.25, MidiEvent::note_on(0, 60, 1.0));
+        h.midi_at(0.75, MidiEvent::note_off(0, 60));
+        assert_eq!(h.left(8), [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn midi_arriving_during_a_callback_waits_for_the_next_one() {
+        let mut h = harness(GATE_PROBE, 4);
+        h.callback(8);
+        // Arrives exactly when the next callback starts: not before `now`.
+        h.midi_at(1.0, MidiEvent::note_on(0, 60, 1.0));
+        assert_eq!(h.left(8), [0.0; 8]);
+        // One period later it is at the very start of the buffer.
+        assert_eq!(h.left(8), [1.0; 8]);
+    }
+
+    #[test]
+    fn first_callback_plays_pending_midi_immediately() {
+        let mut h = harness(GATE_PROBE, 4);
+        h.midi_at(0.5, MidiEvent::note_on(0, 60, 1.0));
+        assert_eq!(h.left(4), [1.0; 4]);
+    }
+
+    #[test]
+    fn midi_frame_is_cleared_once_after_events() {
+        let mut h = harness(GATE_PROBE, 4);
+        h.midi_at(0.0, MidiEvent::note_on(0, 60, 1.0));
         h.callback(1);
-        assert_eq!(h.midi_frame_len(), 1);
+        assert!(h.state.midi_frame_dirty);
         h.callback(1);
-        assert_eq!(h.midi_frame_len(), 0);
-        assert!(!h.midi_frame_dirty);
+        assert!(!h.state.midi_frame_dirty);
+        let mut events = [MidiEvent::note_off(0, 0); MAX_MIDI_EVENTS_PER_FRAME];
+        assert_eq!(h.engine.midi_frame.copy_events(&mut events), 0);
     }
 }

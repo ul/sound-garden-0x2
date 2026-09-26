@@ -2,6 +2,15 @@ use anyhow::{Result, anyhow};
 use audio_ops::{MIDI_EVENT_RING_CAPACITY, MidiEvent};
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiInputPort};
 use rtrb::{Producer, RingBuffer};
+use std::time::Instant;
+
+/// A MIDI event stamped with its arrival time, so the audio callback can place
+/// it on the matching frame.
+#[derive(Clone, Copy, Debug)]
+pub struct TimedMidiEvent {
+    pub at: Instant,
+    pub event: MidiEvent,
+}
 
 #[derive(Clone, Debug, Default)]
 pub enum MidiInputSelection {
@@ -33,7 +42,7 @@ pub fn list_inputs() -> Result<Vec<String>> {
 
 pub fn open_input(
     selection: &MidiInputSelection,
-) -> Result<Option<(MidiInputHandle, rtrb::Consumer<MidiEvent>, String)>> {
+) -> Result<Option<(MidiInputHandle, rtrb::Consumer<TimedMidiEvent>, String)>> {
     match selection {
         MidiInputSelection::None => Ok(None),
         MidiInputSelection::Auto | MidiInputSelection::Match(_) => {
@@ -46,7 +55,7 @@ pub fn open_input(
             let name = input
                 .port_name(&port)
                 .unwrap_or_else(|_| "<unknown>".to_string());
-            let (producer, consumer) = RingBuffer::<MidiEvent>::new(MIDI_EVENT_RING_CAPACITY);
+            let (producer, consumer) = RingBuffer::<TimedMidiEvent>::new(MIDI_EVENT_RING_CAPACITY);
             let connection = connect(input, &port, producer)?;
             Ok(Some((MidiInputHandle { connection }, consumer, name)))
         }
@@ -80,14 +89,21 @@ fn select_port(
 fn connect(
     input: MidiInput,
     port: &MidiInputPort,
-    mut producer: Producer<MidiEvent>,
+    mut producer: Producer<TimedMidiEvent>,
 ) -> Result<MidiInputConnection<()>> {
     Ok(input.connect(
         port,
         "sound-garden-midi-in",
+        // midir's timestamp has a backend-specific origin that can't be compared
+        // with the audio clock, so stamp arrival with Instant instead.
         move |_timestamp, message, _| {
             if let Some(event) = decode_message(message) {
-                producer.push(event).ok();
+                producer
+                    .push(TimedMidiEvent {
+                        at: Instant::now(),
+                        event,
+                    })
+                    .ok();
             }
         },
         (),
