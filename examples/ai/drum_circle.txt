@@ -2,8 +2,10 @@
 seed:5
 2 cycle >ph
 [ kick cubed impulse pitch sweep 162hz to 42hz ] drop
-<ph trig:x..x..x. 0.002 impulse >k
-<k 3 ^ 120 * 42 + s <k *
+[ its own envelope gives the 42hz body time to ring ] drop
+<ph trig:x..x..x. 0.004 impulse >k
+<ph gate:x..x..x. 0.002 0.3 0 0.3 adsr >ka
+<k 3 ^ 120 * 42 + s <ka *
 [ snare band passed noise burst a flash of room ] drop
 <ph trig:....x... 0.004 impulse noise * 1800 2 bp =sn 0.9 0.5 verb 0.18 * <sn + 0.8 *
 +

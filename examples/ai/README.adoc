@@ -57,7 +57,8 @@ line together.
 == drum_circle.txt
 
 Minimal kit. The kick is a sine whose pitch is the trigger impulse raised to
-the third power (a fast 162→42 Hz sweep). The snare is a band-passed noise
+the third power (a fast 162→42 Hz sweep), with its own `adsr` (2 ms attack,
+300 ms decay) so the 42 Hz body rings instead of ending as a click. The snare is a band-passed noise
 burst at 1800 Hz with a flash of small-room `verb` blended behind it. The hat
 is high-passed noise on an off-beat pattern with a random ghost subdivision
 (`x|[.x]`) and an alternating double-hit, then `crush` (5 bits, 9 kHz) grinds
