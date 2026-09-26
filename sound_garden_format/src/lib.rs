@@ -113,12 +113,18 @@ impl NodeRepository {
         }
     }
 
-    pub fn load(filename: &str) -> Self {
-        std::fs::File::open(filename)
-            .ok()
-            .map(snap::read::FrameDecoder::new)
-            .and_then(|f| ciborium::from_reader::<Self, _>(f).ok())
-            .unwrap_or_default()
+    /// Load a project. A missing file is a new, empty project; a file that
+    /// exists but can't be read or decoded is an error, so callers never
+    /// mistake it for an empty project and save over it.
+    pub fn load(filename: &str) -> Result<Self> {
+        let file = match std::fs::File::open(filename) {
+            Ok(file) => file,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(err) => anyhow::bail!("Can't open {filename}: {err}"),
+        };
+        ciborium::from_reader(snap::read::FrameDecoder::new(file)).map_err(|err| {
+            anyhow::anyhow!("{filename} is not a readable Sound Garden project: {err}")
+        })
     }
 
     /// Write atomically: serialise into a temporary file next to `filename`,
@@ -437,7 +443,7 @@ mod tests {
         repo.add_node(node(0x2, 1.0, 0.0, "s"), 2);
         repo.save(filename).unwrap();
 
-        let loaded = NodeRepository::load(filename);
+        let loaded = NodeRepository::load(filename).unwrap();
         let texts = loaded
             .nodes()
             .into_iter()
@@ -465,5 +471,33 @@ mod tests {
         assert_eq!(undos, MAX_UNDO_STEPS);
         // The oldest steps were dropped, so undo stops short of empty.
         assert_eq!(repo.nodes().len(), 10);
+    }
+
+    #[test]
+    fn missing_file_loads_as_new_empty_project() {
+        let path = std::env::temp_dir().join(format!("sg-missing-{:?}.sg", Id::random()));
+        let repo = NodeRepository::load(path.to_str().unwrap()).unwrap();
+        assert!(repo.nodes().is_empty());
+    }
+
+    #[test]
+    fn unreadable_file_is_an_error_not_an_empty_project() {
+        let dir = std::env::temp_dir().join(format!("sg-broken-{:?}", Id::random()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (name, contents) in [
+            ("garbage.sg", b"not a project".as_slice()),
+            // What a crash during the old non-atomic save could leave behind.
+            ("empty.sg", b"".as_slice()),
+        ] {
+            let path = dir.join(name);
+            std::fs::write(&path, contents).unwrap();
+            let err = NodeRepository::load(path.to_str().unwrap())
+                .err()
+                .unwrap_or_else(|| panic!("{name} loaded as a project"));
+            assert!(err.to_string().contains("not a readable"), "{err}");
+            // Loading must not touch the file.
+            assert_eq!(std::fs::read(&path).unwrap(), contents);
+        }
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

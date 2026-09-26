@@ -6,10 +6,16 @@ fn main() {
     if !std::path::Path::new(path).is_file() {
         eprintln!("{} is not a file.", path);
     }
+    let repo = match NodeRepository::load(path) {
+        Ok(repo) => repo,
+        Err(err) => {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+    };
     println!(
         "{}",
-        NodeRepository::load(path)
-            .nodes()
+        repo.nodes()
             .into_iter()
             .map(|node| node.text)
             .collect::<Vec<_>>()

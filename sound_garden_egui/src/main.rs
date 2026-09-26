@@ -80,7 +80,15 @@ fn main() -> Result<()> {
         .cloned()
         .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
 
-    let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename)));
+    // Refuse to start on an unreadable project: opening it as empty would
+    // overwrite it on the first save.
+    let node_repo = Arc::new(Mutex::new(NodeRepository::load(&filename).map_err(
+        |err| {
+            anyhow::anyhow!(
+                "{err}\nThe file was left untouched; move or repair it, or open another file."
+            )
+        },
+    )?));
 
     let midi = matches
         .get_one::<String>("midi")
@@ -2143,6 +2151,7 @@ mod tests {
         assert!(path.exists());
         assert!(
             NodeRepository::load(path.to_str().unwrap())
+                .unwrap()
                 .nodes()
                 .is_empty()
         );
