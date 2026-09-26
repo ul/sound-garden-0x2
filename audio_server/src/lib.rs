@@ -5,7 +5,10 @@ use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rtrb::RingBuffer;
 use serde::{Deserialize, Serialize};
 use std::{
-    sync::{Arc, atomic::Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 use thread_worker::Worker;
@@ -56,7 +59,10 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     // Pattern monitor ids are updated from this thread, not the audio thread:
     // replacing them locks and allocates.
     let pattern_monitor_ids = vm.pattern_monitor();
-    let (producer, consumer) = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
+    let (record_tx, record_rx) = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
+    // Set by the recorder while it has a file open; the audio thread only feeds
+    // the ring buffer while it is set.
+    let recording = Arc::new(AtomicBool::new(false));
     let (mut command_tx, command_rx) = RingBuffer::<audio::Command>::new(CHANNEL_CAPACITY);
     let (garbage_tx, mut garbage_rx) = RingBuffer::<Program>::new(CHANNEL_CAPACITY);
     let mut ctx = Context::default();
@@ -87,16 +93,23 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
         }
     });
 
+    let recording_flag = Arc::clone(&recording);
     let player = Worker::spawn("Player", CHANNEL_CAPACITY, move |i, o| {
-        audio::main(
-            vm, producer, command_rx, garbage_tx, midi_rx, midi_frame, i, o,
-        )
-        .unwrap();
+        let engine = audio::Engine {
+            vm,
+            command_rx,
+            garbage_tx,
+            record_tx,
+            recording: Arc::clone(&recording_flag),
+            midi_rx,
+            midi_frame,
+        };
+        audio::main(engine, i, o).unwrap();
     });
     let sample_rate = player.receiver().recv().unwrap();
 
     let recorder = Worker::spawn("Recorder", CHANNEL_CAPACITY, move |i, o| {
-        record::main(sample_rate, consumer, i, o).unwrap();
+        record::main(sample_rate, record_rx, recording, i, o).unwrap();
     });
 
     let scope = Worker::spawn(

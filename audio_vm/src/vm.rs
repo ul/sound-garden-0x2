@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex, atomic::Ordering};
 // Program value and move; a plain Vec is used instead. SmallVec remains only for
 // the allocation-free migration index below.
 const MIGRATION_INDEX_SIZE: usize = 128;
+/// Monitors are published once per this many frames. Readers poll every
+/// ~10 ms (~480 frames), so publishing every frame is wasted work.
+const MONITOR_INTERVAL: usize = 64;
 /// Default program reload declick duration in frames (~5 ms at 48 kHz).
 const DECLICK_DURATION: usize = 256;
 /// Residual level the declick correction decays to over its duration (-100 dB).
@@ -44,6 +47,8 @@ pub struct VM {
     monitor_id: u64,
     /// Statement outputs used for GUI pattern highlighting.
     pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>>,
+    /// Frames until monitors are published next; 0 publishes on the next frame.
+    monitor_countdown: usize,
     /// Last output frame, used to measure the step introduced by a program reload.
     last_frame: Frame,
     /// Exponentially decaying correction that cancels the program reload step.
@@ -81,6 +86,7 @@ impl VM {
             monitor: Default::default(),
             monitor_id: 0,
             pattern_monitor,
+            monitor_countdown: 0,
             last_frame: Default::default(),
             declick_offset: Default::default(),
             declick_countdown: 0,
@@ -143,7 +149,14 @@ impl VM {
     #[cfg_attr(feature = "allocation-checks", no_alloc)]
     pub fn next_frame(&mut self) -> Frame {
         let frame = match self.status {
+            Status::Play if self.monitor_countdown > 0 => {
+                self.monitor_countdown -= 1;
+                let frame = perform(&mut self.active_program, &mut self.active_stack);
+                let frame = self.declick(frame);
+                self.play_xfade(frame)
+            }
             Status::Play => {
+                self.monitor_countdown = MONITOR_INTERVAL - 1;
                 let mut pattern_monitor = self.pattern_monitor.try_lock().ok();
                 let (frame, monitor_frame) = perform_and_monitor(
                     &mut self.active_program,
@@ -189,6 +202,8 @@ impl VM {
 
     pub fn set_monitor_id(&mut self, id: u64) {
         self.monitor_id = id;
+        // Publish the newly selected statement on the next frame.
+        self.monitor_countdown = 0;
     }
 
     /// Cancel the step discontinuity introduced by a program reload: on the first
@@ -461,6 +476,25 @@ mod tests {
             ],
             [7.0, 10.0]
         );
+    }
+
+    #[test]
+    fn monitor_is_published_once_per_interval() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(vec![statement(1, Counter::new())]);
+        vm.play();
+        let monitor = vm.monitor();
+        let published = || Sample::from_bits(monitor[0].load(Ordering::Relaxed));
+
+        vm.next_frame();
+        assert_eq!(published(), 1.0);
+        for _ in 1..MONITOR_INTERVAL {
+            vm.next_frame();
+        }
+        assert_eq!(published(), 1.0);
+        vm.next_frame();
+        assert_eq!(published(), (MONITOR_INTERVAL + 1) as Sample);
     }
 
     #[test]
