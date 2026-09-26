@@ -43,7 +43,6 @@ pub struct VM {
     /// 0 has a special meaning of the last Statement.
     monitor_id: u64,
     /// Statement outputs used for GUI pattern highlighting.
-    pattern_monitor_ids: Vec<u64>,
     pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>>,
     /// Last output frame, used to measure the step introduced by a program reload.
     last_frame: Frame,
@@ -67,6 +66,11 @@ impl Default for VM {
 
 impl VM {
     pub fn new() -> Self {
+        let pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>> = Default::default();
+        // Some platforms (e.g. pthread-backed std Mutex on macOS) allocate the OS
+        // lock lazily on first use. Lock once here so that allocation happens on
+        // the constructing thread, not on the audio thread's first try_lock.
+        drop(pattern_monitor.lock());
         Self {
             active_program: Default::default(),
             active_stack: Stack::new(),
@@ -76,8 +80,7 @@ impl VM {
             status: Status::Pause,
             monitor: Default::default(),
             monitor_id: 0,
-            pattern_monitor_ids: Vec::new(),
-            pattern_monitor: Default::default(),
+            pattern_monitor,
             last_frame: Default::default(),
             declick_offset: Default::default(),
             declick_countdown: 0,
@@ -188,19 +191,6 @@ impl VM {
         self.monitor_id = id;
     }
 
-    pub fn set_pattern_monitor_ids(&mut self, ids: Vec<u64>) {
-        self.pattern_monitor_ids = ids;
-        if let Ok(mut monitor) = self.pattern_monitor.lock() {
-            monitor.clear();
-            monitor.extend(
-                self.pattern_monitor_ids
-                    .iter()
-                    .copied()
-                    .map(|id| (id, Default::default())),
-            );
-        }
-    }
-
     /// Cancel the step discontinuity introduced by a program reload: on the first
     /// frame after the reload, capture the step against the last heard frame, then
     /// add it back to the output while it decays exponentially to silence.
@@ -254,6 +244,18 @@ impl VM {
         }
 
         frame
+    }
+}
+
+/// Replace the statement ids whose outputs are published to `monitor` (see
+/// `VM::pattern_monitor`). This takes the shared monitor rather than the VM
+/// because it blocks on the lock and allocates, so it must be called off the
+/// audio thread; `next_frame` only ever `try_lock`s and skips a frame if busy.
+pub fn set_pattern_monitor_ids(monitor: &Mutex<Vec<(u64, Frame)>>, ids: &[u64]) {
+    let entries = ids.iter().map(|&id| (id, Frame::default())).collect();
+    if let Ok(mut monitor) = monitor.lock() {
+        // Swap under the lock and drop the old Vec after releasing it.
+        let _old = std::mem::replace(&mut *monitor, entries);
     }
 }
 

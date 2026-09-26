@@ -4,17 +4,14 @@
 //! overlap-add resynthesis. Output is delayed by roughly one analysis window.
 //!
 //! Source to connect: input, preceded by zero or more control signals.
-use audio_vm::{CHANNELS, Op, Sample, Stack};
+use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 use rand::{SeedableRng, rngs::SmallRng, seq::SliceRandom};
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Zero;
-use rustfft::{
-    Fft,
-    FftDirection::{Forward, Inverse},
-    algorithm::Radix4,
-};
+use rustfft::{Fft, FftPlanner};
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 pub type TransformFn =
     Box<dyn FnMut(usize, usize, &mut [Complex<Sample>], &[Sample], &[bool]) + Send>;
@@ -34,13 +31,19 @@ pub fn reverse_half_spectrum(
         return;
     }
 
-    let input = freqs.to_vec();
+    // Bin k takes bin nyquist - k, so swap mirrored pairs in place (this runs on
+    // the audio thread and must not allocate).
     let n = nyquist * 2;
-    for k in 1..nyquist {
-        let src = nyquist - k;
+    let rotation = |k: usize, src: usize| {
         let phase = std::f64::consts::TAU * (k as Sample - src as Sample) * frame_number as Sample
             / n as Sample;
-        freqs[k] = input[src] * Complex::from_polar(1.0, phase);
+        Complex::from_polar(1.0, phase)
+    };
+    for k in 1..=nyquist / 2 {
+        let src = nyquist - k;
+        let (low, high) = (freqs[k], freqs[src]);
+        freqs[k] = high * rotation(k, src);
+        freqs[src] = low * rotation(src, k);
     }
 }
 
@@ -49,8 +52,8 @@ pub struct SpectralTransform {
     ola_buffers: Vec<Vec<Sample>>,
     scratch: Vec<Complex<Sample>>,
     freq_buffer: Vec<Complex<Sample>>,
-    fft: Radix4<Sample>,
-    ifft: Radix4<Sample>,
+    fft: Arc<dyn Fft<Sample>>,
+    ifft: Arc<dyn Fft<Sample>>,
     period_mask: usize,
     ola_pos: usize,
     window_size: usize,
@@ -60,6 +63,10 @@ pub struct SpectralTransform {
     frame_number: usize,
     n_controls: usize,
     control_fired: Vec<bool>,
+    /// Preallocated per-frame/per-hop control storage so perform() never allocates.
+    controls: Vec<Frame>,
+    control_values: Vec<Sample>,
+    hop_fired: Vec<bool>,
     transform: TransformFn,
 }
 
@@ -85,16 +92,24 @@ impl SpectralTransform {
             1.0 / window_size as Sample
         };
 
+        // The planner picks SIMD (NEON/AVX) implementations; Radix4 used directly is scalar.
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(window_size);
+        let ifft = planner.plan_fft_inverse(window_size);
+        let scratch_len = fft
+            .get_inplace_scratch_len()
+            .max(ifft.get_inplace_scratch_len());
+
         SpectralTransform {
             input_buffers: vec![
                 std::iter::repeat_n(Complex::zero(), window_size).collect();
                 CHANNELS
             ],
             ola_buffers: vec![vec![0.0; window_size]; CHANNELS],
-            scratch: vec![Complex::zero(); window_size],
+            scratch: vec![Complex::zero(); scratch_len],
             freq_buffer: vec![Complex::zero(); window_size],
-            fft: Radix4::new(window_size, Forward),
-            ifft: Radix4::new(window_size, Inverse),
+            fft,
+            ifft,
             period_mask: period - 1,
             ola_pos: 0,
             window_size,
@@ -104,13 +119,21 @@ impl SpectralTransform {
             frame_number: 0,
             n_controls,
             control_fired: vec![false; n_controls],
+            controls: vec![[0.0; CHANNELS]; n_controls],
+            control_values: vec![0.0; n_controls],
+            hop_fired: vec![false; n_controls],
             transform,
         }
     }
 
     pub fn shuffle(locality: usize, seed: Option<u64>) -> Self {
         let mut rng = seed.map_or_else(rand::make_rng::<SmallRng>, SmallRng::seed_from_u64);
-        let mut permutation = Vec::<usize>::new();
+        // All scratch is sized up front: the closure runs on the audio thread.
+        let bins_len = DEFAULT_WINDOW_SIZE / 2 + 1;
+        let mut permutation = Vec::<usize>::with_capacity(bins_len);
+        let mut bins = Vec::<usize>::with_capacity(bins_len);
+        let mut destinations = Vec::<usize>::with_capacity(bins_len);
+        let mut input = Vec::<Complex<Sample>>::with_capacity(bins_len);
         let mut initialized = false;
         Self::new(
             DEFAULT_WINDOW_SIZE,
@@ -136,10 +159,12 @@ impl SpectralTransform {
                             let block_len = block_end - block_start;
                             let selected = (amount * block_len as Sample).round() as usize;
                             if selected > 1 {
-                                let mut bins = (block_start..block_end).collect::<Vec<_>>();
+                                bins.clear();
+                                bins.extend(block_start..block_end);
                                 bins.shuffle(&mut rng);
                                 bins.truncate(selected);
-                                let mut destinations = bins.clone();
+                                destinations.clear();
+                                destinations.extend_from_slice(&bins);
                                 destinations.shuffle(&mut rng);
                                 for (&src, &dst) in bins.iter().zip(&destinations) {
                                     permutation[src] = dst;
@@ -151,7 +176,8 @@ impl SpectralTransform {
                 }
 
                 if permutation.len() == freqs.len() {
-                    let input = freqs.to_vec();
+                    input.clear();
+                    input.extend_from_slice(freqs);
                     for k in 1..nyquist {
                         freqs[permutation[k]] = input[k];
                     }
@@ -164,8 +190,11 @@ impl SpectralTransform {
         let _ = seed;
         let mut previous_gate = false;
         let mut rising_hop = false;
-        let mut captured_magnitudes = vec![Vec::<Sample>::new(); CHANNELS];
-        let mut captured_phases = vec![Vec::<Sample>::new(); CHANNELS];
+        // Sized up front: the closure runs on the audio thread.
+        let bins_len = DEFAULT_WINDOW_SIZE / 2 + 1;
+        let mut captured_magnitudes = vec![vec![0.0; bins_len]; CHANNELS];
+        let mut captured_phases = vec![vec![0.0; bins_len]; CHANNELS];
+        let mut has_capture = [false; CHANNELS];
         let mut capture_frames = [0usize; CHANNELS];
         Self::new(
             DEFAULT_WINDOW_SIZE,
@@ -180,7 +209,7 @@ impl SpectralTransform {
                     previous_gate = gate_high;
                 }
 
-                let captured_is_empty = captured_magnitudes[channel].len() != freqs.len()
+                let captured_is_empty = !has_capture[channel]
                     || captured_magnitudes[channel]
                         .iter()
                         .all(|&mag| mag <= Sample::EPSILON);
@@ -188,14 +217,21 @@ impl SpectralTransform {
                     && frame_number >= DEFAULT_WINDOW_SIZE
                     && (rising_hop || captured_is_empty);
                 if should_capture {
-                    captured_magnitudes[channel] = freqs.iter().map(|bin| bin.norm()).collect();
-                    captured_phases[channel] = freqs.iter().map(|bin| bin.arg()).collect();
+                    for ((magnitude, phase), bin) in captured_magnitudes[channel]
+                        .iter_mut()
+                        .zip(captured_phases[channel].iter_mut())
+                        .zip(freqs.iter())
+                    {
+                        *magnitude = bin.norm();
+                        *phase = bin.arg();
+                    }
+                    has_capture[channel] = true;
                     capture_frames[channel] = frame_number;
                     captured_magnitudes[channel][0] = 0.0;
                     captured_magnitudes[channel][nyquist] = 0.0;
                 }
 
-                if gate_high && captured_magnitudes[channel].len() == freqs.len() {
+                if gate_high && has_capture[channel] {
                     let n = nyquist * 2;
                     let frame_offset = frame_number.wrapping_sub(capture_frames[channel]) as Sample;
                     freqs[0] = Complex::zero();
@@ -252,25 +288,28 @@ impl SpectralTransform {
 
 impl Op for SpectralTransform {
     fn perform(&mut self, stack: &mut Stack) {
-        let mut popped_controls = Vec::with_capacity(self.n_controls);
-        for _ in 0..self.n_controls {
-            popped_controls.push(stack.pop());
+        for control in self.controls.iter_mut().rev() {
+            *control = stack.pop();
         }
-        popped_controls.reverse();
         let input_frame = stack.pop();
 
-        for (fired, frame) in self.control_fired.iter_mut().zip(&popped_controls) {
+        for (fired, frame) in self.control_fired.iter_mut().zip(&self.controls) {
             *fired |= frame.iter().any(|&x| x > 0.0);
         }
 
         let index = self.frame_number & self.period_mask;
         if index == 0 {
-            let values = popped_controls
-                .iter()
-                .map(|frame| frame[0])
-                .collect::<Vec<_>>();
-            let fired = self.control_fired.clone();
+            for (value, frame) in self.control_values.iter_mut().zip(&self.controls) {
+                *value = frame[0];
+            }
+            self.hop_fired.copy_from_slice(&self.control_fired);
+            // Move the snapshots out so process_hop can borrow self mutably; these
+            // are moves of existing allocations, not new ones.
+            let values = std::mem::take(&mut self.control_values);
+            let fired = std::mem::take(&mut self.hop_fired);
             self.process_hop(&values, &fired);
+            self.control_values = values;
+            self.hop_fired = fired;
             self.control_fired.fill(false);
         }
 
@@ -297,11 +336,12 @@ impl Op for SpectralTransform {
             && self.window_size == other.window_size
             && self.n_controls == other.n_controls
         {
-            self.input_buffers = other.input_buffers.clone();
-            self.ola_buffers = other.ola_buffers.clone();
+            // Steal rather than clone: migrate runs on the audio thread.
+            std::mem::swap(&mut self.input_buffers, &mut other.input_buffers);
+            std::mem::swap(&mut self.ola_buffers, &mut other.ola_buffers);
             self.ola_pos = other.ola_pos;
             self.frame_number = other.frame_number;
-            self.control_fired = other.control_fired.clone();
+            self.control_fired.copy_from_slice(&other.control_fired);
             // The transform closure owns op-specific state (permutations,
             // freeze captures, RNG streams) and is intentionally not migrated.
         }
@@ -352,8 +392,8 @@ mod tests {
     }
 
     fn fft_magnitudes(input: &[Sample]) -> Vec<Sample> {
-        let fft = Radix4::new(input.len(), Forward);
-        let mut scratch = vec![Complex::zero(); input.len()];
+        let fft = FftPlanner::new().plan_fft_forward(input.len());
+        let mut scratch = vec![Complex::zero(); fft.get_inplace_scratch_len()];
         let mut buffer = input.iter().copied().map(Complex::from).collect::<Vec<_>>();
         fft.process_with_scratch(&mut buffer, &mut scratch);
         buffer[..(input.len() / 2 + 1)]
@@ -376,6 +416,31 @@ mod tests {
             db += y * y;
         }
         num / (da.sqrt() * db.sqrt())
+    }
+
+    #[test]
+    // The reference deliberately mirrors the original out-of-place loop.
+    #[allow(clippy::needless_range_loop)]
+    fn in_place_reverse_matches_copying_reference() {
+        for bins in [2, 3, 4, 5, 1025] {
+            let nyquist = bins - 1;
+            let original = (0..bins)
+                .map(|k| Complex::new(k as Sample + 0.5, -(k as Sample) * 0.25))
+                .collect::<Vec<_>>();
+            for frame_number in [0, 64, 12_345] {
+                let mut expected = original.clone();
+                let n = nyquist * 2;
+                for k in 1..nyquist {
+                    let src = nyquist - k;
+                    let phase =
+                        TAU * (k as Sample - src as Sample) * frame_number as Sample / n as Sample;
+                    expected[k] = original[src] * Complex::from_polar(1.0, phase);
+                }
+                let mut actual = original.clone();
+                reverse_half_spectrum(0, frame_number, &mut actual, &[], &[]);
+                assert_eq!(actual, expected, "bins {bins}, frame {frame_number}");
+            }
+        }
     }
 
     #[test]

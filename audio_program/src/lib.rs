@@ -778,6 +778,7 @@ fn compile_segment(
                         },
                         "conv" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
+                                Ok(0) => log::warn!("Kernel length must be positive."),
                                 Ok(window_size) => push_args!(id, Convolution, window_size),
                                 Err(_) => {
                                     log::warn!("Can't parse {} as kernel length.", x);
@@ -789,6 +790,7 @@ fn compile_segment(
                         },
                         "convm" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
+                                Ok(0) => log::warn!("Kernel length must be positive."),
                                 Ok(window_size) => push_args!(id, ConvolutionM, window_size),
                                 Err(_) => {
                                     log::warn!("Can't parse {} as kernel length.", x);
@@ -826,7 +828,11 @@ fn compile_segment(
                             None => push_args!(id, Comp, sample_rate, 0.1),
                         },
                         "norm" => match tokens.get(1) {
-                            Some(x) => push_args!(id, Normalise, x.parse::<usize>().unwrap_or(256)),
+                            Some(x) => push_args!(
+                                id,
+                                Normalise,
+                                x.parse::<usize>().ok().filter(|&n| n > 0).unwrap_or(256)
+                            ),
                             None => push_args!(id, Normalise, 256),
                         },
                         "scale" => match tokens.get(1).and_then(|name| ScaleQuantizer::named(name))

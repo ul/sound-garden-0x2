@@ -325,7 +325,8 @@ pub fn clip(x: Sample) -> Sample {
 
 #[inline]
 pub fn wrap(x: Sample) -> Sample {
-    (x + 1.0) % 2.0 - 1.0
+    // Floor-based: `%` keeps the dividend's sign, so inputs below -1 would escape the range.
+    x - 2.0 * ((x + 1.0) * 0.5).floor()
 }
 
 #[inline]

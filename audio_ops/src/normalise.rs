@@ -40,8 +40,10 @@ impl Normalise {
         self.min_deque.clear();
         self.max_deque.clear();
         let start = self.index.saturating_sub(self.window_size);
-        let frames: Vec<_> = self.window.iter().copied().collect();
-        for (offset, frame) in frames.into_iter().enumerate() {
+        // Runs from migrate() on the audio thread: walk the window by index rather
+        // than collecting it, so rebuilding does not allocate.
+        for offset in 0..self.window_size {
+            let frame = self.window[offset];
             self.push_deque_values(start + offset, &frame);
         }
     }

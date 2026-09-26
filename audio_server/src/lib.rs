@@ -53,6 +53,9 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let vm = VM::new();
     let monitor = vm.monitor();
     let pattern_monitor = vm.pattern_monitor();
+    // Pattern monitor ids are updated from this thread, not the audio thread:
+    // replacing them locks and allocates.
+    let pattern_monitor_ids = vm.pattern_monitor();
     let (producer, consumer) = RingBuffer::<Sample>::new(RECORD_BUFFER_CAPACITY);
     let (mut command_tx, command_rx) = RingBuffer::<audio::Command>::new(CHANNEL_CAPACITY);
     let (garbage_tx, mut garbage_rx) = RingBuffer::<Program>::new(CHANNEL_CAPACITY);
@@ -147,7 +150,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
                 command_tx.push(audio::Command::Monitor(id)).ok();
             }
             Msg::PatternMonitors(ids) => {
-                command_tx.push(audio::Command::PatternMonitors(ids)).ok();
+                audio_vm::set_pattern_monitor_ids(&pattern_monitor_ids, &ids);
             }
             Msg::Oscilloscope(on) => {
                 scope.sender().send(on).ok();

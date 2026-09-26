@@ -19,9 +19,12 @@
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
+/// Wrap phase into -1..1. Floor-based rather than `%` so negative frequencies
+/// wrap too (`%` keeps the dividend's sign) and it compiles to a single rounding
+/// instruction instead of an fmod call.
 #[inline]
 pub(crate) fn wrap_phase(phase: Sample) -> Sample {
-    ((phase + 1.0) % 2.0) - 1.0
+    phase - 2.0 * ((phase + 1.0) * 0.5).floor()
 }
 
 #[inline]
@@ -170,6 +173,26 @@ mod tests {
         stack.push(&[phase0; CHANNELS]);
         op.perform(&mut stack);
         stack.pop()
+    }
+
+    #[test]
+    fn negative_frequency_stays_in_range_and_runs_backwards() {
+        let mut phasor = Phasor::new(100);
+        let mut previous = 0.0;
+        let mut wraps = 0;
+        for _ in 0..1000 {
+            let mut stack = Stack::new();
+            stack.push(&[-7.0; CHANNELS]);
+            phasor.perform(&mut stack);
+            let phase = stack.pop()[0];
+            assert!((-1.0..1.0).contains(&phase), "phase {phase} out of range");
+            if phase > previous {
+                wraps += 1;
+            }
+            previous = phase;
+        }
+        // 7 Hz over 10 s, with the phasor's -1..1 span: one wrap per 2/7 s.
+        assert_eq!(wraps, 35);
     }
 
     #[test]

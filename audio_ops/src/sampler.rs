@@ -21,6 +21,11 @@ impl Op for TableReader {
         let index = stack.pop();
         let mut frame = [0.0; CHANNELS];
         let size = self.table.len();
+        if size == 0 {
+            // e.g. `wt:name:0`; avoid `% 0` panicking the audio thread.
+            stack.push(&frame);
+            return;
+        }
         for (channel, (sample, &ix)) in izip!(&mut frame, &index).enumerate() {
             let z = ix * self.sample_rate;
             let i = z as usize;

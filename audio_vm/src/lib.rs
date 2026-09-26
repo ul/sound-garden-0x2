@@ -9,5 +9,5 @@ pub use self::{
     op::Op,
     sample::{AtomicFrame, AtomicSample, CHANNELS, Frame, Sample},
     stack::Stack,
-    vm::{Program, Statement, VM, migrate_program_state},
+    vm::{Program, Statement, VM, migrate_program_state, set_pattern_monitor_ids},
 };
