@@ -92,7 +92,7 @@ pub struct NaivePulse {
 impl NaivePulse {
     pub fn new(sample_rate: u32) -> Self {
         let phasor = Phasor::new(sample_rate);
-        let osc = Fn2::new(rectangle);
+        let osc = Fn2::new(rectangle as fn(Sample, Sample) -> Sample);
         Self { phasor, osc }
     }
 }
@@ -120,7 +120,7 @@ pub struct NaivePulsePhase {
 impl NaivePulsePhase {
     pub fn new(sample_rate: u32) -> Self {
         let phasor = Phasor0::new(sample_rate);
-        let osc = Fn2::new(rectangle);
+        let osc = Fn2::new(rectangle as fn(Sample, Sample) -> Sample);
         Self { phasor, osc }
     }
 }

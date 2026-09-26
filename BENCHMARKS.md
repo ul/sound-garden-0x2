@@ -25,6 +25,24 @@ The `microstructure` bench (`cargo bench --bench microstructure`) validates eyeb
 - **`MIGRATION_INDEX_SIZE` indexed migration is justified.** Crossover vs linear scan is ≈len 32 (16: 180 ns vs 89 ns; 32: 249 vs 256; 64: 518 vs 928; 128: 1.15 µs vs 3.53 µs; 256: 1.81 µs vs 12.9 µs, reversed-id worst case). The ≈90 ns loss for tiny programs once per reload doesn't merit a small-program shortcut.
 - **Poly voice sub-programs should be `Box<[Statement]>` (or `Vec`), not `Program`.** Frame and construction times are identical across storages (≈692 ns frame, ≈1.8 µs construct for 8 voices × 12 ops); `SmallVec<[_;64]>` would add ≈1.5 KB inline per voice for zero benefit.
 
+## Op hot-path pass (2026-09, Apple Silicon)
+
+`vm_next_frame`, before → after:
+
+| bench | before | after | change | cause |
+|---|---|---|---|---|
+| `pitch_detection_yin` | 10.5 µs | 1.07 µs | −90% | contiguous window copy + 8 independent accumulators (the serial add chain was the bottleneck) |
+| `sliding_convolution_256` | 255 ns | 38 ns | −85% | O(1) running sum, exact resum every N frames |
+| `long_patterns_32_cells` | 165 ns | 79 ns | −51% | cell lookup starts from the previous cell; floor instead of fmod |
+| `spectral_shuffle` | 884 ns | 590 ns | −33% | `FftPlanner` (SIMD) instead of scalar `Radix4`; no per-frame `Vec` |
+| `spectral_reverse` | 1.08 µs | 791 ns | −27% | same, plus in-place bin reversal |
+| `poly_synth_16_voices` | 277 ns | 243 ns | −12% | `Fn1`..`Fn5` generic over the function, so it inlines |
+| `fm_arithmetic` | 128 ns | 116 ns | −10% | same |
+| `oscillator_bank` | 120 ns | 112 ns | −6% | floor-based `wrap_phase` |
+
+`tests/hot_path_load.rs::realtime_ops_do_not_allocate_while_rendering_or_reloading` guards the
+audio-thread no-allocation rule for these ops.
+
 Run all benchmarks:
 
 ```sh

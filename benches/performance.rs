@@ -125,6 +125,48 @@ fn poly_voices_ops() -> Vec<TextOp> {
     .collect()
 }
 
+fn words(source: &str) -> Vec<TextOp> {
+    source
+        .split_whitespace()
+        .enumerate()
+        .map(|(i, op)| text_op(i as u64 + 1, op))
+        .collect()
+}
+
+/// Non-constant binary/unary arithmetic, exercising the generic Fn ops.
+fn fm_arithmetic_ops() -> Vec<TextOp> {
+    words("110 s 220 s * 330 s + 440 s - 2 * tanh 550 s max")
+}
+
+/// Band-limited oscillators, exercising phase wrapping.
+fn oscillator_bank_ops() -> Vec<TextOp> {
+    words("110 w 220 t + 330 0.5 p + 440 0 saw + 550 0 tri + 0.2 *")
+}
+
+/// Long value/gate/trigger patterns, exercising per-sample cell lookup.
+fn long_pattern_ops() -> Vec<TextOp> {
+    let values = (0..32)
+        .map(|i| (48 + i).to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    words(&format!(
+        "1 cycle pat:{values} 1 cycle gate:{gates} + 1 cycle trig:{gates} + 1 cpat:{values} +",
+        gates = "x.".repeat(16),
+    ))
+}
+
+fn sliding_convolution_ops() -> Vec<TextOp> {
+    words("110 s 220 s conv:256")
+}
+
+fn spectral_shuffle_ops() -> Vec<TextOp> {
+    words("110 s 0.5 0 spectral_shuffle")
+}
+
+fn spectral_reverse_ops() -> Vec<TextOp> {
+    words("110 s spectral_reverse")
+}
+
 fn compile_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("compile_program");
 
@@ -198,6 +240,12 @@ fn audio_frame_benchmarks(c: &mut Criterion) {
         ("constant_arithmetic_64_terms", constant_arithmetic_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
         ("poly_8_voices", poly_voices_ops()),
+        ("fm_arithmetic", fm_arithmetic_ops()),
+        ("oscillator_bank", oscillator_bank_ops()),
+        ("long_patterns_32_cells", long_pattern_ops()),
+        ("sliding_convolution_256", sliding_convolution_ops()),
+        ("spectral_shuffle", spectral_shuffle_ops()),
+        ("spectral_reverse", spectral_reverse_ops()),
     ] {
         group.bench_function(name, |b| {
             let mut vm = vm_from_ops(&ops);

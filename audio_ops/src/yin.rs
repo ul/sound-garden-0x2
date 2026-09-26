@@ -15,6 +15,9 @@ pub struct Yin {
     sample_rate: Sample,
     threshold: Sample,
     window: Buffer<Frame>,
+    /// One channel of `window`, unrolled into chronological order for the
+    /// difference function's inner loop.
+    signal: Vec<Sample>,
     last_pitch: Frame,
 }
 
@@ -29,18 +32,20 @@ impl Yin {
             sample_rate: Sample::from(sample_rate),
             threshold,
             window: Buffer::new(Default::default(), window_size),
+            signal: vec![0.0; window_size],
             last_pitch: [0.0; CHANNELS],
         }
     }
 
     fn difference(&mut self, channel: usize) {
+        let (older, newer) = self.window.as_slices();
+        for (x, frame) in self.signal.iter_mut().zip(older.iter().chain(newer)) {
+            *x = frame[channel];
+        }
         let buffer_len = self.buffer.len();
+        let head = &self.signal[..buffer_len];
         for (tau, x) in self.buffer.iter_mut().enumerate().skip(1) {
-            *x = 0.0;
-            for i in 0..buffer_len {
-                let delta = self.window[i][channel] - self.window[i + tau][channel];
-                *x += delta * delta;
-            }
+            *x = squared_difference(head, &self.signal[tau..tau + buffer_len]);
         }
     }
 
@@ -89,6 +94,30 @@ impl Yin {
             x1 as Sample
         }
     }
+}
+
+/// Sum of squared differences. Independent accumulators break the serial
+/// dependency on one sum so the loop pipelines and vectorises; this is the
+/// O(n^2) core of YIN.
+#[inline]
+fn squared_difference(a: &[Sample], b: &[Sample]) -> Sample {
+    const LANES: usize = 8;
+    let mut sums = [0.0; LANES];
+    let a_chunks = a.chunks_exact(LANES);
+    let b_chunks = b.chunks_exact(LANES);
+    let tail = a_chunks
+        .remainder()
+        .iter()
+        .zip(b_chunks.remainder())
+        .map(|(x, y)| (x - y) * (x - y))
+        .sum::<Sample>();
+    for (a, b) in a_chunks.zip(b_chunks) {
+        for lane in 0..LANES {
+            let delta = a[lane] - b[lane];
+            sums[lane] += delta * delta;
+        }
+    }
+    sums.iter().sum::<Sample>() + tail
 }
 
 impl Op for Yin {

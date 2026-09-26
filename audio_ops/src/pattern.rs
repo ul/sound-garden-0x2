@@ -24,7 +24,8 @@ fn warn_invalid(kind: ParseKind, pattern: &str) {
 
 fn wrap_phase(phase: Sample) -> Sample {
     if phase.is_finite() {
-        phase.rem_euclid(1.0)
+        // Same result as `rem_euclid(1.0)` without the fmod call.
+        phase - phase.floor()
     } else {
         0.0
     }
@@ -188,12 +189,39 @@ fn flatten_pattern<T: Copy>(
     cells
 }
 
+/// Index of the first cell containing the wrapped phase, or the last cell if none does.
 fn cell_index<T>(phase: Sample, cells: &[Cell<T>]) -> usize {
     let phase = wrap_phase(phase);
     cells
         .iter()
         .position(|cell| phase >= cell.start && phase < cell.end)
         .unwrap_or_else(|| cells.len().saturating_sub(1))
+}
+
+/// Same result as `cell_index`, but first tries `hint` (the previous result) and
+/// its successor. Phase is almost always monotonic, so this is O(1) per sample
+/// instead of a linear scan. Updates `hint`.
+fn cell_index_hinted<T>(phase: Sample, cells: &[Cell<T>], hint: &mut usize) -> usize {
+    let wrapped = wrap_phase(phase);
+    let contains = |i: usize| {
+        cells
+            .get(i)
+            .is_some_and(|cell| wrapped >= cell.start && wrapped < cell.end)
+    };
+    // Cells are sorted by start; preserve `cell_index`'s first-match semantics
+    // where rounding makes neighbouring cells overlap by an ulp.
+    let first_containing = |i: usize| contains(i) && (i == 0 || !contains(i - 1));
+    let index = if first_containing(*hint) {
+        *hint
+    } else if first_containing(*hint + 1) {
+        *hint + 1
+    } else if first_containing(0) {
+        0
+    } else {
+        cell_index(phase, cells)
+    };
+    *hint = index;
+    index
 }
 
 #[derive(Clone, PartialEq)]
@@ -630,14 +658,19 @@ impl ValuePattern {
         }
     }
 
-    fn render(&self, phase: &Frame, cycle_counts: &[usize; CHANNELS]) -> Frame {
+    fn render(
+        &self,
+        phase: &Frame,
+        cycle_counts: &[usize; CHANNELS],
+        hints: &mut [usize; CHANNELS],
+    ) -> Frame {
         let mut frame = [0.0; CHANNELS];
         if self.values.is_empty() {
             return frame;
         }
         for (channel, (output, &phase)) in frame.iter_mut().zip(phase).enumerate() {
             let cells = self.values.cells(cycle_counts[channel]);
-            *output = cells[cell_index(phase, cells)].value;
+            *output = cells[cell_index_hinted(phase, cells, &mut hints[channel])].value;
         }
         frame
     }
@@ -655,14 +688,19 @@ impl GatePattern {
         }
     }
 
-    fn render_gate(&self, phase: &Frame, cycle_counts: &[usize; CHANNELS]) -> Frame {
+    fn render_gate(
+        &self,
+        phase: &Frame,
+        cycle_counts: &[usize; CHANNELS],
+        hints: &mut [usize; CHANNELS],
+    ) -> Frame {
         let mut frame = [0.0; CHANNELS];
         if self.gates.is_empty() {
             return frame;
         }
         for (channel, (output, &phase)) in frame.iter_mut().zip(phase).enumerate() {
             let cells = self.gates.cells(cycle_counts[channel]);
-            *output = if cells[cell_index(phase, cells)].value {
+            *output = if cells[cell_index_hinted(phase, cells, &mut hints[channel])].value {
                 1.0
             } else {
                 0.0
@@ -713,6 +751,8 @@ pub struct PatternValue {
     pattern: ValuePattern,
     previous_phases: [Option<Sample>; CHANNELS],
     cycle_counts: [usize; CHANNELS],
+    /// Previous cell lookup per channel; a cache, not migrated state.
+    cell_hints: [usize; CHANNELS],
 }
 
 impl PatternValue {
@@ -725,6 +765,7 @@ impl PatternValue {
             pattern: ValuePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
+            cell_hints: [0; CHANNELS],
         }
     }
 }
@@ -733,7 +774,11 @@ impl Op for PatternValue {
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
         update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
-        stack.push(&self.pattern.render(&phase, &self.cycle_counts));
+        stack.push(
+            &self
+                .pattern
+                .render(&phase, &self.cycle_counts, &mut self.cell_hints),
+        );
     }
 }
 
@@ -741,6 +786,8 @@ pub struct PatternGate {
     pattern: GatePattern,
     previous_phases: [Option<Sample>; CHANNELS],
     cycle_counts: [usize; CHANNELS],
+    /// Previous cell lookup per channel; a cache, not migrated state.
+    cell_hints: [usize; CHANNELS],
 }
 
 impl PatternGate {
@@ -753,6 +800,7 @@ impl PatternGate {
             pattern: GatePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
+            cell_hints: [0; CHANNELS],
         }
     }
 }
@@ -761,7 +809,11 @@ impl Op for PatternGate {
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
         update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
-        stack.push(&self.pattern.render_gate(&phase, &self.cycle_counts));
+        stack.push(
+            &self
+                .pattern
+                .render_gate(&phase, &self.cycle_counts, &mut self.cell_hints),
+        );
     }
 }
 
@@ -770,6 +822,8 @@ pub struct PatternTrigger {
     previous_indices: [Option<usize>; CHANNELS],
     previous_phases: [Option<Sample>; CHANNELS],
     cycle_counts: [usize; CHANNELS],
+    /// Previous cell lookup per channel; a cache, not migrated state.
+    cell_hints: [usize; CHANNELS],
 }
 
 impl PatternTrigger {
@@ -783,6 +837,7 @@ impl PatternTrigger {
             previous_indices: [None; CHANNELS],
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
+            cell_hints: [0; CHANNELS],
         }
     }
 
@@ -799,7 +854,7 @@ impl PatternTrigger {
                 self.cycle_counts[channel] = self.cycle_counts[channel].wrapping_add(1);
             }
             let cells = self.pattern.gates.cells(self.cycle_counts[channel]);
-            let index = cell_index(phase, cells);
+            let index = cell_index_hinted(phase, cells, &mut self.cell_hints[channel]);
             let active = cells[index].value;
             let entered_active_cell = self.previous_indices[channel] != Some(index) && active;
             *output = if entered_active_cell || (forward_cycle_wrap && active) {
@@ -859,6 +914,8 @@ pub struct ClockedPatternValue {
     pattern: ValuePattern,
     previous_phases: [Option<Sample>; CHANNELS],
     cycle_counts: [usize; CHANNELS],
+    /// Previous cell lookup per channel; a cache, not migrated state.
+    cell_hints: [usize; CHANNELS],
 }
 
 impl ClockedPatternValue {
@@ -872,6 +929,7 @@ impl ClockedPatternValue {
             pattern: ValuePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
+            cell_hints: [0; CHANNELS],
         }
     }
 }
@@ -881,7 +939,11 @@ impl Op for ClockedPatternValue {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
         update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
-        stack.push(&self.pattern.render(&phase, &self.cycle_counts));
+        stack.push(
+            &self
+                .pattern
+                .render(&phase, &self.cycle_counts, &mut self.cell_hints),
+        );
     }
 
     fn migrate(&mut self, other: &mut dyn Op) {
@@ -898,6 +960,8 @@ pub struct ClockedPatternGate {
     pattern: GatePattern,
     previous_phases: [Option<Sample>; CHANNELS],
     cycle_counts: [usize; CHANNELS],
+    /// Previous cell lookup per channel; a cache, not migrated state.
+    cell_hints: [usize; CHANNELS],
 }
 
 impl ClockedPatternGate {
@@ -911,6 +975,7 @@ impl ClockedPatternGate {
             pattern: GatePattern::with_seed(pattern, seed_perturbation),
             previous_phases: [None; CHANNELS],
             cycle_counts: [0; CHANNELS],
+            cell_hints: [0; CHANNELS],
         }
     }
 }
@@ -920,7 +985,11 @@ impl Op for ClockedPatternGate {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
         update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
-        stack.push(&self.pattern.render_gate(&phase, &self.cycle_counts));
+        stack.push(
+            &self
+                .pattern
+                .render_gate(&phase, &self.cycle_counts, &mut self.cell_hints),
+        );
     }
 
     fn migrate(&mut self, other: &mut dyn Op) {
@@ -1322,6 +1391,47 @@ mod tests {
             let phase = perform(&mut cycle, [1.0, 2.0]);
             let explicit_frame = perform(&mut pat, phase);
             assert_eq!(clocked_frame, explicit_frame);
+        }
+    }
+
+    #[test]
+    fn hinted_cell_lookup_matches_linear_scan() {
+        let patterns = [
+            "60",
+            "60,64,67,72",
+            "60,[64,67],72,[67,[1,2,3]]",
+            "[1,2,3]*7,4",
+            "60(3,8)",
+            "60(5,13,-12),[1,2](3,7)",
+            "<60,64;67,72,74>,1|2|3",
+        ];
+        // Forward at several rates, backwards, and pseudo-random jumps.
+        let mut phases = Vec::new();
+        for step in [0.001, 0.013, 0.37] {
+            phases.extend((0..2000).map(|i| i as Sample * step));
+        }
+        phases.extend((0..2000).map(|i| -(i as Sample) * 0.007));
+        let mut x: u64 = 1;
+        phases.extend((0..2000).map(|_| {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (x >> 11) as Sample / (1u64 << 53) as Sample * 4.0 - 2.0
+        }));
+        phases.extend([0.0, 1.0, -0.0, -1e-17, 1e-17, 0.9999999999999999]);
+
+        for pattern in patterns {
+            let pattern = parse_values(pattern, 0);
+            for variant in &pattern.variants {
+                let mut hint = 0;
+                for &phase in &phases {
+                    assert_eq!(
+                        cell_index_hinted(phase, variant, &mut hint),
+                        cell_index(phase, variant),
+                        "phase {phase}"
+                    );
+                }
+            }
         }
     }
 }

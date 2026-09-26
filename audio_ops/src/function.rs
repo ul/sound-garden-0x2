@@ -1,17 +1,22 @@
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
-pub struct Fn1 {
-    f: fn(Sample) -> Sample,
+// Fn1..Fn5 are generic over the function so that `FnN::new(pure::add)` is
+// monomorphised over the zero-sized function item type and inlined, instead of
+// paying an indirect call per channel per frame. The default type parameter keeps
+// the plain function-pointer form available where the function is chosen at runtime.
+
+pub struct Fn1<F = fn(Sample) -> Sample> {
+    f: F,
 }
 
-impl Fn1 {
-    pub fn new(f: fn(Sample) -> Sample) -> Self {
+impl<F: Fn(Sample) -> Sample> Fn1<F> {
+    pub fn new(f: F) -> Self {
         Fn1 { f }
     }
 }
 
-impl Op for Fn1 {
+impl<F: Fn(Sample) -> Sample + Send + 'static> Op for Fn1<F> {
     fn perform(&mut self, stack: &mut Stack) {
         let mut frame = [0.0; CHANNELS];
         for (y, &x) in frame.iter_mut().zip(&stack.pop()) {
@@ -21,17 +26,17 @@ impl Op for Fn1 {
     }
 }
 
-pub struct Fn2 {
-    f: fn(Sample, Sample) -> Sample,
+pub struct Fn2<F = fn(Sample, Sample) -> Sample> {
+    f: F,
 }
 
-impl Fn2 {
-    pub fn new(f: fn(Sample, Sample) -> Sample) -> Self {
+impl<F: Fn(Sample, Sample) -> Sample> Fn2<F> {
+    pub fn new(f: F) -> Self {
         Fn2 { f }
     }
 }
 
-impl Op for Fn2 {
+impl<F: Fn(Sample, Sample) -> Sample + Send + 'static> Op for Fn2<F> {
     fn perform(&mut self, stack: &mut Stack) {
         let b = stack.pop();
         let a = stack.pop();
@@ -175,17 +180,17 @@ impl Op for RDivConst {
     }
 }
 
-pub struct Fn3 {
-    f: fn(Sample, Sample, Sample) -> Sample,
+pub struct Fn3<F = fn(Sample, Sample, Sample) -> Sample> {
+    f: F,
 }
 
-impl Fn3 {
-    pub fn new(f: fn(Sample, Sample, Sample) -> Sample) -> Self {
+impl<F: Fn(Sample, Sample, Sample) -> Sample> Fn3<F> {
+    pub fn new(f: F) -> Self {
         Fn3 { f }
     }
 }
 
-impl Op for Fn3 {
+impl<F: Fn(Sample, Sample, Sample) -> Sample + Send + 'static> Op for Fn3<F> {
     fn perform(&mut self, stack: &mut Stack) {
         let c = stack.pop();
         let b = stack.pop();
@@ -198,17 +203,17 @@ impl Op for Fn3 {
     }
 }
 
-pub struct Fn4 {
-    f: fn(Sample, Sample, Sample, Sample) -> Sample,
+pub struct Fn4<F = fn(Sample, Sample, Sample, Sample) -> Sample> {
+    f: F,
 }
 
-impl Fn4 {
-    pub fn new(f: fn(Sample, Sample, Sample, Sample) -> Sample) -> Self {
+impl<F: Fn(Sample, Sample, Sample, Sample) -> Sample> Fn4<F> {
+    pub fn new(f: F) -> Self {
         Fn4 { f }
     }
 }
 
-impl Op for Fn4 {
+impl<F: Fn(Sample, Sample, Sample, Sample) -> Sample + Send + 'static> Op for Fn4<F> {
     fn perform(&mut self, stack: &mut Stack) {
         let d = stack.pop();
         let c = stack.pop();
@@ -222,17 +227,17 @@ impl Op for Fn4 {
     }
 }
 
-pub struct Fn5 {
-    f: fn(Sample, Sample, Sample, Sample, Sample) -> Sample,
+pub struct Fn5<F = fn(Sample, Sample, Sample, Sample, Sample) -> Sample> {
+    f: F,
 }
 
-impl Fn5 {
-    pub fn new(f: fn(Sample, Sample, Sample, Sample, Sample) -> Sample) -> Self {
+impl<F: Fn(Sample, Sample, Sample, Sample, Sample) -> Sample> Fn5<F> {
+    pub fn new(f: F) -> Self {
         Fn5 { f }
     }
 }
 
-impl Op for Fn5 {
+impl<F: Fn(Sample, Sample, Sample, Sample, Sample) -> Sample + Send + 'static> Op for Fn5<F> {
     fn perform(&mut self, stack: &mut Stack) {
         let e = stack.pop();
         let d = stack.pop();
