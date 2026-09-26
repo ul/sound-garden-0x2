@@ -11,9 +11,12 @@ use sound_garden_types::*;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 use thread_worker::Worker;
 
+/// Upper bound on how long an edit stays unsaved.
+const SAVE_DELAY: Duration = Duration::from_secs(1);
 const FONT_SIZE: f32 = 14.0;
 const MODELINE_FONT_SIZE: f32 = 12.0;
 const OSCILLOSCOPE_FONT_SIZE: f32 = 12.0;
@@ -179,6 +182,8 @@ struct SoundGardenApp {
     oscilloscope_max: f64,
     monitor_stream_enabled: bool,
     pattern_monitors: HashMap<Id, PatternMonitor>,
+    /// When the pending save should be written; None when nothing is unsaved.
+    save_due: Option<Instant>,
 }
 
 #[derive(Clone, Copy)]
@@ -198,6 +203,9 @@ struct NodeDrag {
 
 impl Drop for SoundGardenApp {
     fn drop(&mut self) {
+        if self.save_due.is_some() {
+            self.save_now();
+        }
         self.audio_tx.send(audio_server::Message::Quit).ok();
     }
 }
@@ -224,15 +232,37 @@ impl SoundGardenApp {
             oscilloscope_max: 1.0,
             monitor_stream_enabled: false,
             pattern_monitors: HashMap::new(),
+            save_due: None,
         };
         app.sync_from_repo();
         app.update_audio_monitor();
         app
     }
 
-    fn save(&self) {
-        if self.node_repo.lock().unwrap().save(&self.filename).is_err() {
-            log::error!("Failed to save {}", &self.filename);
+    /// Saving rewrites the whole document, so edits schedule a save rather than
+    /// writing on every keystroke. The deadline is set by the first unsaved
+    /// edit and not pushed back by later ones, so continuous typing still
+    /// saves at least every SAVE_DELAY.
+    fn request_save(&mut self) {
+        self.save_due
+            .get_or_insert_with(|| Instant::now() + SAVE_DELAY);
+    }
+
+    fn save_if_due(&mut self, ctx: &egui::Context) {
+        if let Some(due) = self.save_due {
+            let now = Instant::now();
+            if now >= due {
+                self.save_now();
+            } else {
+                ctx.request_repaint_after(due - now);
+            }
+        }
+    }
+
+    fn save_now(&mut self) {
+        self.save_due = None;
+        if let Err(err) = self.node_repo.lock().unwrap().save(&self.filename) {
+            log::error!("Failed to save {}: {err}", &self.filename);
         }
     }
 
@@ -241,7 +271,7 @@ impl SoundGardenApp {
             .lock()
             .unwrap()
             .edit_nodes(edits, self.undo_group);
-        self.save();
+        self.request_save();
     }
 
     fn set_cursor(&mut self) {
@@ -249,7 +279,7 @@ impl SoundGardenApp {
             .lock()
             .unwrap()
             .set_cursor(&self.state.cursor, self.undo_group);
-        self.save();
+        self.request_save();
     }
 
     fn sync_from_repo(&mut self) {
@@ -362,7 +392,7 @@ impl SoundGardenApp {
                         .lock()
                         .unwrap()
                         .delete_nodes(&[node.id], self.undo_group);
-                    self.save();
+                    self.request_save();
                 }
             }
             Action::DeleteLine => {
@@ -377,7 +407,7 @@ impl SoundGardenApp {
                     .lock()
                     .unwrap()
                     .delete_nodes(&ids, self.undo_group);
-                self.save();
+                self.request_save();
             }
             Action::CutNode => {
                 self.state.mode = Mode::Insert;
@@ -410,11 +440,11 @@ impl SoundGardenApp {
             }
             Action::Undo => {
                 self.node_repo.lock().unwrap().undo();
-                self.save();
+                self.request_save();
             }
             Action::Redo => {
                 self.node_repo.lock().unwrap().redo();
-                self.save();
+                self.request_save();
             }
             Action::Debug => {
                 let repo = self.node_repo.lock().unwrap();
@@ -887,7 +917,7 @@ impl SoundGardenApp {
         }
         self.state.cursor.position.y += 1.0;
         self.set_cursor();
-        self.save();
+        self.request_save();
     }
 
     fn commit_program(&mut self) {
@@ -1345,6 +1375,9 @@ impl eframe::App for SoundGardenApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(BACKGROUND_COLOR))
             .show_inside(ui, |ui| self.draw_canvas(ui));
+
+        // Last, so edits made while drawing (e.g. node drags) are included.
+        self.save_if_due(&ctx);
     }
 }
 
@@ -2085,5 +2118,34 @@ mod tests {
 
         assert!(!app.state.draft);
         assert!(app.state.draft_nodes.is_empty());
+    }
+
+    #[test]
+    fn edits_are_saved_after_a_delay_not_immediately() {
+        let mut app = app_with_nodes(vec![node(1, 0.0, 0.0, "110")], Point::new(0.0, 0.0));
+        let path = std::path::PathBuf::from(&app.filename);
+        app.handle_action(Action::DeleteNode);
+        assert!(!path.exists(), "saved on the edit itself");
+
+        app.save_due = Some(Instant::now() - Duration::from_millis(1));
+        app.save_if_due(&egui::Context::default());
+        assert!(path.exists(), "not saved once due");
+        assert!(app.save_due.is_none());
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn pending_save_is_flushed_when_the_app_closes() {
+        let mut app = app_with_nodes(vec![node(1, 0.0, 0.0, "110")], Point::new(0.0, 0.0));
+        let path = std::path::PathBuf::from(&app.filename);
+        app.handle_action(Action::DeleteNode);
+        drop(app);
+        assert!(path.exists());
+        assert!(
+            NodeRepository::load(path.to_str().unwrap())
+                .nodes()
+                .is_empty()
+        );
+        std::fs::remove_file(path).ok();
     }
 }

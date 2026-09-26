@@ -1,15 +1,24 @@
 use anyhow::Result;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sound_garden_types::*;
-use std::{collections::HashMap, convert::TryFrom};
+use std::{
+    collections::{HashMap, VecDeque},
+    convert::TryFrom,
+    io::Write,
+    path::Path,
+};
+
+/// Undo history is whole-document snapshots; bound it so a long session
+/// can't grow memory without limit.
+const MAX_UNDO_STEPS: usize = 1000;
 
 /// Repository is the source of truth for the Sound Garden document.
 #[derive(Default)]
 pub struct NodeRepository {
     nodes: Vec<Node>,
     cursor: Cursor,
-    undo_stack: Vec<Snapshot>,
-    redo_stack: Vec<Snapshot>,
+    undo_stack: VecDeque<Snapshot>,
+    redo_stack: VecDeque<Snapshot>,
     last_undo_group: Option<u64>,
 }
 
@@ -81,8 +90,9 @@ impl NodeRepository {
     }
 
     pub fn undo(&mut self) -> bool {
-        if let Some(snapshot) = self.undo_stack.pop() {
-            self.redo_stack.push(self.snapshot());
+        if let Some(snapshot) = self.undo_stack.pop_back() {
+            let current = self.snapshot();
+            push_bounded(&mut self.redo_stack, current);
             self.restore(snapshot);
             self.last_undo_group = None;
             true
@@ -92,8 +102,9 @@ impl NodeRepository {
     }
 
     pub fn redo(&mut self) -> bool {
-        if let Some(snapshot) = self.redo_stack.pop() {
-            self.undo_stack.push(self.snapshot());
+        if let Some(snapshot) = self.redo_stack.pop_back() {
+            let current = self.snapshot();
+            push_bounded(&mut self.undo_stack, current);
             self.restore(snapshot);
             self.last_undo_group = None;
             true
@@ -110,15 +121,34 @@ impl NodeRepository {
             .unwrap_or_default()
     }
 
-    // TODO Atomic write.
+    /// Write atomically: serialise into a temporary file next to `filename`,
+    /// sync it, then rename it over the original. A crash or error mid-save
+    /// leaves the previous file intact rather than a truncated one.
     pub fn save(&self, filename: &str) -> Result<()> {
-        std::fs::File::create(filename)
-            .or_else(|e| anyhow::bail!(e))
-            .and_then(|f| {
-                ciborium::into_writer(self, snap::write::FrameEncoder::new(f))
-                    .or_else(|e| anyhow::bail!(e))
-            })
-            .map(|_| ())
+        let path = Path::new(filename);
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Not a file path: {filename}"))?;
+        let mut temp_name = std::ffi::OsString::from(".");
+        temp_name.push(file_name);
+        temp_name.push(".tmp");
+        let temp_path = path.with_file_name(temp_name);
+
+        let result = (|| {
+            let mut encoder = snap::write::FrameEncoder::new(std::fs::File::create(&temp_path)?);
+            ciborium::into_writer(self, &mut encoder).map_err(|e| anyhow::anyhow!("{e}"))?;
+            encoder.flush()?;
+            let file = encoder
+                .into_inner()
+                .map_err(|e| anyhow::anyhow!("{}", e.error()))?;
+            file.sync_all()?;
+            std::fs::rename(&temp_path, path)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            std::fs::remove_file(&temp_path).ok();
+        }
+        result
     }
 
     pub fn nodes(&self) -> Vec<Node> {
@@ -169,7 +199,8 @@ impl NodeRepository {
 
     fn push_undo_snapshot(&mut self, group: u64) {
         if self.last_undo_group != Some(group) {
-            self.undo_stack.push(self.snapshot());
+            let current = self.snapshot();
+            push_bounded(&mut self.undo_stack, current);
             self.redo_stack.clear();
             self.last_undo_group = Some(group);
         }
@@ -185,6 +216,13 @@ impl NodeRepository {
         self.nodes
             .sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
     }
+}
+
+fn push_bounded(stack: &mut VecDeque<Snapshot>, snapshot: Snapshot) {
+    if stack.len() == MAX_UNDO_STEPS {
+        stack.pop_front();
+    }
+    stack.push_back(snapshot);
 }
 
 impl Serialize for NodeRepository {
@@ -384,5 +422,48 @@ mod tests {
         assert_eq!(repo.nodes().len(), 2);
         assert_eq!(repo.text(), "000000000000000a\tosc\n000000000000000b\t+\n");
         assert!(NodeRepository::try_from("not-hex\tbad\n").is_err());
+    }
+
+    #[test]
+    fn save_replaces_file_atomically_and_leaves_no_temp_file() {
+        let dir = std::env::temp_dir().join(format!("sg-format-test-{:?}", Id::random()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("piece.sg");
+        let filename = path.to_str().unwrap();
+
+        let mut repo = NodeRepository::new();
+        repo.add_node(node(0x1, 0.0, 0.0, "110"), 1);
+        repo.save(filename).unwrap();
+        repo.add_node(node(0x2, 1.0, 0.0, "s"), 2);
+        repo.save(filename).unwrap();
+
+        let loaded = NodeRepository::load(filename);
+        let texts = loaded
+            .nodes()
+            .into_iter()
+            .map(|n| n.text)
+            .collect::<Vec<_>>();
+        assert_eq!(texts, ["110", "s"]);
+        let entries = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(entries, ["piece.sg"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn undo_history_is_bounded() {
+        let mut repo = NodeRepository::new();
+        for group in 0..(MAX_UNDO_STEPS as u64 + 10) {
+            repo.add_node(node(group + 1, group as f64, 0.0, "x"), group);
+        }
+        let mut undos = 0;
+        while repo.undo() {
+            undos += 1;
+        }
+        assert_eq!(undos, MAX_UNDO_STEPS);
+        // The oldest steps were dropped, so undo stops short of empty.
+        assert_eq!(repo.nodes().len(), 10);
     }
 }
