@@ -1,0 +1,18 @@
+[preface]
+== Preface
+
+// DRAFT: placeholder so the build has a front door. To be written together.
+
+This book grows a garden.
+You start with a single number, played 48,000 times a second, and end with pieces of music built from parts you understand all the way down.
+
+Every program in the book is real and runs as printed.
+Press play next to it to hear it, or open the file it came from and play it yourself:
+
+[source,shell]
+----
+$ play_program < examples/01-first-sounds/01-tuning-fork.txt
+----
+
+WARNING: Turn your speakers or headphones down before the first sound.
+Synthesized sound can be much louder than recorded music at the same volume setting.

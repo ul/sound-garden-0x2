@@ -1,0 +1,11 @@
+# Book toolchain: AsciiDoc in the repository, rendered sounds as part of the build
+
+The Sound Garden book is written in AsciiDoc under `book/`, in this repository, and built by Asciidoctor with a small Ruby extension and a Rust renderer (`book_render`) that links the engine crates directly. The primary medium is a single HTML page where every program is playable; PDF and EPUB are deferred.
+
+Living next to the engine is the point: a book about livecoding from first principles is only trustworthy if every program in it runs as printed on the current language. The build renders each `[sound]` block with the real VM, so a language change that breaks or silently changes an example shows up as a build warning (unknown word, compiler warning, clipping) or a changed render, and `make check` fails on it. The reference appendix includes `audio_program/src/help.adoc`, the same text the editor's help window uses, and listings take their tooltips from it, so there is one source of truth for what each word does.
+
+AsciiDoc was chosen over Markdown (mdBook) and Typst because the project's docs are already AsciiDoc, it has book structure built in (parts, chapters, appendices, cross references with numbered captions, callouts that annotate a program line by line), and its extension API lets a sound be a first-class block. Typst produces the best PDF and mathematics but its HTML output can't host players; mdBook has good navigation but no callouts or numbered cross references. The cost is Ruby for the extension, kept small, with all signal work in Rust.
+
+Figures are generated, not drawn: waveforms (with a per-sample lollipop view for short windows) and spectra are SVG with classes only, so they follow the page's light and dark themes; spectrograms are ffmpeg PNGs for now. Audio is MP3 for universal browser support. Renders are cached by a hash of program, options and renderer binary, so edits rebuild in under a second while engine changes re-render everything.
+
+Programs are written inline in chapters (callouts need them there) and exported to `examples/<chapter>/<n-title>.txt` at build time, so readers get every example as a file for `play_program` or the editor; long pieces live in files and are included.

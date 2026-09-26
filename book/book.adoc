@@ -1,0 +1,43 @@
+= Sound Garden
+:subtitle: Synthesis and Livecoding from First Principles
+Ruslan Prakapchuk
+:description: A book about growing music from first principles with Sound Garden.
+:doctype: book
+:toc: left
+:toclevels: 2
+:toc-title: Contents
+:sectnums:
+:sectnumlevels: 2
+:sectanchors:
+:sectlinks:
+:xrefstyle: short
+:idprefix:
+:idseparator: -
+:experimental:
+:stem: latexmath
+:source-highlighter: sg-rouge
+:rouge-css: class
+:source-language: sg
+:stylesdir: theme
+:stylesheet: book.css
+:linkcss:
+:copycss: theme/book.css
+:webfonts!:
+:docinfo: shared
+:docinfodir: theme
+:imagesdir: images
+:sound-caption: Sound
+:example-caption!:
+ifdef::draft[:revremark: Working draft — built {docdate}]
+
+include::chapters/preface.adoc[]
+
+// Chapters go here, one file each: chapters/01-<slug>.adoc, included in reading order.
+
+[appendix]
+include::chapters/reference.adoc[]
+
+ifdef::draft[]
+[appendix]
+include::chapters/sampler.adoc[]
+endif::[]

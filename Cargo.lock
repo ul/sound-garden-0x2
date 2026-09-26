@@ -664,6 +664,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "book_render"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "audio_program",
+ "audio_vm",
+ "hound",
+ "log",
+ "rustfft",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

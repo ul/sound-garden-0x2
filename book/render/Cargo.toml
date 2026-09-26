@@ -1,0 +1,13 @@
+[package]
+name = "book_render"
+version = "0.1.0"
+edition = "2024"
+description = "Renders Sound Garden book examples to audio and figures."
+
+[dependencies]
+anyhow.workspace = true
+hound.workspace = true
+log.workspace = true
+rustfft.workspace = true
+audio_program = { path = "../../audio_program" }
+audio_vm = { path = "../../audio_vm" }

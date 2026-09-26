@@ -1,0 +1,166 @@
+<script>
+// Sound Garden book: players for [sound] blocks, copy buttons, current-section highlight in the TOC.
+(() => {
+  const players = [...document.querySelectorAll('.sound-player')];
+  const fmt = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+
+  for (const player of players) {
+    const audio = player.querySelector('audio');
+    const button = player.querySelector('.sound-play');
+    const scrub = player.querySelector('.sound-scrub');
+    const progress = player.querySelector('.sound-progress');
+    const time = player.querySelector('.sound-time');
+    const total = time.textContent;
+    const block = player.closest('.soundblock');
+    const wave = block && block.querySelector('.sound-figure.wave svg');
+    const overview = scrub.querySelector('svg');
+    if (overview) progress.append(overview.cloneNode(true));
+    const fit = () => { if (progress.firstChild) progress.firstChild.style.width = `${scrub.clientWidth}px`; };
+    fit();
+    new ResizeObserver(fit).observe(scrub);
+
+    let frame = 0;
+    const draw = () => {
+      const d = audio.duration || 0;
+      const t = audio.currentTime;
+      progress.style.width = d ? `${(100 * t) / d}%` : '0';
+      time.textContent = audio.paused && t === 0 ? total : fmt(t);
+      if (wave) {
+        const t0 = +wave.dataset.t0, span = +wave.dataset.duration;
+        const line = wave.querySelector('.playhead');
+        const box = wave.viewBox.baseVal;
+        const x = 34 + (box.width - 42) * (t - t0) / span;
+        const visible = !audio.paused && t >= t0 && t <= t0 + span;
+        line.setAttribute('visibility', visible ? 'visible' : 'hidden');
+        if (visible) { line.setAttribute('x1', x); line.setAttribute('x2', x); }
+      }
+      if (!audio.paused) frame = requestAnimationFrame(draw);
+    };
+    const play = () => {
+      for (const other of document.querySelectorAll('.sound-player audio')) if (other !== audio) other.pause();
+      audio.play();
+    };
+    button.addEventListener('click', () => (audio.paused ? play() : audio.pause()));
+    audio.addEventListener('play', () => { player.dataset.state = 'playing'; button.ariaLabel = 'Pause'; draw(); });
+    audio.addEventListener('pause', () => { player.dataset.state = 'paused'; button.ariaLabel = 'Play'; cancelAnimationFrame(frame); draw(); });
+    audio.addEventListener('ended', () => { audio.currentTime = 0; draw(); });
+
+    const seek = (e) => {
+      const r = scrub.getBoundingClientRect();
+      const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const go = () => { audio.currentTime = f * audio.duration; draw(); };
+      audio.readyState >= 1 ? go() : audio.addEventListener('loadedmetadata', go, { once: true });
+      if (audio.paused) play();
+    };
+    scrub.addEventListener('pointerdown', (e) => {
+      seek(e);
+      scrub.setPointerCapture(e.pointerId);
+      const move = (m) => seek(m);
+      scrub.addEventListener('pointermove', move);
+      scrub.addEventListener('pointerup', () => scrub.removeEventListener('pointermove', move), { once: true });
+    });
+  }
+
+  // Escape silences the whole book.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') for (const a of document.querySelectorAll('.sound-player audio')) a.pause();
+  });
+
+  // Reference popover for words in programs: on hover, or on tap/click (which pins it open).
+  const tip = document.createElement('div');
+  tip.className = 'sg-tip';
+  tip.setAttribute('role', 'tooltip');
+  tip.hidden = true;
+  document.body.append(tip);
+  const refs = new Map(
+    [...document.querySelectorAll('.sect1 h3[id]')]
+      .filter((h) => h.closest('.sect1')?.querySelector('h2#reference'))
+      .map((h) => [h.textContent.replace(/^[A-Z0-9.]+\s+/, '').trim(), h.id])
+  );
+  let owner = null, pinned = false, hideTimer = 0;
+  const esc = (x) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const show = (word) => {
+    clearTimeout(hideTimer);
+    if (owner === word && !tip.hidden) return;
+    owner?.classList.remove('sg-tip-owner');
+    owner = word;
+    word.classList.add('sg-tip-owner');
+    const d = word.dataset;
+    const ref = d.group && refs.get(d.group);
+    tip.innerHTML =
+      (d.name ? `<div class="sg-tip-head"><code>${esc(d.name)}</code>${d.sig ? ` <code class="sg-tip-sig">${esc(d.sig)}</code>` : ''}</div>` : '') +
+      `<div class="sg-tip-text">${esc(d.tip).replace(/`([^`]+)`/g, '<code>$1</code>')}</div>` +
+      (d.group ? `<div class="sg-tip-foot">${ref ? `<a href="#${ref}">Reference · ${esc(d.group)}</a>` : esc(d.group)}</div>` : '');
+    tip.hidden = false;
+    const r = word.getBoundingClientRect();
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
+    const below = r.bottom + 8 + h < innerHeight;
+    tip.style.left = `${left + scrollX}px`;
+    tip.style.top = `${(below ? r.bottom + 6 : r.top - h - 6) + scrollY}px`;
+  };
+  const hide = () => {
+    pinned = false;
+    tip.hidden = true;
+    owner?.classList.remove('sg-tip-owner');
+    owner = null;
+  };
+  const hideSoon = () => { if (!pinned) hideTimer = setTimeout(hide, 180); };
+  const wordAt = (e) => e.target.closest?.('code[data-lang="sg"] [data-tip]');
+  document.addEventListener('pointerover', (e) => {
+    if (e.pointerType === 'touch') return;
+    const word = wordAt(e);
+    if (word && !pinned) show(word);
+    else if (tip.contains(e.target)) clearTimeout(hideTimer);
+  });
+  document.addEventListener('pointerout', (e) => {
+    if (e.pointerType !== 'touch' && (wordAt(e) || tip.contains(e.target))) hideSoon();
+  });
+  document.addEventListener('click', (e) => {
+    const word = wordAt(e);
+    if (word) {
+      if (pinned && owner === word) return hide();
+      pinned = false;
+      show(word);
+      pinned = true;
+    } else if (!tip.contains(e.target) || e.target.closest('a')) hide();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+  addEventListener('scroll', () => { if (!pinned) hide(); }, { passive: true });
+
+  // Copy buttons; callout markers are not part of the program.
+  for (const pre of document.querySelectorAll('.listingblock pre')) {
+    const button = document.createElement('button');
+    button.className = 'copy-button';
+    button.type = 'button';
+    button.textContent = 'copy';
+    button.addEventListener('click', async () => {
+      const clone = pre.cloneNode(true);
+      clone.querySelectorAll('.conum, .copy-button').forEach((n) => n.remove());
+      await navigator.clipboard.writeText(clone.textContent.replace(/[ \t]+$/gm, ''));
+      button.textContent = 'copied';
+      setTimeout(() => (button.textContent = 'copy'), 1200);
+    });
+    pre.parentElement.append(button);
+  }
+
+  // Highlight the section being read in the sidebar TOC.
+  const links = new Map([...document.querySelectorAll('#toc a[href^="#"]')].map((a) => [a.hash.slice(1), a]));
+  const heads = [...document.querySelectorAll('h1[id], h2[id], h3[id]')].filter((h) => links.has(h.id));
+  if (heads.length && matchMedia('(min-width: 64rem)').matches) {
+    let active;
+    const update = () => {
+      let current = heads[0];
+      for (const h of heads) if (h.getBoundingClientRect().top < 120) current = h;
+      const a = links.get(current.id);
+      if (a !== active) {
+        active?.classList.remove('active');
+        a.classList.add('active');
+        active = a;
+      }
+    };
+    addEventListener('scroll', update, { passive: true });
+    update();
+  }
+})();
+</script>

@@ -1,0 +1,178 @@
+[#sampler]
+== Typesetting Sampler
+
+// Draft-only appendix (see book.adoc). Every element the book uses, in one place, so a change
+// to the theme or the toolchain can be checked at a glance. Not part of the published book.
+
+[.epigraph]
+[quote, A. N. Author, Imaginary Essays]
+____
+An epigraph opens a chapter. It is set small, to the right, and without a rule.
+____
+
+This appendix exists for us, not for the reader.
+It shows every kind of block the book uses, rendered by the same pipeline as real chapters.
+Body text is set in Literata at a comfortable measure; `inline code` like `440 s` sits in the line; keys look like kbd:[Enter] and kbd:[Alt+=].
+
+=== Sounds
+
+A `[sound]` block is a program listing that is also rendered.
+Its player shows the whole clip; click or drag on it to seek, press kbd:[Esc] to silence everything.
+The `.txt` link is the exact program as a file.
+
+.Tuning fork
+[sound#tuning-fork, seconds=3]
+----
+440 s <1>
+0.2 * <2>
+----
+<1> A sine wave at 440 Hz.
+<2> Scale it down to a fifth of full scale.
+
+Figures are requested with `show`.
+A short window (`from`/`to`, in seconds) zooms into the waveform; below about a hundred samples every sample is drawn as a lollipop, because a digital sound _is_ a list of numbers.
+
+.A few milliseconds of a sine, sample by sample
+[sound, seconds=1, show=wave, from=0, to=0.0015]
+----
+1000 s 0.5 *
+----
+
+.Vibrato: one sine bends the pitch of another
+[sound, seconds=4, show="wave spectrogram"]
+----
+2 s 1 + 220 * s 0.3 *
+----
+
+A spectrum shows which frequencies are present, averaged over the whole sound.
+The harmonic series is easiest to read on a linear frequency axis.
+
+.A band-limited saw and its harmonics
+[sound, seconds=2, show="wave spectrum", from=0, to=0.02, fscale=lin, fmax=4000]
+----
+220 0 saw 0.2 *
+----
+
+Stereo programs get a lane per channel.
+
+.A sine drifting between the ears
+[sound, seconds=4, show=wave]
+----
+[ a slow sine moves the position ] drop
+220 s 0.3 * 0.5 s pan1
+----
+
+Rhythm and randomness: seeded programs render the same way every build.
+
+.A seeded drum circle
+[sound%loop, seconds=8, show=spectrogram]
+----
+include::../../examples/ai/drum_circle.txt[]
+----
+
+Whole pieces are included from files, so the book and the repository never disagree.
+
+.Glacier (from examples/ai)
+[sound, seconds=24]
+----
+include::../../examples/ai/glacier.txt[]
+----
+
+=== Code that is not played
+
+Plain listings use the same highlighter.
+Hover a word for its reference entry; an unknown word gets a wavy underline.
+
+[source]
+----
+[ dup s swap c * ] def:yay
+440 yay 220 yay + <1>
+1 cycle pat:60,64,[67,72] m2f >f
+<f s 0.2 * oops
+----
+<1> Templates are highlighted where they are used, too.
+
+Shell commands and Rust use Rouge.
+
+[source,shell]
+----
+$ render_program 30 out.wav --stats < examples/ai/glacier.txt
+----
+
+[source,rust]
+----
+fn next_frame(&mut self) -> Frame {
+    // One frame per sample, 48,000 times a second.
+    self.program.run(&mut self.stack)
+}
+----
+
+=== Mathematics
+
+Inline math such as stem:[f = 440\,\text{Hz}] flows with the text.
+Display math is centred:
+
+[stem]
+++++
+x[n] = A \sin\!\left(2\pi \frac{f}{R}\, n + \varphi\right), \qquad n = 0, 1, 2, \dots
+++++
+
+where stem:[R] is the sample rate, 48,000 samples per second throughout this book.
+
+=== Boxes
+
+NOTE: A note is an aside that belongs to the flow of the text.
+
+TIP: A tip is a shortcut the reader will be glad to know.
+
+WARNING: Warnings are for ears and speakers. The next example is loud.
+
+[.try]
+.Change one number
+====
+Replace `440` with `441` in the tuning fork and play both at once.
+What is the slow pulsing you hear, and how fast is it?
+====
+
+[.garden]
+.The first seed
+====
+Every chapter ends by planting something in the reader's own garden: a template, a technique, or a piece they keep and build on.
+
+[source]
+----
+[ dup s swap 2 * s 0.5 * + ] :bell
+----
+====
+
+[.deeper]
+.Why 48,000?
+====
+Deeper boxes hold the mathematics or history a reader can skip on first reading and come back to.
+====
+
+.A sidebar
+****
+Sidebars hold stories: where an idea came from, or how it sounded the first time.
+****
+
+=== Lists and tables
+
+. Ordered steps,
+. like building a patch,
+. one module at a time.
+
+* Unordered points
+* are for things with no order.
+
+.Oscillators at a glance
+[cols="1,2,3"]
+|===
+| Word | Stack effect | Sound
+
+| `s` | (freq) -> sine | pure, no overtones
+| `saw` | (freq, phase0) -> saw | bright, all harmonics
+| `p` | (freq, width) -> pulse | hollow at width 0.5
+|===
+
+Cross references look like <<tuning-fork>> or <<reference>>, and footnotes like this.footnote:[Footnotes collect at the end of the page.]

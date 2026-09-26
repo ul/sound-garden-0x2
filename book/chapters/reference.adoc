@@ -1,0 +1,8 @@
+[#reference]
+== Reference
+
+Every word Sound Garden understands, grouped as in the editor's help window (kbd:[/]).
+This appendix is generated from the same source the editor uses, so it is always current.
+Hover over any word in a program listing to see its entry.
+
+include::../../audio_program/src/help.adoc[]

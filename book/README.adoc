@@ -1,0 +1,81 @@
+= Writing the Sound Garden Book
+
+The book lives next to the engine so every program in it runs against the current Sound Garden.
+Source is AsciiDoc; the main output is a single HTML page with a player on every sound.
+Rationale: link:../docs/adr/0005-book-toolchain.md[ADR 0005].
+
+== Build
+
+Needs `asciidoctor` (with Rouge), `ffmpeg` (with libmp3lame) and Rust.
+
+[source,shell]
+----
+$ make -C book          # draft build with the sampler appendix, then open it
+$ make -C book watch    # rebuild on save; reload the browser
+$ make -C book check    # strict: any warning fails (unknown words, clipping, broken refs)
+$ make -C book final    # without draft material
+----
+
+Output goes to `book/build/`: `index.html`, `theme/`, `media/` (renders) and `examples/` (every program as a file).
+Open `index.html` directly, or serve the directory; the `book` preview in `.claude/launch.json` serves it on port 8123.
+
+Renders are cached by a hash of the program, its render options and the `book_render` binary, so a rebuild only renders what changed, and changing the engine re-renders everything.
+Unreferenced renders are deleted after each build.
+
+== Layout
+
+[horizontal]
+`book.adoc`:: Title, attributes and the chapter list, in reading order.
+`chapters/`:: One file per chapter: `01-<slug>.adoc`, each starting with a `==` heading. `sampler.adoc` shows every element the book uses and is included only in draft builds; keep it current when the theme or toolchain changes.
+`examples/`:: Programs too long to live inline (pieces, studies), included into `[sound]` blocks.
+`ext/sound_garden.rb`:: The Asciidoctor extension: `sg` highlighting and `[sound]` blocks.
+`render/`:: `book_render`, which renders a program to audio and figures.
+`theme/`:: Stylesheet, fonts and the player script.
+
+== Sounds
+
+A `[sound]` block is a listing that is also rendered and played:
+
+[source,asciidoc]
+------
+.Tuning fork
+[sound#tuning-fork, seconds=3, show="wave spectrum", from=0, to=0.01]
+----
+440 s \<1>
+0.2 * \<2>
+----
+\<1> A sine wave at 440 Hz.
+\<2> Scaled down to a fifth of full scale.
+------
+
+[horizontal]
+`seconds`:: Render length; default 4.
+`show`:: Figures under the player, any of `wave`, `spectrum`, `spectrogram`. The player always shows the whole clip.
+`from`, `to`:: Waveform window in seconds. Under ~100 samples each sample is drawn as a lollipop.
+`fscale`, `fmax`:: Spectrum axis: `log` (default) or `lin`, and its top frequency (default 20000). Use `lin` to show harmonic series.
+`%loop`:: Loop playback (drones, rhythms).
+`#id`:: Anchor for `<<id>>`; otherwise `sound-<chapter>-<n>`. Cross references read "Sound 3.2".
+
+Sounds are numbered per chapter.
+Callout markers are stripped before rendering, so annotated programs stay valid.
+Each program is exported to `examples/<NN-chapter>/<nn-title>.txt`, linked from its `.txt` button; readers play it with `play_program < file`.
+Include longer programs from files rather than pasting them: `include::../examples/piece.txt[]` inside the block.
+
+Every render is checked: unknown words, compiler warnings and clipping are build warnings, and `make check` fails on them.
+Programs with randomness pin a `seed:<N>` so the audio the reader hears matches the figure.
+
+A listing that should not be played is `[source]` (the book's default language is `sg`), with the same highlighting and tooltips.
+
+== Conventions
+
+Voice and structure are still being decided; record decisions here as they are made.
+
+* One sentence per line in the source, so diffs and review comments stay small.
+* Levels: the reader hears the same loudness from chapter to chapter. Aim for peaks around 0.3–0.5 for studies; pieces end with `limit`.
+* Sample rate is 48,000 throughout.
+* Boxes, as example blocks with a role:
+** `[.try]` exercises and questions for the reader;
+** `[.garden]` what the reader keeps from the chapter: a template, technique or piece that later chapters build on;
+** `[.deeper]` mathematics or history that can be skipped on first reading;
+** `WARNING:` only for ears and speakers.
+* Math uses `stem:[...]` inline and `[stem]` blocks (LaTeX, rendered by MathJax). stem:[R] is the sample rate, stem:[n] the sample index.
