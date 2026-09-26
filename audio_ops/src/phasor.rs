@@ -27,6 +27,9 @@ pub(crate) fn wrap_phase(phase: Sample) -> Sample {
     phase - 2.0 * ((phase + 1.0) * 0.5).floor()
 }
 
+/// Phase spans -1..1, i.e. two units per cycle: a frequency `f` advances it by
+/// `2 * f / sample_rate` per sample. PolyBLEP widths are in cycles per sample
+/// (`dt = f / sample_rate`), matching `phase_to_unit`'s 0..1 range.
 #[inline]
 pub(crate) fn phase_to_unit(phase: Sample) -> Sample {
     (phase + 1.0) * 0.5
@@ -47,8 +50,8 @@ pub(crate) fn poly_blep(t: Sample, dt: Sample) -> Sample {
 }
 
 #[inline]
-pub(crate) fn poly_blep_saw_sample(phase: Sample, dx: Sample) -> Sample {
-    phase - 2.0 * poly_blep(phase_to_unit(phase), dx)
+pub(crate) fn poly_blep_saw_sample(phase: Sample, dt: Sample) -> Sample {
+    phase - 2.0 * poly_blep(phase_to_unit(phase), dt)
 }
 
 pub struct Phasor {
@@ -72,7 +75,7 @@ impl Phasor {
 impl Op for Phasor {
     fn perform(&mut self, stack: &mut Stack) {
         for (phase, &frequency) in self.phases.iter_mut().zip(&stack.pop()) {
-            let dx = frequency * self.sample_period;
+            let dx = 2.0 * frequency * self.sample_period;
             *phase = wrap_phase(*phase + dx);
         }
         stack.push(&self.phases);
@@ -108,7 +111,7 @@ impl Op for Phasor0 {
         let phase0 = stack.pop();
         let frequency = stack.pop();
         for (phase, &frequency) in self.phases.iter_mut().zip(&frequency) {
-            let dx = frequency * self.sample_period;
+            let dx = 2.0 * frequency * self.sample_period;
             *phase = wrap_phase(*phase + dx);
         }
         let mut output = [0.0; CHANNELS];
@@ -147,9 +150,9 @@ impl Op for PolyBlepSawPhase {
         for (out, phase, &frequency, &phase0) in
             izip!(&mut output, &mut self.phases, &frequency, &phase0)
         {
-            let dx = frequency * self.sample_period;
-            *phase = wrap_phase(*phase + dx);
-            *out = poly_blep_saw_sample(wrap_phase(*phase + phase0), dx);
+            let dt = frequency * self.sample_period;
+            *phase = wrap_phase(*phase + 2.0 * dt);
+            *out = poly_blep_saw_sample(wrap_phase(*phase + phase0), dt);
         }
         stack.push(&output);
     }
@@ -191,8 +194,8 @@ mod tests {
             }
             previous = phase;
         }
-        // 7 Hz over 10 s, with the phasor's -1..1 span: one wrap per 2/7 s.
-        assert_eq!(wraps, 35);
+        // 7 Hz over 10 s: one wrap per cycle.
+        assert_eq!(wraps, 70);
     }
 
     #[test]

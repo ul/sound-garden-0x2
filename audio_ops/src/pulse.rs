@@ -29,9 +29,9 @@ impl Op for Pulse {
         for (out, phase, &frequency, &width) in
             izip!(&mut frame, &mut self.phases, &frequency, &duty_cycle)
         {
-            let dx = frequency * self.sample_period;
-            *phase = wrap_phase(*phase + dx);
-            *out = poly_blep_pulse_sample(*phase, width, dx);
+            let dt = frequency * self.sample_period;
+            *phase = wrap_phase(*phase + 2.0 * dt);
+            *out = poly_blep_pulse_sample(*phase, width, dt);
         }
         stack.push(&frame);
     }
@@ -70,9 +70,9 @@ impl Op for PulsePhase {
             &duty_cycle,
             &phase0
         ) {
-            let dx = frequency * self.sample_period;
-            *phase = wrap_phase(*phase + dx);
-            *out = poly_blep_pulse_sample(wrap_phase(*phase + phase0), width, dx);
+            let dt = frequency * self.sample_period;
+            *phase = wrap_phase(*phase + 2.0 * dt);
+            *out = poly_blep_pulse_sample(wrap_phase(*phase + phase0), width, dt);
         }
         stack.push(&frame);
     }
@@ -142,12 +142,12 @@ impl Op for NaivePulsePhase {
     }
 }
 
-fn poly_blep_pulse_sample(phase: Sample, width: Sample, dx: Sample) -> Sample {
+fn poly_blep_pulse_sample(phase: Sample, width: Sample, dt: Sample) -> Sample {
     let width = width.clamp(0.0, 1.0);
     let t = phase_to_unit(phase);
     let mut y = if t < width { 1.0 } else { -1.0 };
-    y += poly_blep(t, dx);
-    y -= poly_blep((t - width + 1.0) % 1.0, dx);
+    y += poly_blep(t, dt);
+    y -= poly_blep((t - width + 1.0) % 1.0, dt);
     y.clamp(-1.0, 1.0)
 }
 

@@ -46,7 +46,7 @@ bury:<N>:: take the top element and put it as Nth from the top
 
 === Oscillators and phases
 
-Oscillator phases are wrapped in the `-1..1` range unless noted otherwise. Oscillator outputs are in the `-1..1` range.
+Oscillator phases are wrapped in the `-1..1` range unless noted otherwise; that range is exactly one cycle of every oscillator, so a `phase0` of `1` shifts any waveform by half a cycle. Oscillator outputs are in the `-1..1` range.
 
 [horizontal]
 saw:: (freq, phase0) -> band-limited saw oscillator with explicit phase offset; use `saw'` for the naive/raw variant

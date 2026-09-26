@@ -52,7 +52,7 @@ impl FixedOsc {
 
 impl Op for FixedOsc {
     fn perform(&mut self, stack: &mut Stack) {
-        let dx = self.frequency * self.sample_period;
+        let dx = 2.0 * self.frequency * self.sample_period;
         let mut frame = [0.0; CHANNELS];
 
         for (phase, sample) in self.phases.iter_mut().zip(&mut frame) {
@@ -119,9 +119,9 @@ impl Op for PolyBlepTriangle {
         for (out, phase, tri, &frequency) in
             izip!(&mut frame, &mut self.phases, &mut self.outputs, &frequency)
         {
-            let dx = frequency * self.sample_period;
-            *phase = wrap_phase(*phase + dx);
-            *tri = poly_blep_triangle_step(*phase, dx, *tri);
+            let dt = frequency * self.sample_period;
+            *phase = wrap_phase(*phase + 2.0 * dt);
+            *tri = poly_blep_triangle_step(*phase, dt, *tri);
             *out = *tri;
         }
         stack.push(&frame);
@@ -163,9 +163,9 @@ impl Op for PolyBlepTrianglePhase {
             &frequency,
             &phase0
         ) {
-            let dx = frequency * self.sample_period;
-            *phase = wrap_phase(*phase + dx);
-            *tri = poly_blep_triangle_step(wrap_phase(*phase + phase0), dx, *tri);
+            let dt = frequency * self.sample_period;
+            *phase = wrap_phase(*phase + 2.0 * dt);
+            *tri = poly_blep_triangle_step(wrap_phase(*phase + phase0), dt, *tri);
             *out = *tri;
         }
         stack.push(&frame);
@@ -179,13 +179,15 @@ impl Op for PolyBlepTrianglePhase {
     }
 }
 
-fn poly_blep_triangle_step(phase: Sample, dx: Sample, previous: Sample) -> Sample {
+/// `dt` is the signed frequency in cycles per sample. The triangle is the
+/// integrated band-limited square: it travels 4 units (-1..1..-1) per cycle.
+fn poly_blep_triangle_step(phase: Sample, dt: Sample, previous: Sample) -> Sample {
     let t = phase_to_unit(phase);
-    let dt = dx.abs();
+    let width = dt.abs();
     let mut square = if t < 0.5 { 1.0 } else { -1.0 };
-    square += poly_blep(t, dt);
-    square -= poly_blep((t + 0.5) % 1.0, dt);
-    (previous + square * dx * 4.0).clamp(-1.0, 1.0)
+    square += poly_blep(t, width);
+    square -= poly_blep((t + 0.5) % 1.0, width);
+    (previous + square * dt * 4.0).clamp(-1.0, 1.0)
 }
 
 #[cfg(test)]
@@ -196,10 +198,10 @@ mod tests {
     #[test]
     fn poly_blep_triangle_differs_from_naive_near_nyquist_and_matches_at_low_frequency() {
         let low = poly_blep_triangle_step(0.0, 10.0 / 48_000.0, pure::triangle(0.0));
-        assert!((low - pure::triangle(10.0 / 48_000.0)).abs() < 0.01);
+        assert!((low - pure::triangle(2.0 * 10.0 / 48_000.0)).abs() < 0.01);
 
         let high = poly_blep_triangle_step(-0.99, 20_000.0 / 48_000.0, -1.0);
-        let naive_next = pure::triangle(wrap_phase(-0.99 + 20_000.0 / 48_000.0));
+        let naive_next = pure::triangle(wrap_phase(-0.99 + 2.0 * 20_000.0 / 48_000.0));
         assert!((high - naive_next).abs() > 0.01);
     }
 }

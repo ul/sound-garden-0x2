@@ -179,29 +179,31 @@ pub fn circle(x: Sample) -> Sample {
 }
 
 // Oscillators-ready
+//
+// Waveshapers over a phasor's -1..1 phase, which covers exactly one cycle.
 
 /// Connect Phasor to Fn1(sine) to generate sine wave
 #[inline]
 pub fn sine(phase: Sample) -> Sample {
-    sin(2.0 * PI * phase)
+    sin(PI * phase)
 }
 
 /// Connect Phasor to Fn1(cosine) to generate cosine wave
 #[inline]
 pub fn cosine(phase: Sample) -> Sample {
-    cos(2.0 * PI * phase)
+    cos(PI * phase)
 }
 
 /// Connect Phasor to Fn1(sine) to generate sine wave
 #[inline]
 pub fn sine_fast(phase: Sample) -> Sample {
-    sin_fast(2.0 * PI * phase)
+    sin_fast(PI * phase)
 }
 
 /// Connect Phasor to Fn1(cosine) to generate cosine wave
 #[inline]
 pub fn cosine_fast(phase: Sample) -> Sample {
-    cos_fast(2.0 * PI * phase)
+    cos_fast(PI * phase)
 }
 
 /// Connect Phasor to Fn1(triangle) to generate symmetric triangle wave
