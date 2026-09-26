@@ -167,6 +167,15 @@ fn spectral_reverse_ops() -> Vec<TextOp> {
     words("110 s spectral_reverse")
 }
 
+/// A dense grain cloud: 50 grains/s of 0.3 s each keep ~15 of 32 slots busy.
+fn grain_cloud_ops() -> Vec<TextOp> {
+    words("110 0 saw 1 wt:src:2 pop noise 0.2 * 1 + 0.3 1 50 metro grain:src:32")
+}
+
+fn live_granulate_ops() -> Vec<TextOp> {
+    words("110 0 saw 0.5 0.3 0.5 50 metro granulate:2:32")
+}
+
 fn compile_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("compile_program");
 
@@ -246,6 +255,8 @@ fn audio_frame_benchmarks(c: &mut Criterion) {
         ("sliding_convolution_256", sliding_convolution_ops()),
         ("spectral_shuffle", spectral_shuffle_ops()),
         ("spectral_reverse", spectral_reverse_ops()),
+        ("grain_cloud_32", grain_cloud_ops()),
+        ("live_granulate_32", live_granulate_ops()),
     ] {
         group.bench_function(name, |b| {
             let mut vm = vm_from_ops(&ops);

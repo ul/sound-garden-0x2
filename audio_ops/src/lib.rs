@@ -9,6 +9,7 @@ mod envelopes;
 mod feedback;
 mod filters;
 mod function;
+mod grain;
 mod input;
 mod lag;
 mod limit;
@@ -38,8 +39,8 @@ mod yin;
 
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, crush::*, delay::*, envelopes::*,
-    feedback::*, filters::*, function::*, input::*, lag::*, limit::*, metro::*, midi::*, noise::*,
-    noop::*, normalise::*, osc::*, pan::*, param::*, pattern::*, phasor::*, poly::*, pulse::*,
-    random::*, reverb::*, sample_and_hold::*, sampler::*, scale::*, spectral_transform::*,
-    stack::*, variable::*, wah::*, yin::*,
+    feedback::*, filters::*, function::*, grain::*, input::*, lag::*, limit::*, metro::*, midi::*,
+    noise::*, noop::*, normalise::*, osc::*, pan::*, param::*, pattern::*, phasor::*, poly::*,
+    pulse::*, random::*, reverb::*, sample_and_hold::*, sampler::*, scale::*,
+    spectral_transform::*, stack::*, variable::*, wah::*, yin::*,
 };

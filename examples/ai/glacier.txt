@@ -1,0 +1,27 @@
+[ glacier a four second phrase melting over twenty seconds ] drop
+seed:4
+[ the phrase is recorded once and never heard directly ] drop
+0.25 cycle >ph
+<ph pat:D4,F4,A4,C5,E5,C5,A4,G4 m2f <ph trig:x*8
+[ swap dup s swap 2.01 * s 0.3 * + swap 0.3 impulse * ] poly:4
+0.3 * 1 wt:src:4 pop
+[ the read point crawls through the phrase at a fifth of real time ] drop
+0.05 cycle 4 * >scan
+[ grains at rate one stretch time without changing pitch ] drop
+[ a little noise gives each channel its own read point ] drop
+<scan noise 0.04 * + 0.25 1 40 metro grain:src:24
+0.25 *
+[ an octave up shimmer only some grains survive ] drop
+<scan noise 0.1 * + 0.12 2 25 metro 0.5 chance grain:src:12
+0.08 * +
+[ reversed and an octave down underneath ] drop
+<scan 0.6 -0.5 5 metro grain:src:6
+0.15 * 900 lpf +
+=mix
+[ live grains of the mix a second ago played backwards ] drop
+<mix 1 0.5 -1 2 metro granulate:3:8
+0.4 * 0.5 pan1 +
+[ ice cave ] drop
+=dry 7 0.5 verb 0.4 * <dry +
+0.7 *
+0.9 limit

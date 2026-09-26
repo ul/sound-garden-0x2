@@ -151,3 +151,16 @@ the sum of two slow sines, caught by `sh` on each hit and snapped to C minor
 pentatonic by `deg:`, so it wanders without repeating. Each tine has an
 inharmonic partial at 5.4×. The bass is a pulse whose width breathes,
 through a `wah` that opens with each note's envelope. Seeded.
+
+== glacier.txt
+
+A four-second phrase melting over twenty seconds, and the first example of
+the granular ops. A phrase of sine-and-partial plucks is recorded once into
+a table with `wt:src:4` and never heard directly. `grain:src` then reads it
+with a position that crawls through the table at a fifth of real time while
+each grain plays at rate 1, so the phrase is time-stretched without changing
+pitch. The `noise` on the position gives each channel its own read point and
+keeps the regularly spaced grains from comb-filtering the source. An
+octave-up shimmer (rate 2, thinned by `chance`) and a reversed octave-down
+layer (rate −0.5) surround it, and `granulate:3:8` replays grains of the mix
+from a second ago backwards, like a reverse reverb. Seeded.

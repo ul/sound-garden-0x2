@@ -238,6 +238,14 @@ writetable:<NAME>:<N>, wtab:<NAME>:<N>, wt:<NAME>:<N>:: (x, trigger) -> on trigg
 readtable:<NAME>, rtab:<NAME>, rt:<NAME>:: (indexer) -> read from table NAME using indexer signal as a position in seconds, with linear interpolation
 filetable:<FILE>, ftab:<FILE>, ft:<FILE>:: (indexer) -> read from the table loaded from FILE using indexer signal as a position in seconds, with linear interpolation. Supported formats: WAV, FLAC, OGG.
 
+=== Granular
+
+Grains are short windowed snippets of recorded sound. Each rising edge of `trig` (on any channel) starts one grain, which latches its start, duration and rate at that moment and plays through a Hann window; the op outputs the sum of all sounding grains. Grain rate and rhythm come from any trigger source: `50 metro` for a cloud, `trig:` patterns for rhythmic grains, `chance` to thin them, `rnd` for a new position per grain. Inputs are stereo, so a little `noise` on the position spreads grains across the field, and the trigger amplitude scales each grain. With perfectly regular triggers and no position jitter, overlapping grains are evenly spaced copies of the source and comb-filter it (some notes add up, others cancel); a few tens of milliseconds of `noise` on the position avoids that. When all N grain slots are busy, the oldest grain is replaced.
+
+[horizontal]
+grain:<NAME>:<N>:: (position, duration, rate, trig) -> grains from table NAME, defined earlier in the program with `wt:`/`ft:`, or an audio file path loaded on first use; `position` in seconds from the start of the table, and grains wrap around it; `rate` is playback speed (2 is an octave up, negative runs backwards); at most N grains at once, default 16. Scanning `position` slower than real time while `rate` stays 1 time-stretches without changing pitch
+granulate:<SECONDS>:<N>:: (x, back, duration, rate, trig) -> grains from a rolling SECONDS-long buffer of its own input x (default 4), each starting `back` seconds ago; grains are kept inside what has already been recorded, so a grain faster than 1x can't overtake the present, and too-long grains are shortened; outputs the grains only, mix x back in for the dry signal; N default 16
+
 === Plugin and external I/O
 
 [horizontal]

@@ -151,6 +151,31 @@ enum OptimizedOp {
     },
 }
 
+const DEFAULT_GRAINS: usize = 16;
+const DEFAULT_GRANULATE_SECONDS: Sample = 4.0;
+
+/// `grain:NAME:<N>` / `granulate:SECONDS:<N>` grain count; defaults to 16.
+fn parse_grain_count(token: Option<&str>) -> Option<usize> {
+    match token {
+        None => Some(DEFAULT_GRAINS),
+        Some(x) => x.parse::<usize>().ok().filter(|&n| n > 0),
+    }
+}
+
+/// A table defined earlier by `wt:`/`ft:`, or an audio file loaded (and
+/// registered like `ft:` does) on first use.
+fn find_or_load_table(name: &str, ctx: &mut Context) -> Option<Arc<Vec<AtomicFrame>>> {
+    if name.is_empty() {
+        return None;
+    }
+    if !ctx.tables.contains_key(name)
+        && let Some(table) = load_table(name)
+    {
+        ctx.tables.insert(name.to_string(), Arc::new(table));
+    }
+    ctx.tables.get(name).cloned()
+}
+
 fn load_table(path: &str) -> Option<Vec<AtomicFrame>> {
     let file = File::open(path).ok()?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
@@ -736,6 +761,56 @@ fn compile_segment(
                                 log::warn!("Missing table file parameter.");
                             }
                         },
+                        "grain" => {
+                            let name = tokens.get(1).copied().unwrap_or_default();
+                            let table = find_or_load_table(name, ctx);
+                            match (table, parse_grain_count(tokens.get(2).copied())) {
+                                (Some(table), Some(grains)) => {
+                                    push_args!(id, TableGrains, sample_rate, table, grains)
+                                }
+                                (None, _) => {
+                                    log::warn!(
+                                        "grain: no table or readable audio file named {name:?}; define it with wt:/ft: before grain. Compiling to silence."
+                                    );
+                                    program.push(Statement {
+                                        id,
+                                        op: Box::new(TableGrains::silent()) as Box<dyn Op>,
+                                    })
+                                }
+                                (_, None) => {
+                                    log::warn!(
+                                        "grain: grain count must be a positive integer; compiling to silence."
+                                    );
+                                    program.push(Statement {
+                                        id,
+                                        op: Box::new(TableGrains::silent()) as Box<dyn Op>,
+                                    })
+                                }
+                            }
+                        }
+                        "granulate" => {
+                            let seconds = match tokens.get(1) {
+                                None => Some(DEFAULT_GRANULATE_SECONDS),
+                                Some(x) => x
+                                    .parse::<Sample>()
+                                    .ok()
+                                    .filter(|x| x.is_finite() && *x > 0.0),
+                            };
+                            match (seconds, parse_grain_count(tokens.get(2).copied())) {
+                                (Some(seconds), Some(grains)) => {
+                                    push_args!(id, LiveGrains, sample_rate, seconds, grains)
+                                }
+                                _ => {
+                                    log::warn!(
+                                        "granulate: expected granulate:<SECONDS>:<GRAINS> with positive values; compiling to silence."
+                                    );
+                                    program.push(Statement {
+                                        id,
+                                        op: Box::new(LiveGrains::silent()) as Box<dyn Op>,
+                                    })
+                                }
+                            }
+                        }
                         "rt" | "rtab" | "readtable" => {
                             match tokens.get(1).and_then(|x| ctx.tables.get(*x)) {
                                 Some(table) => {
@@ -2368,5 +2443,72 @@ mod tests {
         let groups = get_op_groups();
         assert!(groups.iter().any(|(group, terms)| group == "Triggers"
             && terms.iter().any(|term| term.starts_with("metro"))));
+    }
+
+    fn words(source: &str) -> Vec<TextOp> {
+        source
+            .split_whitespace()
+            .enumerate()
+            .map(|(index, token)| op(index as u64 + 1, token))
+            .collect()
+    }
+
+    #[test]
+    fn grain_granulates_a_table_recorded_earlier_in_the_program() {
+        // Record a constant into `loop`, then fire one 0.1 s grain from it.
+        let frames = run_frames(
+            &words("0.5 1 wt:loop:1 pop 0 0.1 1 1 grain:loop:4"),
+            100,
+            12,
+        );
+        let window = |n: usize| 0.5 - 0.5 * (std::f64::consts::TAU * n as Sample / 10.0).cos();
+        for (n, frame) in frames.iter().enumerate().take(10) {
+            assert!(
+                (frame[0] - 0.5 * window(n)).abs() < 1e-12,
+                "frame {n}: {frame:?}"
+            );
+        }
+        assert_eq!(frames[11], [0.0, 0.0]);
+    }
+
+    #[test]
+    fn invalid_grain_ops_compile_to_silence_and_keep_stack_shape() {
+        for source in [
+            "9 1 2 3 1 grain:missing",
+            "9 1 2 3 1 grain",
+            "0.5 1 wt:loop:1 pop 9 1 2 3 1 grain:loop:0",
+            "9 1 2 3 4 1 granulate:0",
+            "9 1 2 3 4 1 granulate:-1:8",
+            "9 1 2 3 4 1 granulate:2:none",
+        ] {
+            let mut ops = words(source);
+            // Pop the grain output to expose the value below it.
+            ops.push(op(1000, "pop"));
+            assert_eq!(run_frames(&ops, 100, 1)[0], [9.0, 9.0], "{source}");
+            let ops = words(source);
+            assert_eq!(run_frames(&ops, 100, 3)[2], [0.0, 0.0], "{source}");
+        }
+    }
+
+    #[test]
+    fn granulate_defaults_to_four_seconds_and_sixteen_grains() {
+        // A grain from 0.05 s back of a constant input plays the constant
+        // through its window; if parsing fell back to silence this is zero.
+        let frames = run_frames(&words("0.5 0.05 0.1 1 1 granulate"), 100, 20);
+        assert!(frames.iter().any(|frame| frame[0] > 0.2), "{frames:?}");
+    }
+
+    #[test]
+    fn help_documents_grain_ops() {
+        let help = get_help();
+        for op in ["grain", "granulate"] {
+            assert!(
+                help.keys().any(|key| key == op),
+                "{op} missing from help: {:?}",
+                help.keys()
+                    .filter(|k| k.starts_with("gr"))
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 }
