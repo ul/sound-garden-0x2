@@ -97,3 +97,56 @@ drift to neighbouring frequencies. A second ADSR makes the ghost bloom and
 fade to nothing before the next chord. The ghost is stretched wider than the
 living voice with `width`, the living voice is mixed in front about 8 dB
 above, and a stone-nave `verb` holds them both. Seeded.
+
+== well.txt
+
+Plucked strings in a stone well. Each string is Karplus–Strong built from
+nothing but `fb`: a 3 ms noise burst circulates in a feedback delay one
+period long, and the loss per trip lets it ring out like a string. The loop
+itself adds two samples, so the `:string` template sets the delay to
+`1/f − 2/sr` to stay in tune. A Euclidean `x(5,8)` pattern plucks a minor
+pentatonic line (the second bar answers the first), two slower bass strings
+ring longer, and a whisper of noise into a near-unity `fbsat` loop keeps an
+open A string humming sympathetically underneath. Seeded.
+
+== phases.txt
+
+Phasing, after Steve Reich's technique (the twelve-note cell is original).
+Two players loop the same cell, defined once as a `:cell` template and
+voiced by a shared `:mallet` template. Every pattern owns its own clock, so
+drifting is just a slightly different speed: the right-hand player runs at
+`0.9 1/180 +` cycles per second, gains one note every fifteen seconds, and
+lines up with the left-hand player again after three minutes. In between,
+new composite melodies appear out of the interference. A low B swells and
+fades underneath.
+
+== tape.txt
+
+A phrase is played once and after that it is only tape. For four seconds a
+triangle-pluck melody plays live while `wt:tape:4` records it, then the
+player fades out. Three `rt:tape` loops take over: one at speed with a
+little wow, one at half speed backwards an octave down, and one at double
+speed an octave up, entering at 4, 10 and 18 seconds. Each loop is windowed
+with `sin(π·phase)` so its splice is hidden inside a breath. Render at least
+40 seconds to hear all three; the live phrase comes back at 100 s when the
+time counter wraps.
+
+== overtones.txt
+
+Overtone singing made of filters. A narrow band-pass formant walks across
+the harmonics of an A2 saw drone (6, 8, 9, 10, 12 and, in the second bar,
+up to 16), gliding with `lag`. `st1` keeps only the strongest spectral bin
+of that vowel, so what's left is a pure whistle that hops exactly along the
+harmonic series (660, 880, 990 Hz…) while the filter glides between them,
+the way a throat singer's does. The drone, the vowel and the whistle are
+mixed with an undertone on A1 in a wide `verb`.
+
+== clockwork.txt
+
+A music box with too many gears. Euclidean escapement ticks (7 in 16) and
+woodblock tocks (3 in 8) run against a comb melody on 5 in 16, while a bell
+turns on its own five-step gear at a different speed. The comb's melody is
+the sum of two slow sines, caught by `sh` on each hit and snapped to C minor
+pentatonic by `deg:`, so it wanders without repeating. Each tine has an
+inharmonic partial at 5.4×. The bass is a pulse whose width breathes,
+through a `wah` that opens with each note's envelope. Seeded.

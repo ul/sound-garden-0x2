@@ -1,0 +1,29 @@
+[ clockwork a music box with too many gears ] drop
+seed:8
+0.5 cycle >ph
+[ escapement ticks seven in sixteen ] drop
+<ph trig:x(7,16) 0.0004 impulse 3100 s * 0.3 * -0.5 pan1
+[ tock three in eight a woodblock ] drop
+<ph trig:x(3,8) 0.002 impulse noise ch:0 * 750 12 bp 3 * 0.4 pan1
++
+[ the comb two slow sines sampled on five in sixteen then snapped to c minor pentatonic ] drop
+<ph trig:x(5,16) >tc
+0.11 s 0.37 s 0.5 * + 0.66 * <tc sh unit 24 * 72 + deg:0,3,5,7,10 m2f >fc
+[ tines are inharmonic a partial at five point four ] drop
+<fc s <fc 5.4 * s 0.25 * + <tc 0.2 impulse * 0.3 *
++
+[ bass pulse width breathes wah opens with each note ] drop
+<ph gate:x.x.x.xx 0.005 0.15 0.3 0.1 adsr >env
+<ph pat:C2,_,Eb2,_,G1,_,Bb1,Ab1 m2f 0.07 s 0.3 * 0.5 + p
+0 <env 1100 * 250 + wah
+<env * 0.3 *
++
+[ a bell on its own five beat gear against the four ] drop
+5/8 cycle trig:x(2,5) >tb
+c6 s c6 2.76 * s 0.3 * + <tb 0.4 impulse * 0.08 * 0.7 pan1
++
+[ glass case ] drop
+=dry 1.2 0.6 verb 0.25 * <dry +
+0.5 3 comp:0.1
+0.7 *
+0.9 limit

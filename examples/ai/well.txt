@@ -1,0 +1,24 @@
+[ well plucked strings in a stone well ] drop
+seed:21
+0.35 cycle >ph
+[ a string is a noise burst circulating in a delay one period long ] drop
+[ the feedback loop adds two samples so the delay is one over f minus two over sr ] drop
+[ swap \ sr \ 2 * - swap 0.003 impulse noise ch:0 * 3500 lpf swap 0.996 fb:1 ] :string
+[ euclidean plucks through a minor pentatonic the second bar answers ] drop
+<ph pat:<A3,C4,E4,G4,A4,D4,E4,C4;A3,E4,G4,A4,C5,G4,E4,D4> m2f
+<ph trig:x(5,8)
+string poly:4
+0.5 * -0.35 pan1
+[ bass strings ring longer ] drop
+<ph pat:<A2;F2;C3;G2> m2f
+<ph trig:x...x.x.
+[ swap \ sr \ 2 * - swap 0.006 impulse noise ch:0 * 900 lpf swap 0.998 fb:1 ] poly:2
+0.4 * 0.3 pan1
++
+[ sympathetic strings a whisper of noise keeps an open A string humming ] drop
+noise ch:0 0.0004 * 110 \ sr \ 2 * - 0.999 fbsat:1 400 lpf 0.5 *
++
+[ stone well ] drop
+=dry 6 0.6 verb 0.5 * <dry +
+0.7 *
+0.9 limit

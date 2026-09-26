@@ -1,0 +1,22 @@
+[ phases one cell two players one of them is a little too eager ] drop
+[ every pattern owns its clock so drift is just a slightly different cps ] drop
+[ the second player gains a note every fifteen seconds and they meet again after three minutes ] drop
+[ pat:B3,F#4,A4,D5,E5,A4,F#4,D5,B4,E5,A4,F#4 ] :cell
+[ swap dup t swap 2 * s 0.15 * + swap 0.08 impulse * ] :mallet
+[ steady player on the left ] drop
+0.9 cycle >p1
+<p1 cell m2f <p1 trig:x*12 mallet poly:3
+-0.45 pan1
+[ eager player on the right ] drop
+0.9 1/180 + cycle >p2
+<p2 cell m2f <p2 trig:x*12 mallet poly:3
+0.45 pan1
++
+0.16 *
+[ a low B breathes under the lattice ] drop
+0.05 cycle gate:x. 3 1 0.6 4 adsr b1 s * 0.2 *
++
+[ the room ] drop
+=dry 2.5 0.5 verb 0.3 * <dry +
+0.8 *
+0.9 limit

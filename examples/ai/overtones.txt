@@ -1,0 +1,18 @@
+[ overtones a throat singer made of filters ] drop
+[ the drone a saw on A2 carries every harmonic ] drop
+110 0 saw 110.3 0 saw + 0.5 * >drone
+[ the singer moves a narrow formant across harmonics six to twelve ] drop
+0.15 cycle pat:<6,8,9,8,10,12,10,9;6,9,10,12,16,12,10,8> 0.12 lag 110 * >formant
+<drone <formant 16 bp 6 * >vowel
+[ st1 keeps only the strongest bin so a pure whistle hops along the harmonic series ] drop
+<vowel st1 2.5 * >whistle
+[ throat low vowel and whistle ] drop
+<drone 700 0.7 l 0.35 *
+<vowel 0.4 * +
+<whistle 0.2 s 0.3 * pan1 +
+[ an undertone an octave below the drone ] drop
+55 s 0.2 * +
+[ open steppe ] drop
+=dry 5 0.5 verb 0.35 * <dry +
+0.3 *
+0.9 limit

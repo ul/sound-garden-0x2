@@ -1,0 +1,34 @@
+[ tape a phrase is played once recorded and then it is only tape ] drop
+[ seconds since start for the first hundred ] drop
+0.01 cycle 100 * >t
+[ the phrase four seconds of triangle plucks ] drop
+0.25 cycle >ph
+<ph pat:E4,G4,B4,D5,C5,B4,G4,A4 m2f <ph trig:x*8
+[ swap dup t swap 0.5 * s 0.3 * + swap 0.25 impulse * ] poly:4
+0.3 *
+[ record the first four seconds the phrase passes through ] drop
+1 wt:tape:4
+[ then the live player walks away ] drop
+4 <t - 4 * 0 1 clamp *
+[ loop a at speed with wow the window hides the splice ] drop
+0.25 cycle >a
+<a 4 * 0.3 s 0.002 * + rt:tape <a pi * sin *
+<t 4 - 0 1 clamp *
++
+[ loop b half speed backwards an octave down dark ] drop
+-0.125 cycle >b
+<b 4 * 0.17 s 0.004 * + rt:tape <b pi * sin * 1200 lpf
+<t 10 - 0.2 * 0 1 clamp * 0.8 *
+-0.6 pan1
++
+[ loop c double speed an octave up far away ] drop
+0.5 cycle >c
+<c 4 * rt:tape <c pi * sin * 800 hpf
+<t 18 - 0.2 * 0 1 clamp * 0.35 *
+0.6 pan1
++
+[ worn capstan echoes and a small studio ] drop
+0.5 0.3 fbsat:1
+=dry 1.8 0.4 verb 0.3 * <dry +
+0.8 *
+0.9 limit
