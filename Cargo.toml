@@ -68,5 +68,13 @@ name = "microstructure"
 harness = false
 
 [profile.release]
-# lto = true
 panic = "abort"
+
+# Opt-in for builds you perform with: `cargo build --profile dist`.
+# Fat LTO + one codegen unit measured 0-8% faster per frame (≈5% on synth
+# and spectral benches) but makes a one-file rebuild ~4x slower (25 s vs 6 s),
+# so plain `release` stays tuned for iteration.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
