@@ -1,4 +1,7 @@
-use crate::midi::{MidiMessage, TimedMidiEvent};
+use crate::{
+    midi::{MidiMessage, TimedMidiEvent},
+    telemetry::{CallbackTiming, OutputLevels, Telemetry},
+};
 use anyhow::Result;
 use audio_ops::{MAX_MIDI_EVENTS_PER_FRAME, MidiControls, MidiEvent, MidiFrameEvents, pure::clip};
 use audio_vm::{CHANNELS, Program, Sample, VM};
@@ -33,6 +36,8 @@ pub struct Engine {
     pub midi_frame: Arc<MidiFrameEvents>,
     /// Controller and bend values, updated at each message's frame.
     pub midi_controls: Arc<MidiControls>,
+    /// Load, dropouts and output levels for the GUI.
+    pub telemetry: Arc<Telemetry>,
 }
 
 /// State carried from one audio callback to the next.
@@ -44,14 +49,38 @@ struct CallbackState {
     /// Start of the previous callback: MIDI that arrived since then is spread
     /// over the current buffer at the same relative position.
     previous_callback: Option<Instant>,
+    timing: CallbackTiming,
 }
 
-pub fn main(engine: Engine, rx: Receiver<()>, tx: Sender<u32>) -> Result<()> {
+/// `buffer_frames` requests a device buffer size, clamped to what the device
+/// supports; `None` keeps the device default.
+pub fn main(
+    engine: Engine,
+    buffer_frames: Option<u32>,
+    rx: Receiver<()>,
+    tx: Sender<u32>,
+) -> Result<()> {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .ok_or(anyhow::anyhow!("No default device available."))?;
     let config = device.default_output_config()?;
+    let mut stream_config = config.config();
+    if let Some(frames) = buffer_frames {
+        let frames = match config.buffer_size() {
+            cpal::SupportedBufferSize::Range { min, max } => {
+                let clamped = frames.clamp(*min, *max);
+                if clamped != frames {
+                    log::warn!(
+                        "Buffer size {frames} is outside the device's {min}..={max}; using {clamped}."
+                    );
+                }
+                clamped
+            }
+            cpal::SupportedBufferSize::Unknown => frames,
+        };
+        stream_config.buffer_size = cpal::BufferSize::Fixed(frames);
+    }
     let channels = config.channels() as usize;
     if channels != CHANNELS {
         return Err(anyhow::anyhow!(
@@ -62,12 +91,13 @@ pub fn main(engine: Engine, rx: Receiver<()>, tx: Sender<u32>) -> Result<()> {
     }
 
     let sample_rate = config.sample_rate();
+    engine.telemetry.set_sample_rate(sample_rate);
     tx.send(sample_rate)?;
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(&device, config.into(), engine, rx),
-        cpal::SampleFormat::I16 => run::<i16>(&device, config.into(), engine, rx),
-        cpal::SampleFormat::U16 => run::<u16>(&device, config.into(), engine, rx),
+        cpal::SampleFormat::F32 => run::<f32>(&device, stream_config, engine, rx),
+        cpal::SampleFormat::I16 => run::<i16>(&device, stream_config, engine, rx),
+        cpal::SampleFormat::U16 => run::<u16>(&device, stream_config, engine, rx),
         sample_format => Err(anyhow::anyhow!(
             "Unsupported sample format: {sample_format:?}"
         )),
@@ -84,12 +114,21 @@ where
     T: cpal::Sample + cpal::SizedSample + cpal::FromSample<f32>,
 {
     let channels = config.channels as usize;
+    let sample_rate = config.sample_rate;
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
     let mut state = CallbackState::default();
     let stream = device.build_output_stream(
         config,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            engine.write_data(data, channels, &mut state, Instant::now())
+            let start = Instant::now();
+            engine.write_data(data, channels, &mut state, start);
+            let frames = data.len() / channels.max(1);
+            let (load, dropout) = state
+                .timing
+                .record(start, Instant::now(), frames, sample_rate);
+            engine
+                .telemetry
+                .record_callback(frames as u32, load, dropout);
         },
         err_fn,
         None,
@@ -151,6 +190,7 @@ impl Engine {
             _ => 0,
         };
 
+        let mut levels = OutputLevels::default();
         let mut midi_events = [MidiEvent::note_off(0, 0); MAX_MIDI_EVENTS_PER_FRAME];
         for (index, frame) in output.chunks_mut(channels).enumerate() {
             if let Some(midi_rx) = self.midi_rx.as_mut() {
@@ -183,7 +223,9 @@ impl Engine {
                     state.midi_frame_dirty = midi_count > 0;
                 }
             }
-            for (sample, &value) in frame.iter_mut().zip(self.vm.next_frame().iter()) {
+            let vm_frame = self.vm.next_frame();
+            levels.add(&vm_frame);
+            for (sample, &value) in frame.iter_mut().zip(vm_frame.iter()) {
                 let value = clip(value);
                 *sample = T::from_sample(value as f32);
                 if record {
@@ -191,6 +233,7 @@ impl Engine {
                 }
             }
         }
+        self.telemetry.record_output(&levels);
     }
 }
 
@@ -241,6 +284,7 @@ mod tests {
                 midi_rx: Some(midi_rx),
                 midi_frame: Arc::clone(&ctx.midi),
                 midi_controls: Arc::clone(&ctx.midi_controls),
+                telemetry: Arc::new(Telemetry::new()),
             },
             state: CallbackState::default(),
             record_rx,
@@ -388,5 +432,20 @@ mod tests {
             .vm
             .load_program(compile_program(&ops, 48_000, &mut ctx));
         assert_eq!(h.left(2), [0.5; 2]);
+    }
+
+    #[test]
+    fn output_levels_are_measured_before_the_clip() {
+        // 1.5 is clipped to 1.0 on the way out, but the meter must show it.
+        let mut h = harness("1.5 -0.5 +", 4);
+        assert_eq!(h.left(4), [1.0; 4]);
+        let meters = h.engine.telemetry.snapshot();
+        assert_eq!(meters.peak, [1.0, 1.0]);
+        let mut h = harness("1.5", 4);
+        h.callback(4);
+        let meters = h.engine.telemetry.snapshot();
+        assert_eq!(meters.peak, [1.5, 1.5]);
+        assert_eq!(meters.clipped, 8, "4 frames x 2 channels over 1.0");
+        assert!((meters.rms[0] - 1.5).abs() < 1e-12);
     }
 }

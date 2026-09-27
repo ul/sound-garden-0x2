@@ -16,6 +16,9 @@ use thread_worker::Worker;
 mod audio;
 mod midi;
 mod record;
+mod telemetry;
+
+pub use telemetry::Meters;
 
 const CHANNEL_CAPACITY: usize = 64;
 /// It's about 500ms, should be more than enough for write cycle of ~10ms.
@@ -25,6 +28,8 @@ const OSCILLOSCOPE_POLL_MS: u64 = 10;
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     pub midi: MidiInputSelection,
+    /// Requested audio buffer size in frames; None keeps the device default.
+    pub buffer_frames: Option<u32>,
 }
 
 pub use midi::{MidiInputSelection, list_inputs as list_midi_inputs};
@@ -33,6 +38,7 @@ pub use midi::{MidiInputSelection, list_inputs as list_midi_inputs};
 pub struct Monitor {
     pub scope: Frame,
     pub patterns: Vec<(u64, Frame)>,
+    pub meters: Meters,
 }
 
 #[derive(Archive, RkyvSerialize, RkyvDeserialize, Serialize, Deserialize)]
@@ -68,6 +74,9 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let mut ctx = Context::default();
     let midi_frame = Arc::clone(&ctx.midi);
     let midi_controls = Arc::clone(&ctx.midi_controls);
+    let telemetry = Arc::new(telemetry::Telemetry::new());
+    let engine_telemetry = Arc::clone(&telemetry);
+    let buffer_frames = options.buffer_frames;
     let (midi_connection, midi_rx) = match midi::open_input(&options.midi) {
         Ok(Some((connection, consumer, name))) => {
             log::info!("Connected MIDI input: {name}");
@@ -105,8 +114,9 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
             midi_rx,
             midi_frame,
             midi_controls,
+            telemetry: engine_telemetry,
         };
-        audio::main(engine, i, o).unwrap();
+        audio::main(engine, buffer_frames, i, o).unwrap();
     });
     let sample_rate = player.receiver().recv().unwrap();
 
@@ -135,7 +145,8 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
                                 .try_lock()
                                 .map(|monitor| monitor.clone())
                                 .unwrap_or_default();
-                            if tx.send(Monitor { scope: frame, patterns }).is_err() { break; };
+                            let meters = telemetry.snapshot();
+                            if tx.send(Monitor { scope: frame, patterns, meters }).is_err() { break; };
                         }
                     }
                 } else {

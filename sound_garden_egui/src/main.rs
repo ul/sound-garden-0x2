@@ -1,9 +1,12 @@
+mod feedback;
+
 use anyhow::Result;
 use audio_program::{TextOp, get_help};
 use chrono::Local;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2 as EVec2};
+use feedback::MeterDisplay;
 use log::LevelFilter;
 use rkyv::{rancor::Error as RkyvError, to_bytes};
 use sound_garden_format::{NodeEdit, NodeRepository};
@@ -23,6 +26,11 @@ const OSCILLOSCOPE_FONT_SIZE: f32 = 12.0;
 const GRID_WIDTH: f32 = 8.4;
 const GRID_HEIGHT: f32 = 16.0;
 const MODELINE_HEIGHT: f32 = 26.0;
+const MODELINE_GAP: f32 = 12.0;
+const METER_WIDTH: f32 = 80.0;
+/// Meter bars turn warm above -6 dBFS.
+const METER_HOT_AMPLITUDE: f64 = 0.5;
+const METER_TRACK_COLOR: Color32 = Color32::from_rgb(0xe0, 0xdc, 0xd2);
 const BACKGROUND_COLOR: Color32 = Color32::from_rgb(0xf3, 0xf0, 0xe8);
 const FOREGROUND_COLOR: Color32 = Color32::from_rgb(0x22, 0x22, 0x20);
 const COMMENT_COLOR: Color32 = Color32::from_rgb(0x8f, 0x8c, 0x84);
@@ -59,6 +67,13 @@ fn main() -> Result<()> {
                 .long("midi")
                 .value_name("DEVICE")
                 .help("Connect a MIDI input for the embedded audio server: 'auto', device index, or case-insensitive name substring."),
+        )
+        .arg(
+            Arg::new("buffer")
+                .long("buffer")
+                .value_name("FRAMES")
+                .value_parser(clap::value_parser!(u32).range(16..=8192))
+                .help("Audio buffer size in frames, e.g. 128 for low latency; clamped to what the device supports. Default: the device's own."),
         )
         .arg(
             Arg::new("list-midi")
@@ -101,6 +116,7 @@ fn main() -> Result<()> {
         })
         .unwrap_or_default();
 
+    let buffer_frames = matches.get_one::<u32>("buffer").copied();
     let audio_control = if let Some(port) = matches.get_one::<String>("audio-port") {
         let address = format!("127.0.0.1:{}", port);
         Worker::spawn(
@@ -118,7 +134,14 @@ fn main() -> Result<()> {
         )
     } else {
         Worker::spawn("Audio", 1, move |rx, tx| {
-            audio_server::run_with_options(rx, tx, audio_server::Options { midi });
+            audio_server::run_with_options(
+                rx,
+                tx,
+                audio_server::Options {
+                    midi,
+                    buffer_frames,
+                },
+            );
         })
     };
 
@@ -192,6 +215,7 @@ struct SoundGardenApp {
     pattern_monitors: HashMap<Id, PatternMonitor>,
     /// When the pending save should be written; None when nothing is unsaved.
     save_due: Option<Instant>,
+    meters: MeterDisplay,
 }
 
 #[derive(Clone, Copy)]
@@ -241,6 +265,7 @@ impl SoundGardenApp {
             monitor_stream_enabled: false,
             pattern_monitors: HashMap::new(),
             save_due: None,
+            meters: MeterDisplay::default(),
         };
         app.sync_from_repo();
         app.update_audio_monitor();
@@ -611,7 +636,8 @@ impl SoundGardenApp {
     }
 
     fn update_monitor_stream(&mut self) {
-        let enabled = self.state.show_oscilloscope || !self.pattern_monitors.is_empty();
+        // Always on: the modeline's engine status and meters need it.
+        let enabled = true;
         if enabled != self.monitor_stream_enabled {
             self.monitor_stream_enabled = enabled;
             self.audio_tx
@@ -1199,18 +1225,87 @@ impl SoundGardenApp {
             ));
         }
 
+        let time = ui.input(|input| input.time);
+        let status_left = self.draw_engine_status(&painter, rect, time);
+
         if let Some(help) = self
             .op_at_cursor()
             .and_then(|op| self.op_help.get(&op).cloned())
         {
-            painter.text(
-                Pos2::new(35.0, rect.min.y + 5.0),
-                Align2::LEFT_TOP,
+            let left = 35.0;
+            let mut job = egui::text::LayoutJob::simple_singleline(
                 help,
                 FontId::monospace(MODELINE_FONT_SIZE),
                 FOREGROUND_COLOR,
             );
+            job.wrap = egui::text::TextWrapping::truncate_at_width(
+                (status_left - left - MODELINE_GAP).max(0.0),
+            );
+            let galley = painter.layout_job(job);
+            painter.galley(Pos2::new(left, rect.min.y + 5.0), galley, FOREGROUND_COLOR);
         }
+    }
+
+    /// Right end of the modeline: engine status text, stereo level meters and
+    /// the clip light. Returns the x where it starts, so other text can stop
+    /// short of it.
+    fn draw_engine_status(&self, painter: &egui::Painter, rect: Rect, time: f64) -> f32 {
+        let mut right = rect.max.x - MODELINE_GAP;
+
+        // Clip light: latched for a moment after any sample goes past ±1.
+        let clip_center = Pos2::new(right - 4.0, rect.center().y + 1.0);
+        if self.meters.clipping(time) {
+            painter.circle_filled(clip_center, 4.0, MODELINE_RECORD_COLOR);
+        } else {
+            painter.circle_stroke(clip_center, 3.5, Stroke::new(1.0, COMMENT_COLOR));
+        }
+        right -= 8.0 + MODELINE_GAP;
+
+        // Level meters, one bar per channel: RMS filled, held peak as a tick.
+        let left = right - METER_WIDTH;
+        for (channel, (rms, peak)) in self.meters.levels().into_iter().enumerate() {
+            let top = rect.min.y + 8.0 + channel as f32 * 7.0;
+            let track = Rect::from_min_max(Pos2::new(left, top), Pos2::new(right, top + 4.0));
+            painter.rect_filled(track, 0.0, METER_TRACK_COLOR);
+            let hot = peak > feedback::meter_position(METER_HOT_AMPLITUDE);
+            let fill =
+                Rect::from_min_max(track.min, Pos2::new(left + rms * METER_WIDTH, track.max.y));
+            painter.rect_filled(
+                fill,
+                0.0,
+                if hot { NODE_DRAFT_COLOR } else { COMMENT_COLOR },
+            );
+            let x = left + peak * METER_WIDTH;
+            painter.line_segment(
+                [
+                    Pos2::new(x, track.min.y - 1.0),
+                    Pos2::new(x, track.max.y + 1.0),
+                ],
+                Stroke::new(
+                    1.5,
+                    if hot {
+                        NODE_DRAFT_COLOR
+                    } else {
+                        FOREGROUND_COLOR
+                    },
+                ),
+            );
+        }
+        right = left - MODELINE_GAP;
+
+        if let Some(status) = self.meters.status() {
+            let color = if self.meters.dropout_warning(time) {
+                MODELINE_RECORD_COLOR
+            } else {
+                COMMENT_COLOR
+            };
+            let galley =
+                painter.layout_no_wrap(status, FontId::monospace(MODELINE_FONT_SIZE), color);
+            right -= galley.size().x;
+            painter.galley(Pos2::new(right, rect.min.y + 5.0), galley, color);
+            right -= MODELINE_GAP;
+        }
+        right
     }
 
     fn draw_op_list(&mut self, ctx: &egui::Context) {
@@ -1348,6 +1443,12 @@ impl eframe::App for SoundGardenApp {
                 self.oscilloscope_values.push_back(monitor_frame.scope[0]);
                 received_monitor_frame = true;
             }
+            self.meters.update(&monitor_frame.meters, time);
+        }
+        if self.state.play || self.meters.is_animating(time) {
+            // ~30 fps is plenty for meters; pattern highlights and the
+            // oscilloscope request their own faster repaints below.
+            ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
         if received_monitor_frame {
             ctx.request_repaint();

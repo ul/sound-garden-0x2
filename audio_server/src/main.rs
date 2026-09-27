@@ -34,6 +34,13 @@ fn main() -> Result<()> {
             "Connect a MIDI input: 'auto', device index, or case-insensitive name substring.",
         ))
         .arg(
+            Arg::new("buffer")
+                .long("buffer")
+                .value_name("FRAMES")
+                .value_parser(clap::value_parser!(u32).range(16..=8192))
+                .help("Audio buffer size in frames, e.g. 128 for low latency; clamped to what the device supports. Default: the device's own."),
+        )
+        .arg(
             Arg::new("list-midi")
                 .long("list-midi")
                 .action(clap::ArgAction::SetTrue)
@@ -61,8 +68,16 @@ fn main() -> Result<()> {
             }
         })
         .unwrap_or_default();
+    let buffer_frames = matches.get_one::<u32>("buffer").copied();
     let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, move |rx, tx| {
-        run_with_options(rx, tx, Options { midi });
+        run_with_options(
+            rx,
+            tx,
+            Options {
+                midi,
+                buffer_frames,
+            },
+        );
     });
 
     let oscilloscope = if let Some(port) = scope_port {
