@@ -10,6 +10,10 @@ A spatial editing document containing positioned nodes and a cursor.
 
 A uniquely identified fragment of Sound Garden text at a position on the project's grid. A node is distinct from a word in the executable program.
 
+### Project link
+
+A shareable copy of a project that preserves its nodes' identities and positions, rather than only executable program text.
+
 ### Pattern clock
 
 A pattern clock is local state owned by a pattern op. It advances by integrating a cycles-per-second (`cps`) signal consumed from the stack, similarly to how oscillators advance phase from a frequency signal. Sound Garden patterns do not initially use a shared global transport clock; synced patterns can be built explicitly by feeding them the same `cps` source, including via existing variables.
