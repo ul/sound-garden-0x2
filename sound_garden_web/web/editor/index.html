@@ -55,9 +55,8 @@
     </menu>
   </dialog>
   <script type="module">
-    // A fresh editor entry point cannot reuse glue cached from an earlier deployment.
     const editorUrl = new URL('./editor.js', document.baseURI);
-    editorUrl.searchParams.set('editor', crypto.randomUUID());
+    editorUrl.searchParams.set('editor', '__EDITOR_ASSET_KEY__');
     import(editorUrl.href).catch((error) => {
       console.error(error);
       document.querySelector('#status').textContent = error?.message ?? String(error);

@@ -17,6 +17,7 @@ all:
 	cp $(ENGINE_WASM) web/*.js web/*.html ../README.html $(DIST)/
 	cp -R web/editor/. $(DIST)/editor/
 	$(WASM_BINDGEN) --target web --out-dir $(DIST)/editor/pkg $(EDITOR_WASM)
+	node build-editor-cache-key.mjs $(DIST)
 	@printf "engine: %s KB, editor: %s KB\n" $$(( $$(wc -c < $(DIST)/sound_garden_web.wasm) / 1024 )) $$(( $$(wc -c < $(DIST)/editor/pkg/sound_garden_egui_bg.wasm) / 1024 ))
 
 serve: all

@@ -1,20 +1,31 @@
 import { SoundGarden } from '../sound-garden.js';
 import { ConflictError, openProjectStore, playgroundTextFromHash, projectFromHash, projectLink } from '../editor-store.js';
 
-// Use one page-load cache key for both generated files; their browser cache lifetimes differ.
+// Reuse the build's cache key, but recover if an old page sees a mixed deployment.
 const assetKey = new URL(import.meta.url).searchParams.get('editor') ?? crypto.randomUUID();
-const glueUrl = new URL('./pkg/sound_garden_egui.js', import.meta.url);
-glueUrl.searchParams.set('editor', assetKey);
-const wasmUrl = new URL('./pkg/sound_garden_egui_bg.wasm', import.meta.url);
-wasmUrl.searchParams.set('editor', assetKey);
+async function loadEditor(key) {
+  const glueUrl = new URL('./pkg/sound_garden_egui.js', import.meta.url);
+  glueUrl.searchParams.set('editor', key);
+  const wasmUrl = new URL('./pkg/sound_garden_egui_bg.wasm', import.meta.url);
+  wasmUrl.searchParams.set('editor', key);
+  const editor = await import(glueUrl.href);
+  await editor.default({ module_or_path: wasmUrl });
+  return editor;
+}
+let editor;
+try {
+  editor = await loadEditor(assetKey);
+} catch (error) {
+  console.warn('Editor assets did not load together; fetching a fresh pair.', error);
+  editor = await loadEditor(crypto.randomUUID());
+}
 const {
-  default: init,
   start_sound_garden_editor,
   replace_sound_garden_project,
   current_sound_garden_project,
   empty_sound_garden_project,
   project_from_text,
-} = await import(glueUrl.href);
+} = editor;
 const STARTER = `[ welcome to the garden: edit, then enter to commit ] drop
 2 s 1 + 220 * s
 0.25 s 0.5 * 0.5 + *
@@ -336,7 +347,6 @@ try {
     incoming = projectFromHash(location.hash);
     incomingText = await playgroundTextFromHash(location.hash);
   } catch (error) { fail(error); }
-  await init({ module_or_path: wasmUrl });
   if (incomingText !== null) incoming = project_from_text(incomingText);
   if (incoming) {
     initialBytes = incoming;
