@@ -9,9 +9,9 @@ WASM := ../target/wasm32-unknown-unknown/release/sound_garden_web.wasm
 .PHONY: all serve clean
 
 all:
-	cargo build --quiet --release --target wasm32-unknown-unknown -p sound_garden_web
+	cargo build --locked --quiet --release --target wasm32-unknown-unknown -p sound_garden_web
 	mkdir -p $(DIST)
-	cp $(WASM) web/*.js web/*.html $(DIST)/
+	cp $(WASM) web/*.js web/*.html ../README.html $(DIST)/
 	@printf "engine: %s KB, %s KB gzipped\n" $$(( $$(wc -c < $(DIST)/sound_garden_web.wasm) / 1024 )) $$(( $$(gzip -9c $(DIST)/sound_garden_web.wasm | wc -c) / 1024 ))
 
 serve: all

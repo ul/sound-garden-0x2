@@ -9,6 +9,10 @@ make -C sound_garden_web serve    # playground on http://localhost:8124
 
 Serve over http(s) or localhost; browsers don't load worklets from `file://`.
 
+## GitHub Pages
+
+Pushes to `master` build the WebAssembly playground with the locked Cargo dependencies and publish `dist/` via `.github/workflows/pages.yml`. You can also run the workflow manually from the Actions tab. The published directory includes the project manual at `README.html`.
+
 ## Playground
 
 `dist/index.html`: type a program, commit with Cmd/Ctrl+Enter (edits keep op state, like the editor), Esc pauses. The modeline shows whether what you hear matches the text. "Copy link" puts the program, compressed, in the URL fragment: nothing leaves the browser until you send the link.

@@ -40,6 +40,8 @@
   #state.idle { background: var(--rule); color: var(--muted); }
   button { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; }
   button:hover { border-color: var(--accent); color: var(--accent); }
+  footer a { color: inherit; }
+  footer a:hover { color: var(--accent); }
   .spacer { flex: 1; }
   kbd { font: 11px var(--mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 0.3rem; }
   @media (max-width: 40rem) { .keys { display: none; } }
@@ -54,6 +56,7 @@
   <span class="keys"><kbd>⌘</kbd><kbd>↵</kbd> commit · <kbd>Esc</kbd> pause</span>
   <span class="spacer"></span>
   <span id="note"></span>
+    <a href="./README.html">Manual</a>
   <button id="share" type="button">Copy link</button>
 </footer>
 <script type="module">
