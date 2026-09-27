@@ -8,12 +8,14 @@
 pub fn enable_flush_to_zero() {
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        use core::arch::x86_64::{
-            _MM_DENORMALS_ZERO_ON, _MM_FLUSH_ZERO_ON, _MM_SET_DENORMALS_ZERO_MODE,
-            _MM_SET_FLUSH_ZERO_MODE,
-        };
+        use core::arch::asm;
 
-        _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-        _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+        // MXCSR bit 15 is FTZ; bit 6 is DAZ. Keep all other thread-local
+        // floating-point control bits unchanged. The DAZ helper intrinsics
+        // are not available in core::arch on all stable toolchains.
+        let mut mxcsr = 0u32;
+        asm!("stmxcsr [{}]", in(reg) &mut mxcsr, options(nostack, preserves_flags));
+        mxcsr |= (1 << 15) | (1 << 6);
+        asm!("ldmxcsr [{}]", in(reg) &mxcsr, options(nostack, preserves_flags));
     }
 }
