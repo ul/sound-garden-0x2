@@ -1,4 +1,4 @@
-name: Publish browser playground
+name: Publish Sound Garden browser apps
 
 on:
   push:
@@ -26,7 +26,13 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - run: cargo install wasm-bindgen-cli --version 0.2.122 --locked
+      - run: cargo test --locked -p sound_garden_format -p sound_garden_web
       - run: make -C sound_garden_web
+      - run: |
+          node --check sound_garden_web/web/editor-store.js
+          node --check sound_garden_web/web/editor/editor.js
+          test -s sound_garden_web/dist/editor/pkg/sound_garden_egui_bg.wasm
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

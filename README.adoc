@@ -2,6 +2,8 @@
 
 Try the https://ul.mantike.pro/sound-garden-0x2/[browser playground].
 
+Open the https://ul.mantike.pro/sound-garden-0x2/editor/[spatial browser editor] for the egui canvas, local named projects and native `.sg` import/export. The text playground can transfer its current program through "Open in editor". Browser project links carry an independent copy in the URL fragment; local edits auto-save in IndexedDB, with cross-tab conflict detection.
+
 (consider reading this doc at http://ul.mantike.pro/sound-garden-0x2/README.html because GitHub parses AsciiDoc improperly)
 
 == What?

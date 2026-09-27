@@ -4,7 +4,7 @@ use sound_garden_types::*;
 use std::{
     collections::{HashMap, VecDeque},
     convert::TryFrom,
-    io::Write,
+    io::{Read, Write},
     path::Path,
 };
 
@@ -113,16 +113,41 @@ impl NodeRepository {
         }
     }
 
+    /// Decode the Snappy-framed CBOR used by `.sg` projects. Invalid or
+    /// incomplete input, including trailing CBOR data, is an error.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        let mut decoded = Vec::new();
+        snap::read::FrameDecoder::new(bytes).read_to_end(&mut decoded)?;
+        let mut input = std::io::Cursor::new(&decoded);
+        let repo = ciborium::from_reader(&mut input)
+            .map_err(|err| anyhow::anyhow!("Invalid Sound Garden project: {err}"))?;
+        anyhow::ensure!(
+            input.position() == decoded.len() as u64,
+            "Invalid Sound Garden project: trailing CBOR data"
+        );
+        Ok(repo)
+    }
+
+    /// Encode the same Snappy-framed CBOR bytes written by `save`.
+    pub fn to_bytes(&self) -> Result<Vec<u8>> {
+        let mut encoder = snap::write::FrameEncoder::new(Vec::new());
+        ciborium::into_writer(self, &mut encoder).map_err(|err| anyhow::anyhow!("{err}"))?;
+        encoder.flush()?;
+        encoder
+            .into_inner()
+            .map_err(|err| anyhow::anyhow!("{}", err.error()))
+    }
+
     /// Load a project. A missing file is a new, empty project; a file that
     /// exists but can't be read or decoded is an error, so callers never
     /// mistake it for an empty project and save over it.
     pub fn load(filename: &str) -> Result<Self> {
-        let file = match std::fs::File::open(filename) {
-            Ok(file) => file,
+        let bytes = match std::fs::read(filename) {
+            Ok(bytes) => bytes,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(err) => anyhow::bail!("Can't open {filename}: {err}"),
         };
-        ciborium::from_reader(snap::read::FrameDecoder::new(file)).map_err(|err| {
+        Self::from_bytes(&bytes).map_err(|err| {
             anyhow::anyhow!("{filename} is not a readable Sound Garden project: {err}")
         })
     }
@@ -131,6 +156,7 @@ impl NodeRepository {
     /// sync it, then rename it over the original. A crash or error mid-save
     /// leaves the previous file intact rather than a truncated one.
     pub fn save(&self, filename: &str) -> Result<()> {
+        let bytes = self.to_bytes()?;
         let path = Path::new(filename);
         let file_name = path
             .file_name()
@@ -141,12 +167,8 @@ impl NodeRepository {
         let temp_path = path.with_file_name(temp_name);
 
         let result = (|| {
-            let mut encoder = snap::write::FrameEncoder::new(std::fs::File::create(&temp_path)?);
-            ciborium::into_writer(self, &mut encoder).map_err(|e| anyhow::anyhow!("{e}"))?;
-            encoder.flush()?;
-            let file = encoder
-                .into_inner()
-                .map_err(|e| anyhow::anyhow!("{}", e.error()))?;
+            let mut file = std::fs::File::create(&temp_path)?;
+            file.write_all(&bytes)?;
             file.sync_all()?;
             std::fs::rename(&temp_path, path)?;
             Ok(())
@@ -431,6 +453,67 @@ mod tests {
     }
 
     #[test]
+    fn byte_roundtrip_preserves_spatial_project() {
+        let mut repo = NodeRepository::new();
+        repo.add_node(node(0xcafe, 14.25, -3.5, "🎹 osc"), 1);
+        repo.add_node(node(0x1234, -0.25, 7.75, "+"), 2);
+        repo.set_cursor(
+            &Cursor {
+                position: Point::new(9.5, -2.25),
+            },
+            3,
+        );
+
+        let bytes = repo.to_bytes().unwrap();
+        assert!(bytes.starts_with(&[0xff, 0x06, 0x00, 0x00, b's', b'N', b'a', b'P', b'p', b'Y']));
+        let mut legacy_encoder = snap::write::FrameEncoder::new(Vec::new());
+        ciborium::into_writer(&repo, &mut legacy_encoder).unwrap();
+        legacy_encoder.flush().unwrap();
+        assert_eq!(legacy_encoder.into_inner().unwrap(), bytes);
+        let loaded = NodeRepository::from_bytes(&bytes).unwrap();
+        assert!(loaded.nodes() == repo.nodes());
+        assert_eq!(loaded.get_cursor().position, repo.get_cursor().position);
+        assert_eq!(loaded.to_bytes().unwrap(), bytes);
+    }
+
+    #[test]
+    fn malformed_project_bytes_are_errors() {
+        let valid = NodeRepository::new().to_bytes().unwrap();
+        for bytes in [
+            vec![],
+            b"not a Sound Garden project".to_vec(),
+            valid[..valid.len() - 1].to_vec(),
+        ] {
+            assert!(
+                NodeRepository::from_bytes(&bytes).is_err(),
+                "accepted {bytes:?}"
+            );
+        }
+
+        // A valid Snappy frame may still contain invalid or multiple CBOR values.
+        for cbor in [
+            vec![0xff],
+            vec![0x01],
+            vec![0xa0],
+            vec![0xa2, 0x65, b'n', b'o', b'd', b'e', b's'],
+        ] {
+            let mut encoder = snap::write::FrameEncoder::new(Vec::new());
+            encoder.write_all(&cbor).unwrap();
+            let bytes = encoder.into_inner().unwrap();
+            assert!(
+                NodeRepository::from_bytes(&bytes).is_err(),
+                "accepted {cbor:?}"
+            );
+        }
+        let mut concatenated_cbor = Vec::new();
+        ciborium::into_writer(&NodeRepository::new(), &mut concatenated_cbor).unwrap();
+        concatenated_cbor.push(0x00);
+        let mut encoder = snap::write::FrameEncoder::new(Vec::new());
+        encoder.write_all(&concatenated_cbor).unwrap();
+        assert!(NodeRepository::from_bytes(&encoder.into_inner().unwrap()).is_err());
+    }
+
+    #[test]
     fn save_replaces_file_atomically_and_leaves_no_temp_file() {
         let dir = std::env::temp_dir().join(format!("sg-format-test-{:?}", Id::random()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -442,6 +525,7 @@ mod tests {
         repo.save(filename).unwrap();
         repo.add_node(node(0x2, 1.0, 0.0, "s"), 2);
         repo.save(filename).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), repo.to_bytes().unwrap());
 
         let loaded = NodeRepository::load(filename).unwrap();
         let texts = loaded

@@ -1288,6 +1288,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "egui_glow",
+ "glow",
  "glutin",
  "glutin-winit",
  "image",
@@ -3948,19 +3949,24 @@ dependencies = [
  "audio_ops",
  "audio_program",
  "audio_server",
- "audio_vm",
  "chrono",
  "clap",
  "crossbeam-channel",
  "eframe",
  "egui",
+ "getrandom 0.3.4",
  "log",
  "rkyv",
  "rustfft",
+ "serde",
+ "serde_json",
  "simple_logger",
  "sound_garden_format",
  "sound_garden_types",
  "thread_worker",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -3993,6 +3999,7 @@ dependencies = [
 name = "sound_garden_web"
 version = "0.1.0"
 dependencies = [
+ "audio_ops",
  "audio_program",
  "audio_vm",
  "getrandom 0.4.2",

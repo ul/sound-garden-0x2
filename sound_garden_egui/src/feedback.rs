@@ -1,8 +1,11 @@
 //! Performance feedback shown in the GUI: engine status and output meters.
 //!
 //! Pure state and formatting, kept apart from drawing so it can be tested.
+#[cfg(target_arch = "wasm32")]
+use crate::browser::{Meters, MidiMessage};
 use audio_ops::MidiEventKind;
 use audio_program::Diagnostic;
+#[cfg(not(target_arch = "wasm32"))]
 use audio_server::{Meters, MidiMessage};
 use std::{collections::HashMap, sync::Arc};
 
@@ -18,6 +21,10 @@ pub struct MeterDisplay {
     sample_rate: u32,
     buffer_frames: u32,
     load: Held,
+    #[cfg(target_arch = "wasm32")]
+    load_available: bool,
+    #[cfg(target_arch = "wasm32")]
+    dropouts_estimated: bool,
     peak: [Held; 2],
     rms: [f64; 2],
     clip_until: f64,
@@ -56,7 +63,16 @@ impl MeterDisplay {
         }
         self.sample_rate = meters.sample_rate;
         self.buffer_frames = meters.buffer_frames;
+        #[cfg(not(target_arch = "wasm32"))]
         self.load.update(meters.load, time);
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.load_available = meters.load_available;
+            self.dropouts_estimated = meters.dropouts_estimated;
+            if meters.load_available {
+                self.load.update(meters.load, time);
+            }
+        }
         for channel in 0..2 {
             self.peak[channel].update(meters.peak[channel], time);
             self.rms[channel] = meters.rms[channel];
@@ -110,16 +126,33 @@ impl MeterDisplay {
             return None;
         }
         let mut status = format!(
-            "{} · {} · {:.1}ms · dsp {:.0}%",
+            "{} · {} · {:.1}ms",
             format_rate(self.sample_rate),
             self.buffer_frames,
             1000.0 * self.buffer_frames as f64 / self.sample_rate as f64,
-            100.0 * self.load.value,
         );
+        #[cfg(not(target_arch = "wasm32"))]
+        status.push_str(&format!(" · dsp {:.0}%", 100.0 * self.load.value));
+        #[cfg(target_arch = "wasm32")]
+        if self.load_available {
+            status.push_str(&format!(" · dsp {:.0}%", 100.0 * self.load.value));
+        } else {
+            status.push_str(" · dsp N/A");
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         match self.dropouts {
             0 => {}
             1 => status.push_str(" · 1 dropout"),
             n => status.push_str(&format!(" · {n} dropouts")),
+        }
+        #[cfg(target_arch = "wasm32")]
+        if self.dropouts > 0 {
+            let label = if self.dropouts_estimated {
+                "estimated processing overruns"
+            } else {
+                "processing overruns"
+            };
+            status.push_str(&format!(" · {} {label}", self.dropouts));
         }
         Some(status)
     }

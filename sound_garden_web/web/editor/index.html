@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sound Garden · Editor</title>
+  <style>
+    :root { font: 13px system-ui, sans-serif; color: #222220; background: #f3f0e8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+    header { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; padding: 0.35rem 0.75rem; background: #ebe6dc; border-bottom: 1px solid #ccc6ba; }
+    header strong { margin-right: 0.6rem; white-space: nowrap; }
+    button { padding: 0.32rem 0.6rem; border: 1px solid #bab3a6; border-radius: 3px; color: inherit; background: #f9f7f0; cursor: pointer; font: inherit; }
+    button:hover, button:focus-visible { border-color: #3d6a3a; outline-color: #3d6a3a; }
+    button:disabled { opacity: .6; cursor: default; }
+    a { color: #345f31; }
+    #status { margin-left: auto; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #625b50; }
+    #canvas { flex: 1; min-height: 0; width: 100%; display: block; }
+    dialog { width: min(36rem, 95vw); border: 1px solid #bcb5a8; border-radius: 5px; background: #f9f7f0; color: inherit; box-shadow: 0 8px 25px #0003; }
+    dialog::backdrop { background: #0007; }
+    dialog h2 { font-size: 1rem; margin: 0 0 1rem; }
+    dialog menu { display: flex; gap: 0.5rem; justify-content: flex-end; padding: 0; margin: 1rem 0 0; }
+    #project-list { display: grid; gap: 0.4rem; max-height: 55vh; overflow-y: auto; }
+    #project-list button { text-align: left; }
+    #project-list small { color: #766d61; margin-left: 0.5rem; }
+    @media(max-width: 45rem) { #status { flex-basis: 100%; order: 3; } }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Sound Garden · Editor</strong>
+    <button type="button" id="projects">Projects</button>
+    <button type="button" id="new">New</button>
+    <button type="button" id="import">Import .sg</button>
+    <button type="button" id="export">Export .sg</button>
+    <button type="button" id="share">Copy link</button>
+    <button type="button" id="midi">Connect MIDI</button>
+    <a href="../">Text playground</a>
+    <span id="status" role="status" aria-live="polite">Loading editor…</span>
+  </header>
+  <canvas id="canvas" tabindex="0" aria-label="Sound Garden spatial editor"></canvas>
+  <input id="file" type="file" accept=".sg,application/octet-stream" hidden>
+  <dialog id="project-dialog" aria-labelledby="project-title">
+    <h2 id="project-title">Local projects</h2>
+    <div id="project-list"></div>
+    <menu><button type="button" id="close-projects">Close</button></menu>
+  </dialog>
+  <dialog id="conflict-dialog" aria-labelledby="conflict-title">
+    <h2 id="conflict-title">This project changed in another tab</h2>
+    <p>Your edits are still open here. Reload the newer project or save these edits as a separate copy.</p>
+    <menu>
+      <button type="button" id="reload-project">Reload newer version</button>
+      <button type="button" id="save-copy">Save a copy</button>
+    </menu>
+  </dialog>
+  <script type="module" src="./editor.js"></script>
+</body>
+</html>

@@ -11,11 +11,15 @@
 mod ids;
 
 use audio_program::{Context, TextOp, compile_program_with_diagnostics};
-use audio_vm::{Sample, VM};
+use audio_vm::{Sample, VM, set_pattern_monitor_ids};
 use std::fmt::Write as _;
 
 /// Frames per `sg_process` call at most. Web Audio's render quantum is 128.
 pub const MAX_FRAMES: usize = 1024;
+
+/// Maximum captured stereo frames between host monitor polls. Excess frames drop oldest data.
+const MONITOR_FRAMES: usize = 2048;
+const MAX_PATTERN_MONITORS: usize = 256;
 
 pub struct Engine {
     vm: VM,
@@ -25,6 +29,17 @@ pub struct Engine {
     input: Vec<u8>,
     report: String,
     output: Vec<f32>,
+    scope_samples: Vec<f32>,
+    scope_frames: usize,
+    scope_enabled: bool,
+    monitor: Vec<f32>,
+    pattern_ids: Vec<u64>,
+    peak: [f32; 2],
+    sum_squares: [f64; 2],
+    meter_frames: usize,
+    clipped: u32,
+    generation: u32,
+    midi_pending: Vec<audio_ops::MidiEvent>,
 }
 
 impl Engine {
@@ -37,11 +52,21 @@ impl Engine {
             input: Vec::new(),
             report: String::new(),
             output: vec![0.0; 2 * MAX_FRAMES],
+            scope_samples: vec![0.0; 2 * MONITOR_FRAMES],
+            scope_frames: 0,
+            scope_enabled: false,
+            monitor: vec![0.0; 6],
+            pattern_ids: Vec::new(),
+            peak: [0.0; 2],
+            sum_squares: [0.0; 2],
+            meter_frames: 0,
+            clipped: 0,
+            generation: 0,
+            midi_pending: Vec::with_capacity(audio_ops::MAX_MIDI_EVENTS_PER_FRAME),
         }
     }
 
-    /// Compile `text` and crossfade to it, keeping the state of ops whose words survived the
-    /// edit. Returns diagnostics as lines of `word-index<TAB>message` (index -1: whole program).
+    /// Compile text with diff-inherited IDs; diagnostics use word indices for the playground.
     pub fn load(&mut self, text: &str) -> &str {
         let words = text.split_whitespace().collect::<Vec<_>>();
         let ids = self.ids.assign(&words);
@@ -53,32 +78,143 @@ impl Engine {
                 op: word.to_string(),
             })
             .collect::<Vec<_>>();
-        let (program, diagnostics) =
-            compile_program_with_diagnostics(&ops, self.sample_rate, &mut self.ctx);
-        drop(self.vm.load_program(program));
+        self.compile(&ops, false)
+    }
 
+    /// Compile positioned editor nodes with their exact persistent IDs.
+    /// Diagnostics use decimal IDs (`-1` means a whole-program warning).
+    pub fn load_nodes(&mut self, nodes: &[TextOp]) -> &str {
+        self.compile(nodes, true)
+    }
+
+    fn compile(&mut self, ops: &[TextOp], keyed: bool) -> &str {
+        let (program, diagnostics) =
+            compile_program_with_diagnostics(ops, self.sample_rate, &mut self.ctx);
+        drop(self.vm.load_program(program));
+        self.generation = self.generation.wrapping_add(1);
         self.report.clear();
         for diagnostic in diagnostics {
-            let index = diagnostic
-                .id
-                .and_then(|id| ids.iter().position(|&x| x == id))
-                .map_or(-1, |i| i as i64);
-            let _ = writeln!(self.report, "{index}\t{}", diagnostic.message);
+            let key = if keyed {
+                diagnostic
+                    .id
+                    .map_or_else(|| "-1".to_string(), |id| id.to_string())
+            } else {
+                diagnostic
+                    .id
+                    .and_then(|id| ops.iter().position(|op| op.id == id))
+                    .map_or(-1, |i| i as i64)
+                    .to_string()
+            };
+            let _ = writeln!(self.report, "{key}\t{}", diagnostic.message);
         }
         &self.report
     }
 
-    /// Render `frames` frames into the planar output buffer, clipped to -1..1.
+    /// Render planar clipped stereo and capture node scope and output meters.
     pub fn process(&mut self, frames: usize) -> &[f32] {
         let frames = frames.min(MAX_FRAMES);
         let (left, right) = self.output.split_at_mut(MAX_FRAMES);
+        if frames > 0 && !self.midi_pending.is_empty() {
+            self.ctx.midi.set_events(&self.midi_pending);
+            self.midi_pending.clear();
+        }
         for i in 0..frames {
             let frame = self.vm.next_frame();
+            if i == 0 {
+                self.ctx.midi.clear();
+            }
             left[i] = frame[0].clamp(-1.0 as Sample, 1.0) as f32;
             right[i] = frame[1].clamp(-1.0 as Sample, 1.0) as f32;
+            for channel in 0..2 {
+                let x = frame[channel] as f32;
+                self.peak[channel] = self.peak[channel].max(x.abs());
+                self.sum_squares[channel] += f64::from(x) * f64::from(x);
+                if !x.is_finite() || x.abs() > 1.0 {
+                    self.clipped = self.clipped.saturating_add(1);
+                }
+            }
+            self.meter_frames += 1;
+            if self.scope_enabled {
+                if self.scope_frames == MONITOR_FRAMES {
+                    // Bounded ring: preserve the newest samples if the page stalls.
+                    self.scope_samples.copy_within(2.., 0);
+                    self.scope_frames -= 1;
+                }
+                let scope = self.vm.scope();
+                let offset = 2 * self.scope_frames;
+                self.scope_samples[offset] = scope[0] as f32;
+                self.scope_samples[offset + 1] = scope[1] as f32;
+                self.scope_frames += 1;
+            }
         }
         &self.output
     }
+
+    /// Snapshot the latest monitor values. This is called by the worklet at ~30 Hz.
+    /// Layout: scope L/R, peak L/R, RMS L/R, then two floats per requested pattern ID.
+    pub fn capture_monitor(&mut self) -> usize {
+        let scope = self.vm.scope();
+        self.monitor[0] = scope[0] as f32;
+        self.monitor[1] = scope[1] as f32;
+        for channel in 0..2 {
+            self.monitor[2 + channel] = self.peak[channel];
+            self.monitor[4 + channel] = if self.meter_frames == 0 {
+                0.0
+            } else {
+                (self.sum_squares[channel] / self.meter_frames as f64).sqrt() as f32
+            };
+        }
+        self.peak = [0.0; 2];
+        self.sum_squares = [0.0; 2];
+        self.meter_frames = 0;
+        if let Ok(patterns) = self.vm.pattern_monitor().lock() {
+            for (i, &id) in self.pattern_ids.iter().enumerate() {
+                let frame = patterns
+                    .iter()
+                    .find(|(key, _)| *key == id)
+                    .map(|(_, frame)| *frame)
+                    .unwrap_or_default();
+                self.monitor[6 + i * 2] = frame[0] as f32;
+                self.monitor[7 + i * 2] = frame[1] as f32;
+            }
+        }
+        self.monitor.len()
+    }
+}
+
+/// Parse a count-prefixed list of nodes: u32 count, then u64 LE ID, u32 byte length, UTF-8 text.
+/// Reject malformed input before replacing the active program.
+fn parse_nodes(input: &[u8]) -> Result<Vec<TextOp>, &'static str> {
+    fn take<'a>(input: &mut &'a [u8], n: usize) -> Result<&'a [u8], &'static str> {
+        if n > input.len() {
+            return Err("truncated nodes");
+        }
+        let (head, tail) = input.split_at(n);
+        *input = tail;
+        Ok(head)
+    }
+    fn u32_le(input: &mut &[u8]) -> Result<u32, &'static str> {
+        Ok(u32::from_le_bytes(take(input, 4)?.try_into().unwrap()))
+    }
+    let mut input = input;
+    let count = u32_le(&mut input)? as usize;
+    if count > input.len() / 12 {
+        return Err("invalid node count");
+    }
+    let mut nodes = Vec::with_capacity(count);
+    for _ in 0..count {
+        let id = u64::from_le_bytes(take(&mut input, 8)?.try_into().unwrap());
+        let len = u32_le(&mut input)? as usize;
+        let op = std::str::from_utf8(take(&mut input, len)?).map_err(|_| "invalid UTF-8")?;
+        nodes.push(TextOp {
+            id,
+            op: op.to_owned(),
+        });
+    }
+    if !input.is_empty() {
+        return Err("trailing node data");
+    }
+    Ok(nodes)
 }
 
 // -------------------------------------------------------------------------------------------
@@ -121,6 +257,157 @@ pub unsafe extern "C" fn sg_load(engine: *mut Engine) -> usize {
     len
 }
 
+/// Compile count-prefixed binary nodes written to `sg_input`. On invalid input, return a
+/// whole-program warning without disturbing the active program.
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_load_nodes(engine: *mut Engine) -> usize {
+    let engine = unsafe { &mut *engine };
+    let input = std::mem::take(&mut engine.input);
+    let len = match parse_nodes(&input) {
+        Ok(nodes) => engine.load_nodes(&nodes).len(),
+        Err(error) => {
+            engine.report = format!("-1\t{error}\n");
+            engine.report.len()
+        }
+    };
+    engine.input = input;
+    len
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_generation(engine: *const Engine) -> u32 {
+    unsafe { &*engine }.generation
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_set_monitor(engine: *mut Engine, lo: u32, hi: u32) {
+    unsafe { &mut *engine }
+        .vm
+        .set_monitor_id(u64::from(lo) | (u64::from(hi) << 32));
+}
+
+/// Read a count-prefixed list of u64 little-endian IDs from `sg_input`.
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_set_pattern_monitors(engine: *mut Engine) {
+    let engine = unsafe { &mut *engine };
+    let bytes = &engine.input;
+    if bytes.len() < 4 {
+        return;
+    }
+    let count = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+    if count > MAX_PATTERN_MONITORS || bytes.len() != 4 + count * 8 {
+        return;
+    }
+    let ids = bytes[4..]
+        .chunks_exact(8)
+        .map(|bytes| u64::from_le_bytes(bytes.try_into().unwrap()))
+        .collect::<Vec<_>>();
+    set_pattern_monitor_ids(&engine.vm.pattern_monitor(), &ids);
+    engine.monitor.resize(6 + 2 * count, 0.0);
+    engine.pattern_ids = ids;
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_set_oscilloscope(engine: *mut Engine, enabled: bool) {
+    let engine = unsafe { &mut *engine };
+    engine.scope_enabled = enabled;
+    engine.scope_frames = 0;
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_capture_monitor(engine: *mut Engine) -> usize {
+    unsafe { &mut *engine }.capture_monitor()
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`; call `sg_capture_monitor` first.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_monitor(engine: *const Engine) -> *const f32 {
+    unsafe { &*engine }.monitor.as_ptr()
+}
+
+/// Number of pre-clip channel samples exceeding ±1 since the last poll.
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_take_clipped(engine: *mut Engine) -> u32 {
+    let engine = unsafe { &mut *engine };
+    std::mem::take(&mut engine.clipped)
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_scope_frames(engine: *const Engine) -> usize {
+    unsafe { &*engine }.scope_frames
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_scope_samples(engine: *const Engine) -> *const f32 {
+    unsafe { &*engine }.scope_samples.as_ptr()
+}
+
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_clear_scope(engine: *mut Engine) {
+    unsafe { &mut *engine }.scope_frames = 0;
+}
+
+/// MIDI note event (0=off, 1=on). Controllers and bend are separate kinds (2, 3),
+/// normalized via 7-bit and 14-bit MIDI values. Note events are delivered to the next frame.
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_midi(
+    engine: *mut Engine,
+    kind: u32,
+    channel: u32,
+    data1: u32,
+    data2: u32,
+) {
+    use audio_ops::MidiEvent;
+    let engine = unsafe { &mut *engine };
+    match kind {
+        0 | 1 if channel < 16 && data1 < 128 && data2 < 128 => {
+            if engine.midi_pending.len() < audio_ops::MAX_MIDI_EVENTS_PER_FRAME {
+                engine.midi_pending.push(if kind == 1 && data2 > 0 {
+                    MidiEvent::note_on(channel as u8, data1 as u8, data2 as f64 / 127.0)
+                } else {
+                    MidiEvent::note_off(channel as u8, data1 as u8)
+                });
+            }
+        }
+        2 if data1 < 128 && data2 < 128 => engine
+            .ctx
+            .midi_controls
+            .set_controller(data1 as u8, data2 as f64 / 127.0),
+        3 if data1 < 128 && data2 < 128 => {
+            let raw = ((data2 << 7) | data1) as i32 - 8192;
+            engine.ctx.midi_controls.set_bend(if raw >= 0 {
+                raw as f64 / 8191.0
+            } else {
+                raw as f64 / 8192.0
+            });
+        }
+        _ => {}
+    }
+}
+
 /// # Safety
 /// `engine` must come from `sg_new`.
 #[unsafe(no_mangle)]
@@ -145,6 +432,16 @@ pub unsafe extern "C" fn sg_play(engine: *mut Engine, play: bool) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sg_forget(engine: *mut Engine) {
     unsafe { &mut *engine }.ids.forget();
+}
+
+/// Discard previous op state before opening an unrelated positioned project.
+/// # Safety
+/// `engine` must come from `sg_new`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sg_reset_program(engine: *mut Engine) {
+    let engine = unsafe { &mut *engine };
+    drop(engine.vm.load_program(Vec::new()));
+    engine.scope_frames = 0;
 }
 
 /// # Safety
@@ -241,5 +538,122 @@ mod tests {
         let mut engine = engine();
         let report = engine.load("440 sine2 0.2 *").to_owned();
         assert!(report.starts_with("1\t"), "{report}");
+    }
+
+    #[test]
+    fn typed_nodes_preserve_full_ids_and_key_diagnostics() {
+        let mut engine = engine();
+        let id = 0xdead_beef_1234_5678;
+        let nodes = [TextOp {
+            id,
+            op: "sine2".into(),
+        }];
+        assert!(engine.load_nodes(&nodes).starts_with(&format!("{id}\t")));
+        assert_eq!(engine.generation, 1);
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&id.to_le_bytes());
+        bytes.extend_from_slice(&5u32.to_le_bytes());
+        bytes.extend_from_slice(b"sine2");
+        assert_eq!(parse_nodes(&bytes).unwrap()[0].id, id);
+        assert!(parse_nodes(&bytes[..bytes.len() - 1]).is_err());
+        engine.input = bytes;
+        let len = unsafe { sg_load_nodes(&mut engine) };
+        assert!(engine.report[..len].starts_with(&format!("{id}\t")));
+        assert_eq!(engine.generation, 2);
+    }
+
+    #[test]
+    fn typed_nodes_migrate_oscillator_state() {
+        let base = [
+            TextOp {
+                id: 100,
+                op: "100".into(),
+            },
+            TextOp {
+                id: 0xfedc_ba98_7654_3210,
+                op: "s".into(),
+            },
+        ];
+        let mut edited = engine();
+        edited.load_nodes(&base);
+        run(&mut edited, 120);
+        let mut update = base.to_vec();
+        update.push(TextOp {
+            id: 103,
+            op: "0.5".into(),
+        });
+        update.push(TextOp {
+            id: 104,
+            op: "*".into(),
+        });
+        edited.load_nodes(&update);
+        let edited = run(&mut edited, 12_060);
+        let mut original = engine();
+        original.load_nodes(&base);
+        let original = run(&mut original, 12_180);
+        assert!((edited - original * 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn monitor_samples_patterns_and_stereo_meters_are_bounded() {
+        let mut engine = engine();
+        engine.load_nodes(&[TextOp {
+            id: 123,
+            op: "0.5".into(),
+        }]);
+        set_pattern_monitor_ids(&engine.vm.pattern_monitor(), &[123]);
+        engine.pattern_ids.push(123);
+        engine.monitor.resize(8, 0.0);
+        engine.vm.set_monitor_id(123);
+        engine.scope_enabled = true;
+        for _ in 0..3 {
+            engine.process(1024);
+        }
+        assert_eq!(engine.scope_frames, MONITOR_FRAMES);
+        assert_eq!(engine.capture_monitor(), 8);
+        assert!(engine.monitor[2] > 0.0 && engine.monitor[3] > 0.0);
+        assert!(engine.monitor[4] > 0.0 && engine.monitor[5] > 0.0);
+        assert!((engine.monitor[6] - 0.5).abs() < 1e-6);
+        assert!((engine.monitor[0] - 0.5).abs() < 1e-6);
+        assert!(
+            engine
+                .scope_samples
+                .iter()
+                .take(2 * engine.scope_frames)
+                .any(|x| *x != 0.0)
+        );
+        assert_eq!(engine.capture_monitor(), 8);
+        assert_eq!(&engine.monitor[2..6], &[0.0; 4]);
+    }
+
+    #[test]
+    fn clipped_samples_are_counted_before_clamping_and_reset_on_poll() {
+        let mut engine = engine();
+        engine.load("2");
+        for _ in 0..12 {
+            engine.process(1024);
+        }
+        assert_eq!(engine.output[1023], 1.0);
+        assert!(unsafe { sg_take_clipped(&mut engine) } > 0);
+        assert_eq!(unsafe { sg_take_clipped(&mut engine) }, 0);
+    }
+    #[test]
+    fn midi_note_cc_and_bend_reach_shared_buses() {
+        let mut engine = engine();
+        unsafe {
+            sg_midi(&mut engine, 1, 3, 60, 127);
+        }
+        unsafe {
+            sg_midi(&mut engine, 2, 3, 74, 64);
+        }
+        unsafe {
+            sg_midi(&mut engine, 3, 3, 127, 127);
+        }
+        assert_eq!(engine.midi_pending.len(), 1);
+        assert_eq!(engine.ctx.midi_controls.controller(74), Some(64.0 / 127.0));
+        assert_eq!(engine.ctx.midi_controls.bend(), Some(1.0));
+        engine.process(1);
+        assert!(engine.midi_pending.is_empty());
     }
 }

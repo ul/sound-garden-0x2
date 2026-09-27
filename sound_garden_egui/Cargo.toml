@@ -5,21 +5,34 @@ authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2024"
 description = "Sound Garden egui"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 anyhow.workspace = true
-rkyv.workspace = true
-chrono.workspace = true
-clap.workspace = true
 crossbeam-channel.workspace = true
-eframe.workspace = true
 egui.workspace = true
 log.workspace = true
 rustfft.workspace = true
-simple_logger.workspace = true
 audio_ops = { path = "../audio_ops" }
 audio_program = { path = "../audio_program" }
-audio_server = { path = "../audio_server" }
-audio_vm = { path = "../audio_vm" }
 sound_garden_format = { path = "../sound_garden_format" }
 sound_garden_types = { path = "../sound_garden_types" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rkyv.workspace = true
+chrono.workspace = true
+clap.workspace = true
+eframe.workspace = true
+simple_logger.workspace = true
+audio_server = { path = "../audio_server" }
 thread_worker = { path = "../thread_worker" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { version = "0.34.3", default-features = false, features = ["default_fonts", "glow"] }
+getrandom = "0.3.4"
+wasm-bindgen = "0.2.122"
+wasm-bindgen-futures = "0.4.72"
+web-sys = { version = "0.3.99", features = ["Window", "Document", "HtmlCanvasElement", "Crypto"] }
+serde.workspace = true
+serde_json = "1.0"

@@ -442,6 +442,12 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="preamble">
 <div class="sectionbody">
 <div class="paragraph">
+<p>Try the <a href="https://ul.mantike.pro/sound-garden-0x2/">browser playground</a>.</p>
+</div>
+<div class="paragraph">
+<p>Open the <a href="https://ul.mantike.pro/sound-garden-0x2/editor/">spatial browser editor</a> for the egui canvas, local named projects and native <code>.sg</code> import/export. The text playground can transfer its current program through "Open in editor". Browser project links carry an independent copy in the URL fragment; local edits auto-save in IndexedDB, with cross-tab conflict detection.</p>
+</div>
+<div class="paragraph">
 <p>(consider reading this doc at <a href="http://ul.mantike.pro/sound-garden-0x2/README.html" class="bare">http://ul.mantike.pro/sound-garden-0x2/README.html</a> because GitHub parses AsciiDoc improperly)</p>
 </div>
 </div>
@@ -588,7 +594,15 @@ At the moment you run it from the command line to provide it with the path to th
 </div>
 </div>
 <div class="paragraph">
-<p>To send programs to a separately running audio server instead of starting an embedded one, pass an audio control port:</p>
+<p>For lower latency, ask for a smaller audio buffer (clamped to what the device supports; the modeline shows what you got). Smaller buffers leave less headroom, so keep an eye on the DSP load:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>$ sound_garden_egui --buffer 128 ~/Documents/my_tree.sg</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To send programs to a separately running audio server instead of starting an embedded one, pass an audio control port. The engine status, meters, MIDI activity, compile warnings and oscilloscope capture described below come from the embedded server only.</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -811,8 +825,34 @@ At the moment you run it from the command line to provide it with the path to th
 </tbody>
 </table>
 <div class="paragraph">
+<div class="title">Modeline</div>
+<p>Left to right, after the transport:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the value of the node under the cursor and its range over the last quarter second, e.g. <code>0.2500  -0.9800…0.9900</code>;</p>
+</li>
+<li>
+<p>help for the operator under the cursor — or, if the last commit warned about that node (an unknown word, a bad argument, an invalid pattern), the warning in red. Such nodes are also drawn in red and underlined until you edit them;</p>
+</li>
+<li>
+<p>the number of warnings in the last commit, if any;</p>
+</li>
+<li>
+<p>the connected MIDI input and the last message it sent, e.g. <code>midi: Keystation · cc 74 = 0.62</code>: turn a knob to see which <code>cc:N</code> to type;</p>
+</li>
+<li>
+<p>sample rate, buffer size and latency, and the peak DSP load (share of each buffer&#8217;s time spent computing it); dropouts are counted and flash red when they happen;</p>
+</li>
+<li>
+<p>stereo level meters (RMS bar, held peak tick, warm above -6 dBFS) and a clip light that stays lit for a moment whenever the output goes past ±1 and is clipped.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
 <div class="title">Oscilloscope</div>
-<p>The oscilloscope panel shows the monitored node&#8217;s current audio frame. Toggle it with <code>v</code>, resize it by dragging its top edge, and zoom with <code>Alt+=</code> / <code>Alt+-</code>.</p>
+<p>The oscilloscope panel shows the node under the cursor (or the program output). Periodic signals are drawn sample-accurately and triggered on a rising crossing so they stand still; slow signals such as LFOs and envelopes scroll as a trend instead. When the panel is wide enough, its right third shows the node&#8217;s spectrum on a log-frequency axis with the Cs marked. Toggle it with <code>v</code>, resize it by dragging its top edge, and zoom with <code>Alt+=</code> / <code>Alt+-</code>.</p>
 </div>
 </div>
 </div>
@@ -940,7 +980,7 @@ would produce expanded `t`s with the same identity as corresponding `s`s before,
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-06-18 08:24:58 +1000
+Last updated 2026-09-27 15:14:07 +1000
 </div>
 </div>
 </body>

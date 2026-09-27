@@ -1,18 +1,23 @@
-# Browser build: the engine (wasm), the worklet, the page API and the playground.
+# Browser build: AudioWorklet engine, text playground and shared egui editor.
 #
 #   make -C sound_garden_web        build dist/
 #   make -C sound_garden_web serve  serve dist/ on http://localhost:8124
 
 DIST := $(CURDIR)/dist
-WASM := ../target/wasm32-unknown-unknown/release/sound_garden_web.wasm
+ENGINE_WASM := ../target/wasm32-unknown-unknown/release/sound_garden_web.wasm
+EDITOR_WASM := ../target/wasm32-unknown-unknown/release/sound_garden_egui.wasm
+WASM_BINDGEN ?= wasm-bindgen
 
 .PHONY: all serve clean
 
 all:
 	cargo build --locked --quiet --release --target wasm32-unknown-unknown -p sound_garden_web
-	mkdir -p $(DIST)
-	cp $(WASM) web/*.js web/*.html ../README.html $(DIST)/
-	@printf "engine: %s KB, %s KB gzipped\n" $$(( $$(wc -c < $(DIST)/sound_garden_web.wasm) / 1024 )) $$(( $$(gzip -9c $(DIST)/sound_garden_web.wasm | wc -c) / 1024 ))
+	cargo build --locked --quiet --release --target wasm32-unknown-unknown -p sound_garden_egui --lib
+	mkdir -p $(DIST)/editor/pkg
+	cp $(ENGINE_WASM) web/*.js web/*.html ../README.html $(DIST)/
+	cp -R web/editor/. $(DIST)/editor/
+	$(WASM_BINDGEN) --target web --out-dir $(DIST)/editor/pkg $(EDITOR_WASM)
+	@printf "engine: %s KB, editor: %s KB\n" $$(( $$(wc -c < $(DIST)/sound_garden_web.wasm) / 1024 )) $$(( $$(wc -c < $(DIST)/editor/pkg/sound_garden_egui_bg.wasm) / 1024 ))
 
 serve: all
 	python3 -m http.server 8124 -d $(DIST)
