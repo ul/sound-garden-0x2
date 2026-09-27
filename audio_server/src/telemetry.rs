@@ -4,6 +4,8 @@
 //! The audio thread writes plain atomics once per callback (no locks, no
 //! allocation); the monitor thread takes a [`Meters`] snapshot every poll,
 //! which resets the windowed values (load peak, levels, clip count).
+use crate::midi::MidiMessage;
+use audio_ops::{MidiEvent, MidiEventKind};
 use audio_vm::{CHANNELS, Frame, Sample};
 use std::{
     sync::atomic::{AtomicU32, AtomicU64, Ordering},
@@ -31,6 +33,9 @@ pub struct Meters {
     pub rms: Frame,
     /// Samples that exceeded ±1.0 and were clipped.
     pub clipped: u64,
+    /// The most recent MIDI message and a sequence number that changes with
+    /// every new one.
+    pub last_midi: Option<(u64, MidiMessage)>,
 }
 
 #[derive(Default)]
@@ -43,6 +48,8 @@ pub struct Telemetry {
     sum_squares: [AtomicU64; CHANNELS],
     frames: AtomicU64,
     clipped: AtomicU64,
+    midi_count: AtomicU64,
+    midi_last: AtomicU64,
 }
 
 /// `fetch_max` on the bits is correct for non-negative floats, whose bit
@@ -89,6 +96,12 @@ impl Telemetry {
         self.clipped.fetch_add(levels.clipped, Ordering::Relaxed);
     }
 
+    /// Called from the MIDI input thread for every decoded message.
+    pub(crate) fn record_midi(&self, message: MidiMessage) {
+        self.midi_last.store(pack_midi(message), Ordering::Relaxed);
+        self.midi_count.fetch_add(1, Ordering::Release);
+    }
+
     /// Read everything and reset the windowed values.
     pub fn snapshot(&self) -> Meters {
         let frames = self.frames.swap(0, Ordering::Relaxed);
@@ -111,8 +124,46 @@ impl Telemetry {
             peak,
             rms,
             clipped: self.clipped.swap(0, Ordering::Relaxed),
+            last_midi: match self.midi_count.load(Ordering::Acquire) {
+                0 => None,
+                count => unpack_midi(self.midi_last.load(Ordering::Relaxed)).map(|m| (count, m)),
+            },
         }
     }
+}
+
+/// `kind << 56 | channel << 48 | number << 40 | f32 value bits`.
+fn pack_midi(message: MidiMessage) -> u64 {
+    let (kind, channel, number, value): (u64, u8, u8, f32) = match message {
+        MidiMessage::Note(event) => (
+            match event.kind {
+                MidiEventKind::NoteOn => 1,
+                MidiEventKind::NoteOff => 2,
+            },
+            event.channel,
+            event.note,
+            event.velocity as f32,
+        ),
+        MidiMessage::Controller { controller, value } => (3, 0, controller, value as f32),
+        MidiMessage::Bend(value) => (4, 0, 0, value as f32),
+    };
+    kind << 56 | u64::from(channel) << 48 | u64::from(number) << 40 | u64::from(value.to_bits())
+}
+
+fn unpack_midi(bits: u64) -> Option<MidiMessage> {
+    let channel = (bits >> 48) as u8;
+    let number = (bits >> 40) as u8;
+    let value = Sample::from(f32::from_bits(bits as u32));
+    Some(match bits >> 56 {
+        1 => MidiMessage::Note(MidiEvent::note_on(channel, number, value)),
+        2 => MidiMessage::Note(MidiEvent::note_off(channel, number)),
+        3 => MidiMessage::Controller {
+            controller: number,
+            value,
+        },
+        4 => MidiMessage::Bend(value),
+        _ => return None,
+    })
 }
 
 /// Output levels accumulated locally over one callback, then published once.
@@ -244,5 +295,27 @@ mod tests {
         let meters = telemetry.snapshot();
         assert_eq!(meters.peak[0], Sample::INFINITY);
         assert_eq!(meters.clipped, 1);
+    }
+
+    #[test]
+    fn last_midi_message_round_trips_with_a_changing_count() {
+        let telemetry = Telemetry::new();
+        assert_eq!(telemetry.snapshot().last_midi, None);
+        let messages = [
+            MidiMessage::Note(MidiEvent::note_on(3, 60, 0.5)),
+            MidiMessage::Note(MidiEvent::note_off(3, 60)),
+            MidiMessage::Controller {
+                controller: 74,
+                value: 0.25,
+            },
+            MidiMessage::Bend(-1.0),
+        ];
+        for (index, message) in messages.into_iter().enumerate() {
+            telemetry.record_midi(message);
+            assert_eq!(
+                telemetry.snapshot().last_midi,
+                Some((index as u64 + 1, message))
+            );
+        }
     }
 }

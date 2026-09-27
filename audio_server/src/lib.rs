@@ -32,13 +32,15 @@ pub struct Options {
     pub buffer_frames: Option<u32>,
 }
 
-pub use midi::{MidiInputSelection, list_inputs as list_midi_inputs};
+pub use midi::{MidiInputSelection, MidiMessage, list_inputs as list_midi_inputs};
 
 #[derive(Clone, Debug)]
 pub struct Monitor {
     pub scope: Frame,
     pub patterns: Vec<(u64, Frame)>,
     pub meters: Meters,
+    /// Name of the connected MIDI input, if any.
+    pub midi_device: Option<Arc<str>>,
 }
 
 #[derive(Archive, RkyvSerialize, RkyvDeserialize, Serialize, Deserialize)]
@@ -77,22 +79,27 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let telemetry = Arc::new(telemetry::Telemetry::new());
     let engine_telemetry = Arc::clone(&telemetry);
     let buffer_frames = options.buffer_frames;
-    let (midi_connection, midi_rx) = match midi::open_input(&options.midi) {
-        Ok(Some((connection, consumer, name))) => {
-            log::info!("Connected MIDI input: {name}");
-            (Some(connection), Some(consumer))
-        }
-        Ok(None) => {
-            if !matches!(options.midi, MidiInputSelection::None) {
-                log::warn!("No MIDI input connected.");
+    let (midi_connection, midi_rx, midi_device) =
+        match midi::open_input(&options.midi, Arc::clone(&telemetry)) {
+            Ok(Some((connection, consumer, name))) => {
+                log::info!("Connected MIDI input: {name}");
+                (
+                    Some(connection),
+                    Some(consumer),
+                    Some(Arc::<str>::from(name)),
+                )
             }
-            (None, None)
-        }
-        Err(err) => {
-            log::warn!("MIDI input unavailable: {err}");
-            (None, None)
-        }
-    };
+            Ok(None) => {
+                if !matches!(options.midi, MidiInputSelection::None) {
+                    log::warn!("No MIDI input connected.");
+                }
+                (None, None, None)
+            }
+            Err(err) => {
+                log::warn!("MIDI input unavailable: {err}");
+                (None, None, None)
+            }
+        };
 
     std::thread::spawn(move || {
         loop {
@@ -146,7 +153,8 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
                                 .map(|monitor| monitor.clone())
                                 .unwrap_or_default();
                             let meters = telemetry.snapshot();
-                            if tx.send(Monitor { scope: frame, patterns, meters }).is_err() { break; };
+                            let midi_device = midi_device.clone();
+                            if tx.send(Monitor { scope: frame, patterns, meters, midi_device }).is_err() { break; };
                         }
                     }
                 } else {

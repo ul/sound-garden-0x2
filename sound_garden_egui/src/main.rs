@@ -1293,7 +1293,11 @@ impl SoundGardenApp {
         }
         right = left - MODELINE_GAP;
 
-        if let Some(status) = self.meters.status() {
+        let status = match (self.meters.midi_status(), self.meters.status()) {
+            (Some(midi), Some(engine)) => Some(format!("{midi} · {engine}")),
+            (midi, engine) => midi.or(engine),
+        };
+        if let Some(status) = status {
             let color = if self.meters.dropout_warning(time) {
                 MODELINE_RECORD_COLOR
             } else {
@@ -1443,7 +1447,11 @@ impl eframe::App for SoundGardenApp {
                 self.oscilloscope_values.push_back(monitor_frame.scope[0]);
                 received_monitor_frame = true;
             }
-            self.meters.update(&monitor_frame.meters, time);
+            self.meters.update(
+                &monitor_frame.meters,
+                monitor_frame.midi_device.as_ref(),
+                time,
+            );
         }
         if self.state.play || self.meters.is_animating(time) {
             // ~30 fps is plenty for meters; pattern highlights and the

@@ -1,9 +1,10 @@
+use crate::telemetry::Telemetry;
 use anyhow::{Result, anyhow};
 use audio_ops::{MIDI_EVENT_RING_CAPACITY, MidiEvent};
 use audio_vm::Sample;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiInputPort};
 use rtrb::{Producer, RingBuffer};
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 /// The MIDI messages Sound Garden understands. Notes go to the per-frame note
 /// bus read by `mpoly`; controllers and bend update the shared `MidiControls`.
@@ -57,6 +58,7 @@ pub fn list_inputs() -> Result<Vec<String>> {
 
 pub fn open_input(
     selection: &MidiInputSelection,
+    telemetry: Arc<Telemetry>,
 ) -> Result<Option<(MidiInputHandle, rtrb::Consumer<TimedMidiEvent>, String)>> {
     match selection {
         MidiInputSelection::None => Ok(None),
@@ -71,7 +73,7 @@ pub fn open_input(
                 .port_name(&port)
                 .unwrap_or_else(|_| "<unknown>".to_string());
             let (producer, consumer) = RingBuffer::<TimedMidiEvent>::new(MIDI_EVENT_RING_CAPACITY);
-            let connection = connect(input, &port, producer)?;
+            let connection = connect(input, &port, producer, telemetry)?;
             Ok(Some((MidiInputHandle { connection }, consumer, name)))
         }
     }
@@ -105,6 +107,7 @@ fn connect(
     input: MidiInput,
     port: &MidiInputPort,
     mut producer: Producer<TimedMidiEvent>,
+    telemetry: Arc<Telemetry>,
 ) -> Result<MidiInputConnection<()>> {
     Ok(input.connect(
         port,
@@ -113,6 +116,7 @@ fn connect(
         // with the audio clock, so stamp arrival with Instant instead.
         move |_timestamp, message, _| {
             if let Some(message) = decode_message(message) {
+                telemetry.record_midi(message);
                 producer
                     .push(TimedMidiEvent {
                         at: Instant::now(),
