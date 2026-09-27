@@ -176,7 +176,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
 
 code, kbd, pre { font-family: var(--mono); font-size: 0.8rem; font-variant-ligatures: none; }
 :not(pre) > code {
-  background: var(--paper-2); border-radius: 4px; padding: 0.08em 0.3em; font-size: 0.82em; white-space: nowrap;
+  background: var(--paper-2); border-radius: 4px; padding: 0.08em 0.3em; font-size: 0.82em;
+  overflow-wrap: anywhere; -webkit-box-decoration-break: clone; box-decoration-break: clone;
 }
 kbd { border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0.05em 0.35em; font-size: 0.78em; }
 pre { margin: 0; line-height: 1.55; overflow-x: auto; tab-size: 2; }
@@ -193,6 +194,25 @@ pre code[data-lang="sg"] { white-space: pre-wrap; overflow-wrap: anywhere; }
   border-radius: 5px; padding: 0.3rem 0.45rem; cursor: pointer;
 }
 .listingblock:hover .copy-button, .copy-button:focus-visible { opacity: 1; }
+.edit-button {
+  position: absolute; top: 0.45rem; right: 3.6rem; opacity: 0; transition: opacity 0.15s;
+  font: 500 0.68rem/1 var(--sans); color: var(--muted); background: var(--paper); border: 1px solid var(--rule);
+  border-radius: 5px; padding: 0.3rem 0.45rem; cursor: pointer;
+}
+.listingblock:hover .edit-button, .edit-button:focus-visible, .soundblock.editing .edit-button { opacity: 1; }
+.soundblock.editing .copy-button { display: none; }
+.soundblock.editing .edit-button { right: 0.45rem; }
+
+/* Live editing (see theme/docinfo-footer.html). */
+.live-editor {
+  display: block; width: 100%; min-height: 3rem; resize: none; overflow: hidden; border: 0; outline: none;
+  background: var(--paper-2); color: var(--ink); font: 0.8rem/1.55 var(--mono); padding: 0.85rem 5rem 0.85rem 1rem;
+  border-radius: 8px 8px 0 0; box-shadow: inset 3px 0 0 var(--accent);
+}
+.live-warnings { list-style: none; margin: 0; padding: 0 1rem 0.5rem; background: var(--paper-2); font: 0.72rem/1.5 var(--mono); color: var(--warn); }
+.live-warnings:empty { display: none; }
+.soundblock.editing .sound-scrub { opacity: 0.25; pointer-events: none; }
+.sound-player.draft .sound-play { background: var(--sg-num); }
 
 /* Callouts: <1> in listings (numbers only, see MediaSweeper), and the list explaining them. */
 .conum {
@@ -329,9 +349,9 @@ table.tableblock th, table.tableblock td { border-bottom: 1px solid var(--rule);
 table.tableblock th { font-family: var(--sans); font-size: 0.78rem; font-weight: 600; color: var(--muted); }
 table.tableblock p { margin: 0; }
 caption.title { caption-side: top; text-align: left; }
-.hdlist table { border-collapse: collapse; }
+.hdlist table { border-collapse: collapse; width: 100%; }
 .hdlist td { vertical-align: top; padding: 0.2rem 1rem 0.2rem 0; }
-.hdlist td.hdlist1 { font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; color: var(--sg-op); }
+.hdlist td.hdlist1 { font-family: var(--mono); font-size: 0.8rem; color: var(--sg-op); width: 30%; overflow-wrap: anywhere; }
 
 /* ---------------------------------------------------------------- small screens & print */
 

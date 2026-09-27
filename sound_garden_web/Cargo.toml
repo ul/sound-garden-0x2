@@ -1,0 +1,15 @@
+[package]
+name = "sound_garden_web"
+version = "0.1.0"
+edition = "2024"
+description = "Sound Garden in the browser: the VM and compiler for an AudioWorklet."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+audio_program = { path = "../audio_program" }
+audio_vm = { path = "../audio_vm" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = "0.4"

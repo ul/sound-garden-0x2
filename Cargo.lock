@@ -3990,6 +3990,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sound_garden_web"
+version = "0.1.0"
+dependencies = [
+ "audio_program",
+ "audio_vm",
+ "getrandom 0.4.2",
+]
+
+[[package]]
 name = "spirv"
 version = "0.4.0+sdk-1.4.341.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

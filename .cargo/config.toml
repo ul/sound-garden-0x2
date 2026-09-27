@@ -1,2 +1,8 @@
 [build]
 rustflags = ["-C", "target-cpu=native"]
+
+# Browser build (sound_garden_web). Per-target flags replace [build] rustflags, so
+# target-cpu=native doesn't leak into wasm. getrandom's "custom" backend is provided by
+# sound_garden_web, because the AudioWorklet scope can't host wasm-bindgen's crypto glue.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128", "--cfg", 'getrandom_backend="custom"']

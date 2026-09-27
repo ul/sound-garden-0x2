@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Garden</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%233d6a3a'/></svg>">
+<style>
+  :root {
+    --paper: #fbf9f4; --paper-2: #f3f0e7; --ink: #24221e; --muted: #6d685d; --rule: #e2ddd0;
+    --accent: #3d6a3a; --draft: #a4471f; --warn: #9a3b24;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: system-ui, -apple-system, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #191816; --paper-2: #22211e; --ink: #e7e3d8; --muted: #a19b8e; --rule: #34322d;
+      --accent: #98c487; --draft: #eb9a6c; --warn: #ec9a7f;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--paper); color: var(--ink); font: 14px/1.5 var(--sans); display: flex; flex-direction: column; }
+  textarea {
+    flex: 1; width: 100%; resize: none; border: 0; outline: none; background: var(--paper); color: var(--ink);
+    font: 15px/1.7 var(--mono); padding: 1.5rem max(1rem, calc(50vw - 24rem)); tab-size: 2;
+  }
+  #warnings { margin: 0; padding: 0 max(1rem, calc(50vw - 24rem)); list-style: none; font: 12px/1.6 var(--mono); color: var(--warn); }
+  #warnings li { padding: 0.15rem 0; }
+  #warnings:empty { display: none; }
+  #warnings { padding-bottom: 0.5rem; }
+  footer {
+    display: flex; align-items: center; gap: 1rem; padding: 0.5rem max(1rem, calc(50vw - 24rem));
+    border-top: 1px solid var(--rule); background: var(--paper-2); font-size: 12px; color: var(--muted);
+  }
+  #state { font: 600 11px/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; padding: 0.35rem 0.5rem; border-radius: 4px; background: var(--accent); color: var(--paper); }
+  #state.draft { background: var(--draft); }
+  #state.idle { background: var(--rule); color: var(--muted); }
+  button { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .spacer { flex: 1; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 0.3rem; }
+  @media (max-width: 40rem) { .keys { display: none; } }
+</style>
+</head>
+<body>
+<textarea id="program" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Program"></textarea>
+<ul id="warnings" aria-live="polite"></ul>
+<footer>
+  <span id="state" class="idle">silent</span>
+  <button id="toggle" type="button">Play</button>
+  <span class="keys"><kbd>⌘</kbd><kbd>↵</kbd> commit · <kbd>Esc</kbd> pause</span>
+  <span class="spacer"></span>
+  <span id="note"></span>
+  <button id="share" type="button">Copy link</button>
+</footer>
+<script type="module">
+import { SoundGarden } from './sound-garden.js';
+
+const DEFAULT = `[ welcome to the garden: edit, then cmd+enter ] drop
+2 s 1 + 220 * s
+0.25 s 0.5 * 0.5 + *
+0.2 *`;
+
+const program = document.querySelector('#program');
+const warningsList = document.querySelector('#warnings');
+const state = document.querySelector('#state');
+const toggle = document.querySelector('#toggle');
+const note = document.querySelector('#note');
+let garden = null;
+let committed = null;
+
+// A shared piece travels in the URL fragment, deflated and base64url-encoded.
+async function encode(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function decode(code) {
+  const bytes = Uint8Array.from(atob(code.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Response(stream).text();
+}
+
+function draft() {
+  try { localStorage.setItem('sound-garden-draft', program.value); } catch {}
+  render();
+}
+
+function render() {
+  const playing = garden?.playing;
+  const isDraft = committed !== null && program.value !== committed;
+  state.textContent = !garden ? 'silent' : isDraft ? 'draft' : playing ? 'playing' : 'paused';
+  state.className = !garden || (!playing && !isDraft) ? 'idle' : isDraft ? 'draft' : '';
+  toggle.textContent = playing ? 'Pause' : 'Play';
+}
+
+async function commit() {
+  note.textContent = '';
+  if (!garden) {
+    try {
+      garden = await SoundGarden.start();
+      globalThis.garden = garden; // for poking at from the console
+    } catch (e) {
+      note.textContent = `Can't start audio: ${e.message}`;
+      return;
+    }
+  }
+  const text = program.value;
+  const warnings = await garden.load(text);
+  committed = text;
+  const words = text.split(/\s+/).filter(Boolean);
+  warningsList.replaceChildren(...warnings.map(({ index, message }) => {
+    const li = document.createElement('li');
+    li.textContent = index >= 0 ? `${words[index]} · ${message}` : message;
+    return li;
+  }));
+  garden.play();
+  render();
+}
+
+program.addEventListener('input', draft);
+program.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    commit();
+  } else if (e.key === 'Escape' && garden) {
+    garden.pause();
+    render();
+  }
+});
+toggle.addEventListener('click', () => {
+  if (!garden?.playing && committed === null) return commit();
+  garden.playing ? garden.pause() : garden.play();
+  render();
+});
+document.querySelector('#share').addEventListener('click', async () => {
+  const url = `${location.origin}${location.pathname}#${await encode(program.value)}`;
+  history.replaceState(null, '', url);
+  try {
+    await navigator.clipboard.writeText(url);
+    note.textContent = 'Link copied';
+  } catch {
+    note.textContent = 'Link is in the address bar';
+  }
+  setTimeout(() => (note.textContent = ''), 2000);
+});
+
+let initial = DEFAULT;
+if (location.hash.length > 1) {
+  initial = await decode(location.hash.slice(1)).catch(() => DEFAULT);
+} else {
+  try { initial = localStorage.getItem('sound-garden-draft') ?? DEFAULT; } catch {}
+}
+program.value = initial;
+program.focus();
+render();
+</script>
+</body>
+</html>

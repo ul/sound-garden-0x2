@@ -1,0 +1,11 @@
+# Browser engine: the VM in an AudioWorklet, driven through a hand-written C ABI
+
+Sound Garden runs in the browser as `sound_garden_web`: the existing compiler and VM compiled to `wasm32-unknown-unknown` and hosted in an AudioWorklet (`web/worklet.js`), with a small page API (`web/sound-garden.js`). It serves two uses: playing anywhere and sharing a piece as a link (the playground, `web/index.html`), and live-editable examples in the book. No engine crate needed changes.
+
+There is no wasm-bindgen. The worklet scope can't host its glue, and the surface is seven functions (`sg_new`, `sg_input`, `sg_load`, `sg_report`, `sg_play`, `sg_forget`, `sg_process`), so the module has zero imports and is instantiated inside the worklet from bytes the page fetches. For the same reason getrandom (0.3 via ahash, 0.4 via rand) uses its `custom` backend, a SplitMix64 seeded from the page; `seed:<N>` programs don't touch it.
+
+The worklet compiles programs itself, between render quanta, where the native server compiles on its own thread. Measured in Node: 0.1–1.6 ms for the example pieces, 3.7 ms for `clockwork` (over one 2.7 ms quantum, so its commit may click). Moving compilation off the audio thread needs wasm threads and SharedArrayBuffer, which require cross-origin isolation headers most static hosts can't set; deferred until a program actually glitches in use. Rendering runs at 6–46x realtime in WASM, roughly 1.5–3x slower than the native build with `target-cpu=native`.
+
+The grid editor gives every node a persistent id; a text editor has only words. `Ids` inherits ids through a word diff (longest common subsequence, then pairing the unmatched words between matches in order), so words an edit didn't touch keep their state and a word replaced in place (`s` to `t`) inherits the old word's id. This is the same livecoding contract as the editor, recovered from plain text.
+
+Not yet in the browser: file tables and file grains (`ft:`, `grain:` with a path, which read `std::fs`; they compile to silence), audio input, MIDI, and the grid editor itself. Each has a direct route: fetch and decode files into `Context::tables`, feed the worklet's input to `Context::input`, forward Web MIDI events to `Context::midi`, and build `sound_garden_egui` with eframe's web backend talking to the worklet instead of `audio_server`.

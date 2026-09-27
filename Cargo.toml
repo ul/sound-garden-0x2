@@ -20,6 +20,7 @@ members = [
     "sound_garden_format",
     "sound_garden_program",
     "sound_garden_types",
+    "sound_garden_web",
     "thread_worker"
 ]
 

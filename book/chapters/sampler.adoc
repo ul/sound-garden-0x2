@@ -19,6 +19,7 @@ Body text is set in Literata at a comfortable measure; `inline code` like `440 s
 A `[sound]` block is a program listing that is also rendered.
 Its player shows the whole clip; click or drag on it to seek, press kbd:[Esc] to silence everything.
 The `.txt` link is the exact program as a file.
+Press *edit* to change a program and kbd:[Cmd+Enter] to hear it live; edits keep each word's state, so a sine keeps its phase when you change what comes after it.
 
 .Tuning fork
 [sound#tuning-fork, seconds=3]

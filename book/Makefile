@@ -5,6 +5,7 @@
 #   make final    HTML without draft material
 #   make check    strict build: any warning (unknown word, clipping, broken xref) fails
 #   make watch    rebuild on every save
+#   make serve    build and serve on http://localhost:8123 (needed for live editing)
 #   make clean    remove build/ (renders are recreated on the next build)
 
 BUILD    := $(CURDIR)/build
@@ -12,14 +13,14 @@ RENDERER := ../target/release/book_render
 ASCIIDOC := asciidoctor -r ./ext/sound_garden.rb -D $(BUILD) -o index.html
 SOURCES  := $(shell find . -name '*.adoc' -not -path './build/*') $(wildcard ext/* theme/* examples/*/*)
 
-.PHONY: all html final check watch open clean renderer
+.PHONY: all html final check watch open serve clean renderer live
 
 all: html open
 
-html: renderer
+html: renderer live
 	$(ASCIIDOC) -a draft book.adoc
 
-final: renderer
+final: renderer live
 	$(ASCIIDOC) book.adoc
 
 check: renderer
@@ -27,6 +28,10 @@ check: renderer
 
 open:
 	open $(BUILD)/index.html
+
+# Live editing needs http: browsers don't load audio worklets from file://.
+serve: html
+	python3 -m http.server 8123 -d $(BUILD)
 
 watch: html
 	@echo "Watching for changes; Ctrl-C to stop."
@@ -39,6 +44,12 @@ watch: html
 
 renderer:
 	@cargo build --quiet --release -p book_render
+
+# The browser engine for live editing (sound_garden_web).
+live:
+	@$(MAKE) --quiet -C ../sound_garden_web >/dev/null
+	@mkdir -p $(BUILD)/live
+	@cp ../sound_garden_web/dist/sound_garden_web.wasm ../sound_garden_web/dist/*.js $(BUILD)/live/
 
 clean:
 	rm -rf $(BUILD)

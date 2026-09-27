@@ -1,6 +1,72 @@
 <script>
-// Sound Garden book: players for [sound] blocks, copy buttons, current-section highlight in the TOC.
+// Sound Garden book: players for [sound] blocks, live editing, reference popovers, copy buttons,
+// current-section highlight in the TOC.
 (() => {
+  // Live editing: a sound's "edit" button turns its listing into an editor played by the engine
+  // compiled to WebAssembly (sound_garden_web, copied to live/), loaded on first use. Commits
+  // keep op state like the editor does; switching to another sound starts fresh.
+  const live = {
+    garden: null,
+    block: null,
+    async start() {
+      if (location.protocol === 'file:') {
+        throw new Error('Live playback needs the book served over http: make -C book serve');
+      }
+      if (!this.garden) {
+        const { SoundGarden } = await import(new URL('live/sound-garden.js', location.href));
+        this.garden = await SoundGarden.start();
+      }
+      return this.garden;
+    },
+    pauseRecordings() {
+      for (const a of document.querySelectorAll('.sound-player audio')) a.pause();
+    },
+    stop() {
+      if (this.garden?.playing) this.garden.pause();
+      this.mark();
+    },
+    async commit(block) {
+      const { area, warnings } = block.live;
+      let garden;
+      try {
+        garden = await this.start();
+      } catch (e) {
+        warnings.replaceChildren(Object.assign(document.createElement('li'), { textContent: e.message }));
+        return;
+      }
+      this.pauseRecordings();
+      const text = area.value;
+      const found = await garden.load(text, { fresh: this.block !== block });
+      this.block = block;
+      block.live.committed = text;
+      garden.play();
+      const words = text.split(/\s+/).filter(Boolean);
+      warnings.replaceChildren(...found.map(({ index, message }) =>
+        Object.assign(document.createElement('li'), { textContent: index >= 0 ? `${words[index]} · ${message}` : message })));
+      this.mark();
+    },
+    toggle(block) {
+      if (this.block === block && this.garden?.playing) return this.stop();
+      if (this.block === block && block.live.committed === block.live.area.value) {
+        this.pauseRecordings();
+        this.garden.play();
+        return this.mark();
+      }
+      this.commit(block);
+    },
+    // Player state for editing blocks: playing live, draft (edited since the last commit), or idle.
+    mark() {
+      for (const block of document.querySelectorAll('.soundblock.editing')) {
+        const player = block.querySelector('.sound-player');
+        const playing = this.block === block && this.garden?.playing;
+        const draft = block.live.committed !== block.live.area.value;
+        player.dataset.state = playing ? 'playing' : 'paused';
+        player.querySelector('.sound-time').textContent = draft ? (block.live.committed == null ? '⌘↵ to play' : 'draft') : playing ? 'live' : 'paused';
+        player.classList.toggle('draft', draft && block.live.committed != null);
+      }
+    },
+  };
+
   const players = [...document.querySelectorAll('.sound-player')];
   const fmt = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
 
@@ -38,9 +104,13 @@
     };
     const play = () => {
       for (const other of document.querySelectorAll('.sound-player audio')) if (other !== audio) other.pause();
+      live.stop();
       audio.play();
     };
-    button.addEventListener('click', () => (audio.paused ? play() : audio.pause()));
+    button.addEventListener('click', () => {
+      if (block?.classList.contains('editing')) return live.toggle(block);
+      audio.paused ? play() : audio.pause();
+    });
     audio.addEventListener('play', () => { player.dataset.state = 'playing'; button.ariaLabel = 'Pause'; draw(); });
     audio.addEventListener('pause', () => { player.dataset.state = 'paused'; button.ariaLabel = 'Play'; cancelAnimationFrame(frame); draw(); });
     audio.addEventListener('ended', () => { audio.currentTime = 0; draw(); });
@@ -63,8 +133,59 @@
 
   // Escape silences the whole book.
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') for (const a of document.querySelectorAll('.sound-player audio')) a.pause();
+    if (e.key !== 'Escape') return;
+    live.pauseRecordings();
+    live.stop();
   });
+
+  // Edit buttons on sounds. Reset returns to the printed program and the recording.
+  const programText = (pre) => {
+    const clone = pre.cloneNode(true);
+    clone.querySelectorAll('.conum').forEach((n) => n.remove());
+    return clone.textContent.replace(/[ \t]+$/gm, '');
+  };
+  for (const block of document.querySelectorAll('.soundblock')) {
+    const content = block.querySelector('.listingblock > .content');
+    const pre = content?.querySelector('pre');
+    if (!pre) continue;
+    const button = Object.assign(document.createElement('button'), { className: 'edit-button', type: 'button', textContent: 'edit' });
+    content.append(button);
+    button.addEventListener('click', () => {
+      if (block.live) {
+        if (live.block === block) { live.stop(); live.block = null; }
+        block.live.area.remove();
+        block.live.warnings.remove();
+        block.live = null;
+        pre.hidden = false;
+        block.classList.remove('editing');
+        button.textContent = 'edit';
+        block.querySelector('.sound-player').classList.remove('draft');
+        block.querySelector('.sound-player audio').dispatchEvent(new Event('pause'));
+        return;
+      }
+      const area = Object.assign(document.createElement('textarea'), {
+        className: 'live-editor', value: programText(pre), spellcheck: false,
+      });
+      area.setAttribute('autocapitalize', 'off');
+      area.setAttribute('aria-label', 'Program');
+      const warnings = Object.assign(document.createElement('ul'), { className: 'live-warnings' });
+      const fit = () => { area.style.height = 'auto'; area.style.height = `${area.scrollHeight}px`; };
+      area.addEventListener('input', () => { fit(); live.mark(); });
+      area.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); live.commit(block); }
+      });
+      pre.hidden = true;
+      pre.after(area);
+      content.after(warnings);
+      block.live = { area, warnings, committed: null };
+      block.classList.add('editing');
+      button.textContent = 'reset';
+      block.querySelector('.sound-player audio').pause();
+      fit();
+      live.mark();
+      area.focus();
+    });
+  }
 
   // Reference popover for words in programs: on hover, or on tap/click (which pins it open).
   const tip = document.createElement('div');

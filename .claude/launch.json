@@ -4,8 +4,26 @@
     {
       "name": "book",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8123", "-d", "book/build"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8123",
+        "-d",
+        "book/build"
+      ],
       "port": 8123
+    },
+    {
+      "name": "playground",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8124",
+        "-d",
+        "sound_garden_web/dist"
+      ],
+      "port": 8124
     }
   ]
 }
