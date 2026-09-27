@@ -1,5 +1,6 @@
 import { SoundGarden } from '../sound-garden.js';
 import { ConflictError, openProjectStore, playgroundTextFromHash, projectFromHash, projectLink } from '../editor-store.js';
+import { stereoFrames } from './monitor-samples.js';
 
 // Reuse the build's cache key, but recover if an old page sees a mixed deployment.
 const assetKey = new URL(import.meta.url).searchParams.get('editor') ?? crypto.randomUUID();
@@ -74,11 +75,7 @@ async function ensureAudio() {
     audioReady = SoundGarden.start().then((instance) => {
       garden = instance;
       garden.onmonitor = (frame) => {
-          const samples = frame.samples ?? [];
-          const stereo = [];
-          for (let i = 0; i + 1 < samples.length && stereo.length < 512; i += 2) {
-            stereo.push([samples[i], samples[i + 1]]);
-          }
+          const stereo = stereoFrames(frame.samples ?? []);
           enqueue({
             scope: frame.scope ?? [0, 0], samples: stereo,
             patterns: (frame.patterns ?? []).map(({ id, value }) => [id.replace(/^0x/, ''), value]),

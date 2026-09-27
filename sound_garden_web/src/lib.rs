@@ -17,8 +17,9 @@ use std::fmt::Write as _;
 /// Frames per `sg_process` call at most. Web Audio's render quantum is 128.
 pub const MAX_FRAMES: usize = 1024;
 
-/// Maximum captured stereo frames between host monitor polls. Excess frames drop oldest data.
-const MONITOR_FRAMES: usize = 2048;
+/// Minimum captured stereo frames between host monitor polls. Allow a full
+/// 30 Hz interval plus one render quantum at the engine's sample rate.
+const MIN_MONITOR_FRAMES: usize = 2048;
 const MAX_PATTERN_MONITORS: usize = 256;
 
 pub struct Engine {
@@ -52,7 +53,10 @@ impl Engine {
             input: Vec::new(),
             report: String::new(),
             output: vec![0.0; 2 * MAX_FRAMES],
-            scope_samples: vec![0.0; 2 * MONITOR_FRAMES],
+            scope_samples: vec![
+                0.0;
+                2 * (sample_rate as usize / 30 + MAX_FRAMES).max(MIN_MONITOR_FRAMES)
+            ],
             scope_frames: 0,
             scope_enabled: false,
             monitor: vec![0.0; 6],
@@ -135,7 +139,7 @@ impl Engine {
             }
             self.meter_frames += 1;
             if self.scope_enabled {
-                if self.scope_frames == MONITOR_FRAMES {
+                if self.scope_frames == self.scope_samples.len() / 2 {
                     // Bounded ring: preserve the newest samples if the page stalls.
                     self.scope_samples.copy_within(2.., 0);
                     self.scope_frames -= 1;
@@ -610,7 +614,7 @@ mod tests {
         for _ in 0..3 {
             engine.process(1024);
         }
-        assert_eq!(engine.scope_frames, MONITOR_FRAMES);
+        assert_eq!(engine.scope_frames, engine.scope_samples.len() / 2);
         assert_eq!(engine.capture_monitor(), 8);
         assert!(engine.monitor[2] > 0.0 && engine.monitor[3] > 0.0);
         assert!(engine.monitor[4] > 0.0 && engine.monitor[5] > 0.0);
@@ -625,6 +629,17 @@ mod tests {
         );
         assert_eq!(engine.capture_monitor(), 8);
         assert_eq!(&engine.monitor[2..6], &[0.0; 4]);
+    }
+
+    #[test]
+    fn monitor_keeps_a_full_30_hz_batch_at_96_khz() {
+        let mut engine = Engine::new(96_000);
+        engine.scope_enabled = true;
+        for _ in 0..25 {
+            engine.process(128);
+        }
+        assert_eq!(engine.scope_frames, 3_200);
+        assert!(engine.scope_samples.len() / 2 >= engine.scope_frames);
     }
 
     #[test]
