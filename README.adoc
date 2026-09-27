@@ -84,7 +84,12 @@ At the moment you run it from the command line to provide it with the path to th
 $ sound_garden_egui ~/Documents/my_tree.sg
 -----
 
-To send programs to a separately running audio server instead of starting an embedded one, pass an audio control port:
+For lower latency, ask for a smaller audio buffer (clamped to what the device supports; the modeline shows what you got). Smaller buffers leave less headroom, so keep an eye on the DSP load:
+-----
+$ sound_garden_egui --buffer 128 ~/Documents/my_tree.sg
+-----
+
+To send programs to a separately running audio server instead of starting an embedded one, pass an audio control port. The engine status, meters, MIDI activity, compile warnings and oscilloscope capture described below come from the embedded server only.
 -----
 $ sound_garden_egui --audio-port 12345 ~/Documents/my_tree.sg
 -----
@@ -150,8 +155,18 @@ The editor stores a tree as nodes on a two-dimensional grid. A node under the cu
 | Backspace | Move cursor left and remove character under cursor.
 |===
 
+.Modeline
+Left to right, after the transport:
+
+* the value of the node under the cursor and its range over the last quarter second, e.g. `0.2500  -0.9800…0.9900`;
+* help for the operator under the cursor — or, if the last commit warned about that node (an unknown word, a bad argument, an invalid pattern), the warning in red. Such nodes are also drawn in red and underlined until you edit them;
+* the number of warnings in the last commit, if any;
+* the connected MIDI input and the last message it sent, e.g. `midi: Keystation · cc 74 = 0.62`: turn a knob to see which `cc:N` to type;
+* sample rate, buffer size and latency, and the peak DSP load (share of each buffer's time spent computing it); dropouts are counted and flash red when they happen;
+* stereo level meters (RMS bar, held peak tick, warm above -6 dBFS) and a clip light that stays lit for a moment whenever the output goes past ±1 and is clipped.
+
 .Oscilloscope
-The oscilloscope panel shows the monitored node's current audio frame. Toggle it with `v`, resize it by dragging its top edge, and zoom with `Alt+=` / `Alt+-`.
+The oscilloscope panel shows the node under the cursor (or the program output). Periodic signals are drawn sample-accurately and triggered on a rising crossing so they stand still; slow signals such as LFOs and envelopes scroll as a trend instead. When the panel is wide enough, its right third shows the node's spectrum on a log-frequency axis with the Cs marked. Toggle it with `v`, resize it by dragging its top edge, and zoom with `Alt+=` / `Alt+-`.
 
 === Patterns
 Patterns are signal-native cycle readers for direct musical development over time.

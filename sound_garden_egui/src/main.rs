@@ -6,7 +6,7 @@ use chrono::Local;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2 as EVec2};
-use feedback::{MeterDisplay, NodeDiagnostics};
+use feedback::{MeterDisplay, NodeDiagnostics, Spectrum};
 use log::LevelFilter;
 use rkyv::{rancor::Error as RkyvError, to_bytes};
 use sound_garden_format::{NodeEdit, NodeRepository};
@@ -30,6 +30,13 @@ const MODELINE_GAP: f32 = 12.0;
 const METER_WIDTH: f32 = 80.0;
 /// Meter bars turn warm above -6 dBFS.
 const METER_HOT_AMPLITUDE: f64 = 0.5;
+/// Captured samples kept for waveform, spectrum and readout (~0.7 s at 48 kHz).
+const CAPTURE_FRAMES: usize = 32768;
+/// The value readout shows the range over this much recent signal.
+const READOUT_SECONDS: f64 = 0.25;
+/// Below this width the oscilloscope panel shows the waveform only.
+const SPECTRUM_MIN_PANEL_WIDTH: f32 = 480.0;
+const SPECTRUM_SHARE: f32 = 0.35;
 const WARNING_COLOR: Color32 = Color32::from_rgb(0xc8, 0x1e, 0x1e);
 const METER_TRACK_COLOR: Color32 = Color32::from_rgb(0xe0, 0xdc, 0xd2);
 const BACKGROUND_COLOR: Color32 = Color32::from_rgb(0xf3, 0xf0, 0xe8);
@@ -218,6 +225,9 @@ struct SoundGardenApp {
     save_due: Option<Instant>,
     meters: MeterDisplay,
     diagnostics: NodeDiagnostics,
+    /// Every sample (left channel) of the node under the cursor, newest last.
+    capture: VecDeque<f64>,
+    spectrum: Spectrum,
 }
 
 #[derive(Clone, Copy)]
@@ -269,6 +279,8 @@ impl SoundGardenApp {
             save_due: None,
             meters: MeterDisplay::default(),
             diagnostics: NodeDiagnostics::default(),
+            capture: VecDeque::with_capacity(CAPTURE_FRAMES),
+            spectrum: Spectrum::default(),
         };
         app.sync_from_repo();
         app.update_audio_monitor();
@@ -1257,8 +1269,18 @@ impl SoundGardenApp {
                 FOREGROUND_COLOR,
             ),
         };
+        let mut left = 35.0;
+        if let Some(readout) = self.readout_text() {
+            let galley = painter.layout_no_wrap(
+                readout,
+                FontId::monospace(MODELINE_FONT_SIZE),
+                FOREGROUND_COLOR,
+            );
+            let width = galley.size().x;
+            painter.galley(Pos2::new(left, rect.min.y + 5.0), galley, FOREGROUND_COLOR);
+            left += width + MODELINE_GAP;
+        }
         if let Some(help) = text {
-            let left = 35.0;
             let mut job = egui::text::LayoutJob::simple_singleline(
                 help,
                 FontId::monospace(MODELINE_FONT_SIZE),
@@ -1270,6 +1292,30 @@ impl SoundGardenApp {
             let galley = painter.layout_job(job);
             painter.galley(Pos2::new(left, rect.min.y + 5.0), galley, color);
         }
+    }
+
+    /// Value of the node under the cursor, e.g. `0.2500  -0.9800…0.9900`,
+    /// from the last READOUT_SECONDS of its capture.
+    fn readout_text(&self) -> Option<String> {
+        self.node_at_cursor()?;
+        let sample_rate = self.meters.sample_rate()?;
+        let frames = ((READOUT_SECONDS * sample_rate) as usize).min(self.capture.len());
+        let recent = self
+            .capture
+            .range(self.capture.len() - frames..)
+            .copied()
+            .collect::<Vec<_>>();
+        let (current, min, max) = feedback::readout(&recent)?;
+        Some(if min == max {
+            feedback::format_value(current)
+        } else {
+            format!(
+                "{}  {}…{}",
+                feedback::format_value(current),
+                feedback::format_value(min),
+                feedback::format_value(max)
+            )
+        })
     }
 
     /// Right end of the modeline: engine status text, stereo level meters and
@@ -1367,11 +1413,128 @@ impl SoundGardenApp {
         self.state.show_op_list = open;
     }
 
+    /// Periodic signals: a window of the per-sample capture starting on a
+    /// rising crossing, so the waveform stands still. Returns false for slow
+    /// or flat signals, which fall back to the rolling trend view.
+    fn draw_triggered_waveform(&mut self, painter: &egui::Painter, rect: Rect) -> bool {
+        // Zoom 0 is one sample per pixel; each step halves or doubles that.
+        let samples_per_pixel = 2f32.powi(-i32::from(self.state.oscilloscope_zoom));
+        let window = ((rect.width() * samples_per_pixel) as usize).clamp(16, CAPTURE_FRAMES / 2);
+        let samples = self.capture.make_contiguous();
+        let Some(start) = feedback::find_trigger(samples, window) else {
+            return false;
+        };
+        let shown = &samples[start..start + window];
+        let (min, max) = shown
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
+                (lo.min(x), hi.max(x))
+            });
+        let (min, max) = if max - min < 1e-9 {
+            (min - 1.0, max + 1.0)
+        } else {
+            (min, max)
+        };
+        let points = shown
+            .iter()
+            .enumerate()
+            .map(|(i, &y)| {
+                let x = rect.min.x + i as f32 * rect.width() / window as f32;
+                let y = remap(y, max, min, 16.0, rect.height() as f64 - 16.0);
+                Pos2::new(x, rect.min.y + y as f32)
+            })
+            .collect::<Vec<_>>();
+        painter.add(egui::Shape::line(
+            points,
+            Stroke::new(0.75, BACKGROUND_COLOR),
+        ));
+        for (y, value) in [(rect.min.y, max), (rect.max.y - GRID_HEIGHT, min)] {
+            painter.text(
+                Pos2::new(rect.min.x, y),
+                Align2::LEFT_TOP,
+                feedback::format_value(value),
+                FontId::monospace(OSCILLOSCOPE_FONT_SIZE),
+                BACKGROUND_COLOR,
+            );
+        }
+        true
+    }
+
+    /// Log-frequency magnitude spectrum of the node under the cursor, with a
+    /// C-note grid.
+    fn draw_spectrum(&mut self, painter: &egui::Painter, rect: Rect) {
+        const LOW: f64 = 20.0;
+        let Some(sample_rate) = self.meters.sample_rate() else {
+            return;
+        };
+        let high = (sample_rate / 2.0).min(20_000.0);
+        let grid = Color32::from_rgba_unmultiplied(0xf3, 0xf0, 0xe8, 40);
+        for octave in 1..=9 {
+            let note = 12 * (octave + 1);
+            let frequency = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
+            if !(LOW..high).contains(&frequency) {
+                continue;
+            }
+            let x = rect.min.x + feedback::log_position(frequency, LOW, high) as f32 * rect.width();
+            painter.line_segment(
+                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                Stroke::new(1.0, grid),
+            );
+            let label = painter.layout_no_wrap(
+                format!("C{octave}"),
+                FontId::monospace(OSCILLOSCOPE_FONT_SIZE),
+                grid,
+            );
+            // Skip labels that would be cut off at the right edge.
+            if x + 2.0 + label.size().x <= rect.max.x {
+                painter.galley(Pos2::new(x + 2.0, rect.max.y - GRID_HEIGHT), label, grid);
+            }
+        }
+        let samples = self.capture.make_contiguous();
+        let Some(db) = self.spectrum.analyse(samples) else {
+            return;
+        };
+        let columns = rect.width() as usize;
+        let levels = feedback::spectrum_columns(&db, sample_rate, columns, LOW, high);
+        let points = levels
+            .iter()
+            .enumerate()
+            .map(|(x, &level)| {
+                let y = remap(
+                    level,
+                    0.0,
+                    feedback::SPECTRUM_FLOOR_DB,
+                    8.0,
+                    rect.height() as f64 - 8.0,
+                );
+                Pos2::new(rect.min.x + x as f32, rect.min.y + y as f32)
+            })
+            .collect::<Vec<_>>();
+        painter.add(egui::Shape::line(
+            points,
+            Stroke::new(0.75, BACKGROUND_COLOR),
+        ));
+    }
+
     fn draw_oscilloscope(&mut self, ui: &mut egui::Ui) {
         ui.take_available_space();
-        let rect = ui.max_rect();
+        let panel = ui.max_rect();
+        ui.painter_at(panel)
+            .rect_filled(panel, 0.0, OSCILLOSCOPE_BACKGROUND_COLOR);
+        let rect = if panel.width() >= SPECTRUM_MIN_PANEL_WIDTH {
+            let split = panel.max.x - panel.width() * SPECTRUM_SHARE;
+            self.draw_spectrum(
+                &ui.painter_at(panel),
+                Rect::from_min_max(Pos2::new(split, panel.min.y), panel.max),
+            );
+            Rect::from_min_max(panel.min, Pos2::new(split, panel.max.y))
+        } else {
+            panel
+        };
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, OSCILLOSCOPE_BACKGROUND_COLOR);
+        if self.draw_triggered_waveform(&painter, rect) {
+            return;
+        }
 
         let zoom = self.state.oscilloscope_zoom + self.state.oscilloscope_zoom.signum();
         let max_len = rect.width() as usize * if zoom >= 0 { 1 } else { -zoom as usize };
@@ -1483,6 +1646,11 @@ impl eframe::App for SoundGardenApp {
             if self.state.show_oscilloscope {
                 self.oscilloscope_values.push_back(monitor_frame.scope[0]);
                 received_monitor_frame = true;
+            }
+            self.capture
+                .extend(monitor_frame.samples.iter().map(|frame| frame[0]));
+            if self.capture.len() > CAPTURE_FRAMES {
+                self.capture.drain(..self.capture.len() - CAPTURE_FRAMES);
             }
             self.meters.update(
                 &monitor_frame.meters,

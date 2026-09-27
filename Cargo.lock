@@ -3956,6 +3956,7 @@ dependencies = [
  "egui",
  "log",
  "rkyv",
+ "rustfft",
  "simple_logger",
  "sound_garden_format",
  "sound_garden_types",

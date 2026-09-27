@@ -24,6 +24,9 @@ const CHANNEL_CAPACITY: usize = 64;
 /// It's about 500ms, should be more than enough for write cycle of ~10ms.
 const RECORD_BUFFER_CAPACITY: usize = 48000;
 const OSCILLOSCOPE_POLL_MS: u64 = 10;
+/// Per-sample scope capture between polls; ~340 ms at 48 kHz, far more than
+/// one poll interval.
+const SCOPE_RING_FRAMES: usize = 16384;
 
 #[derive(Clone, Debug, Default)]
 pub struct Options {
@@ -43,6 +46,8 @@ pub struct Monitor {
     pub midi_device: Option<Arc<str>>,
     /// Warnings from the latest program compile.
     pub diagnostics: Arc<Diagnostics>,
+    /// Every frame of the monitored node since the previous message.
+    pub samples: Vec<Frame>,
 }
 
 /// Compile warnings for the latest program, each tied to the node that caused
@@ -87,6 +92,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let midi_frame = Arc::clone(&ctx.midi);
     let midi_controls = Arc::clone(&ctx.midi_controls);
     let telemetry = Arc::new(telemetry::Telemetry::new());
+    let (scope_tx, mut scope_rx) = RingBuffer::<Frame>::new(SCOPE_RING_FRAMES);
     // Written here after each compile, read by the monitor thread; neither is
     // the audio thread, so a mutex is fine.
     let diagnostics = Arc::new(Mutex::new(Arc::new(Diagnostics::default())));
@@ -136,6 +142,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
             midi_frame,
             midi_controls,
             telemetry: engine_telemetry,
+            scope_tx,
         };
         audio::main(engine, buffer_frames, i, o).unwrap();
     });
@@ -172,7 +179,11 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
                                 .lock()
                                 .map(|diagnostics| Arc::clone(&diagnostics))
                                 .unwrap_or_default();
-                            if tx.send(Monitor { scope: frame, patterns, meters, midi_device, diagnostics }).is_err() { break; };
+                            let mut samples = Vec::with_capacity(scope_rx.slots());
+                            while let Ok(sample) = scope_rx.pop() {
+                                samples.push(sample);
+                            }
+                            if tx.send(Monitor { scope: frame, patterns, meters, midi_device, diagnostics, samples }).is_err() { break; };
                         }
                     }
                 } else {

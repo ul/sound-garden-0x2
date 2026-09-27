@@ -14,6 +14,7 @@ crossbeam-channel.workspace = true
 eframe.workspace = true
 egui.workspace = true
 log.workspace = true
+rustfft.workspace = true
 simple_logger.workspace = true
 audio_ops = { path = "../audio_ops" }
 audio_program = { path = "../audio_program" }

@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Result;
 use audio_ops::{MAX_MIDI_EVENTS_PER_FRAME, MidiControls, MidiEvent, MidiFrameEvents, pure::clip};
-use audio_vm::{CHANNELS, Program, Sample, VM};
+use audio_vm::{CHANNELS, Frame, Program, Sample, VM};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
 use rtrb::{Consumer, Producer, PushError};
@@ -38,6 +38,9 @@ pub struct Engine {
     pub midi_controls: Arc<MidiControls>,
     /// Load, dropouts and output levels for the GUI.
     pub telemetry: Arc<Telemetry>,
+    /// Every frame of the monitored node, for the GUI's waveform, spectrum
+    /// and value readout. Frames are dropped if the reader falls behind.
+    pub scope_tx: Producer<Frame>,
 }
 
 /// State carried from one audio callback to the next.
@@ -225,6 +228,7 @@ impl Engine {
             }
             let vm_frame = self.vm.next_frame();
             levels.add(&vm_frame);
+            self.scope_tx.push(self.vm.scope()).ok();
             for (sample, &value) in frame.iter_mut().zip(vm_frame.iter()) {
                 let value = clip(value);
                 *sample = T::from_sample(value as f32);
@@ -251,6 +255,7 @@ mod tests {
         state: CallbackState,
         record_rx: Consumer<Sample>,
         midi_tx: Producer<TimedMidiEvent>,
+        scope_rx: Consumer<Frame>,
         /// Start of the next callback.
         clock: Instant,
     }
@@ -274,6 +279,7 @@ mod tests {
         let (garbage_tx, _garbage_rx) = RingBuffer::new(4);
         let (record_tx, record_rx) = RingBuffer::new(record_capacity);
         let (midi_tx, midi_rx) = RingBuffer::new(16);
+        let (scope_tx, scope_rx) = RingBuffer::new(64);
         Harness {
             engine: Engine {
                 vm,
@@ -285,7 +291,9 @@ mod tests {
                 midi_frame: Arc::clone(&ctx.midi),
                 midi_controls: Arc::clone(&ctx.midi_controls),
                 telemetry: Arc::new(Telemetry::new()),
+                scope_tx,
             },
+            scope_rx,
             state: CallbackState::default(),
             record_rx,
             midi_tx,
@@ -447,5 +455,18 @@ mod tests {
         assert_eq!(meters.peak, [1.5, 1.5]);
         assert_eq!(meters.clipped, 8, "4 frames x 2 channels over 1.0");
         assert!((meters.rms[0] - 1.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn every_frame_of_the_monitored_node_is_streamed() {
+        // Constants get folded away; a MIDI control stays a statement of its own.
+        let mut h = harness("cc':1:0.5 0.25 +", 4);
+        h.engine.vm.set_monitor_id(1);
+        h.callback(5);
+        let mut samples = Vec::new();
+        while let Ok(frame) = h.scope_rx.pop() {
+            samples.push(frame);
+        }
+        assert_eq!(samples, [[0.5; 2]; 5], "node 1 reads 0.5");
     }
 }

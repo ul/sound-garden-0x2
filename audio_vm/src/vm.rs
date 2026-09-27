@@ -49,6 +49,9 @@ pub struct VM {
     pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>>,
     /// Frames until monitors are published next; 0 publishes on the next frame.
     monitor_countdown: usize,
+    /// This frame's output of the monitored statement (or the program output
+    /// for id 0), updated every frame for per-sample capture.
+    scope: Frame,
     /// Last output frame, used to measure the step introduced by a program reload.
     last_frame: Frame,
     /// Exponentially decaying correction that cancels the program reload step.
@@ -87,6 +90,7 @@ impl VM {
             monitor_id: 0,
             pattern_monitor,
             monitor_countdown: 0,
+            scope: Default::default(),
             last_frame: Default::default(),
             declick_offset: Default::default(),
             declick_countdown: 0,
@@ -151,7 +155,12 @@ impl VM {
         let frame = match self.status {
             Status::Play if self.monitor_countdown > 0 => {
                 self.monitor_countdown -= 1;
-                let frame = perform(&mut self.active_program, &mut self.active_stack);
+                let (frame, scope) = perform_scoped(
+                    &mut self.active_program,
+                    &mut self.active_stack,
+                    self.monitor_id,
+                );
+                self.scope = scope;
                 let frame = self.declick(frame);
                 self.play_xfade(frame)
             }
@@ -171,17 +180,24 @@ impl VM {
                     a.store(x.to_bits(), Ordering::Relaxed);
                 }
                 drop(pattern_monitor);
+                self.scope = monitor_frame;
 
                 let frame = self.declick(frame);
                 self.play_xfade(frame)
             }
             Status::Pause => {
                 if self.pause_countdown > 0 {
-                    let frame = perform(&mut self.active_program, &mut self.active_stack);
+                    let (frame, scope) = perform_scoped(
+                        &mut self.active_program,
+                        &mut self.active_stack,
+                        self.monitor_id,
+                    );
+                    self.scope = scope;
                     let frame = self.declick(frame);
                     self.pause_xfade(frame)
                 } else {
                     // Fully silent: nothing to declick against.
+                    self.scope = Default::default();
                     self.declick_pending = false;
                     self.declick_countdown = 0;
                     Default::default()
@@ -198,6 +214,12 @@ impl VM {
 
     pub fn pattern_monitor(&self) -> Arc<Mutex<Vec<(u64, Frame)>>> {
         Arc::clone(&self.pattern_monitor)
+    }
+
+    /// This frame's output of the monitored statement (the program output
+    /// when monitoring id 0), for per-sample capture by the host.
+    pub fn scope(&self) -> Frame {
+        self.scope
     }
 
     pub fn set_monitor_id(&mut self, id: u64) {
@@ -319,13 +341,21 @@ pub fn migrate_program_state(active_program: &mut [Statement], previous_program:
     }
 }
 
+/// Run the program and also return the monitored statement's output: the
+/// program output for id 0, silence if no statement has the id. Costs one id
+/// comparison per statement.
 #[inline]
-fn perform(program: &mut Program, stack: &mut Stack) -> Frame {
+fn perform_scoped(program: &mut Program, stack: &mut Stack, scope_id: u64) -> (Frame, Frame) {
     stack.reset();
+    let mut scope = Frame::default();
     for stmt in program {
         stmt.op.perform(stack);
+        if stmt.id == scope_id {
+            scope = stack.peek();
+        }
     }
-    stack.peek()
+    let frame = stack.peek();
+    (frame, if scope_id == 0 { frame } else { scope })
 }
 
 #[inline]
@@ -495,6 +525,33 @@ mod tests {
         assert_eq!(published(), 1.0);
         vm.next_frame();
         assert_eq!(published(), (MONITOR_INTERVAL + 1) as Sample);
+    }
+
+    #[test]
+    fn scope_follows_the_monitored_statement_every_frame() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(vec![
+            statement(10, Counter::new()),
+            statement(20, PushFrame([0.5, 0.5])),
+            statement(30, AddTopTwo),
+        ]);
+        vm.play();
+        vm.set_monitor_id(10);
+        // Unlike the published monitor, the scope updates on every frame,
+        // including the ones between monitor publications.
+        for n in 1..=(MONITOR_INTERVAL + 3) {
+            let frame = vm.next_frame();
+            assert_eq!(vm.scope(), [n as Sample; 2]);
+            assert_eq!(frame, [n as Sample + 0.5; 2]);
+        }
+        vm.set_monitor_id(0);
+        let frame = vm.next_frame();
+        assert_eq!(vm.scope(), frame, "id 0 is the program output");
+        vm.set_monitor_id(999);
+        vm.next_frame();
+        vm.next_frame();
+        assert_eq!(vm.scope(), [0.0; 2], "unknown id is silence");
     }
 
     #[test]

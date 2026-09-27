@@ -86,6 +86,10 @@ impl MeterDisplay {
         time < self.dropout_until
     }
 
+    pub fn sample_rate(&self) -> Option<f64> {
+        (self.sample_rate > 0).then_some(self.sample_rate as f64)
+    }
+
     /// e.g. `midi: Keystation · cc 74 = 0.62`; None without a MIDI input.
     pub fn midi_status(&self) -> Option<String> {
         let device = self.midi_device.as_ref()?;
@@ -204,11 +208,176 @@ fn format_rate(sample_rate: u32) -> String {
 
 /// Map an amplitude to 0..1 on a dB scale from [`METER_FLOOR_DB`] to 0 dBFS.
 pub fn meter_position(amplitude: f64) -> f32 {
-    if !(amplitude > 0.0) {
-        return if amplitude.is_nan() { 1.0 } else { 0.0 };
+    if amplitude.is_nan() {
+        return 1.0;
+    }
+    if amplitude <= 0.0 {
+        return 0.0;
     }
     let db = 20.0 * amplitude.log10();
     ((db - METER_FLOOR_DB) / -METER_FLOOR_DB).clamp(0.0, 1.0) as f32
+}
+
+/// Start of the latest window of `window` samples that begins on a rising
+/// crossing of the signal's midpoint, so periodic waveforms stand still from
+/// one repaint to the next. None when the signal doesn't repeat within the
+/// capture (at least two crossings), e.g. slow LFOs and envelopes, which read
+/// better as a rolling trend.
+pub fn find_trigger(samples: &[f64], window: usize) -> Option<usize> {
+    if window == 0 || samples.len() < window + 2 {
+        return None;
+    }
+    let (min, max) = samples
+        .iter()
+        .filter(|x| x.is_finite())
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
+            (lo.min(x), hi.max(x))
+        });
+    let range = max - min;
+    // Also catches a capture with no finite samples (range is -inf).
+    if range <= 1e-9 {
+        return None;
+    }
+    let level = 0.5 * (min + max);
+    // Hysteresis so noise around the level doesn't retrigger.
+    let arm_below = level - 0.05 * range;
+    let latest_start = samples.len() - window;
+    let mut armed = false;
+    let mut crossings = 0;
+    let mut found = None;
+    for (index, &x) in samples.iter().enumerate() {
+        if x < arm_below {
+            armed = true;
+        } else if armed && x >= level {
+            armed = false;
+            crossings += 1;
+            if index <= latest_start {
+                found = Some(index);
+            }
+        }
+    }
+    if crossings >= 2 { found } else { None }
+}
+
+/// Magnitude spectrum in dBFS: a full-scale sine reads 0 dB.
+pub struct Spectrum {
+    fft: Arc<dyn rustfft::Fft<f64>>,
+    window: Vec<f64>,
+    buffer: Vec<rustfft::num_complex::Complex<f64>>,
+    scratch: Vec<rustfft::num_complex::Complex<f64>>,
+}
+
+pub const SPECTRUM_SIZE: usize = 4096;
+pub const SPECTRUM_FLOOR_DB: f64 = -96.0;
+
+impl Default for Spectrum {
+    fn default() -> Self {
+        let fft = rustfft::FftPlanner::new().plan_fft_forward(SPECTRUM_SIZE);
+        let scratch = vec![Default::default(); fft.get_inplace_scratch_len()];
+        let window = (0..SPECTRUM_SIZE)
+            .map(|i| 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / SPECTRUM_SIZE as f64).cos())
+            .collect();
+        Spectrum {
+            fft,
+            window,
+            buffer: vec![Default::default(); SPECTRUM_SIZE],
+            scratch,
+        }
+    }
+}
+
+impl Spectrum {
+    /// dB per bin (0..=N/2) of the last `SPECTRUM_SIZE` samples, or None if
+    /// fewer were captured.
+    pub fn analyse(&mut self, samples: &[f64]) -> Option<Vec<f64>> {
+        let samples = samples.get(samples.len().checked_sub(SPECTRUM_SIZE)?..)?;
+        for ((bin, &x), &w) in self.buffer.iter_mut().zip(samples).zip(&self.window) {
+            *bin = (if x.is_finite() { x * w } else { 0.0 }).into();
+        }
+        self.fft
+            .process_with_scratch(&mut self.buffer, &mut self.scratch);
+        // A sine of amplitude A gives |X| = A * sum(w) / 2 at its bin.
+        let reference = self.window.iter().sum::<f64>() / 2.0;
+        Some(
+            self.buffer[..=SPECTRUM_SIZE / 2]
+                .iter()
+                .map(|bin| (20.0 * (bin.norm() / reference).log10()).max(SPECTRUM_FLOOR_DB))
+                .collect(),
+        )
+    }
+}
+
+/// Resample a spectrum onto `columns` columns spaced logarithmically from
+/// `low` to `high` Hz. Where a column spans several bins it takes the loudest;
+/// where it is narrower than a bin (the low end) it interpolates between the
+/// neighbouring bins, so the curve doesn't turn into stair steps.
+pub fn spectrum_columns(
+    db: &[f64],
+    sample_rate: f64,
+    columns: usize,
+    low: f64,
+    high: f64,
+) -> Vec<f64> {
+    let bin_hz = sample_rate / (2.0 * (db.len() - 1) as f64);
+    let ratio = (high / low).ln();
+    let last_bin = (db.len() - 1) as f64;
+    let bin_at =
+        |column: f64| (low * (ratio * column / columns as f64).exp() / bin_hz).min(last_bin);
+    (0..columns)
+        .map(|column| {
+            let start = bin_at(column as f64);
+            let end = bin_at(column as f64 + 1.0);
+            if end - start >= 1.0 {
+                let first = start.round() as usize;
+                let last = (end.round() as usize).clamp(first + 1, db.len());
+                db[first..last]
+                    .iter()
+                    .copied()
+                    .fold(SPECTRUM_FLOOR_DB, f64::max)
+            } else {
+                let centre = 0.5 * (start + end);
+                let below = centre.floor() as usize;
+                let above = (below + 1).min(db.len() - 1);
+                let t = centre - below as f64;
+                db[below] + (db[above] - db[below]) * t
+            }
+        })
+        .collect()
+}
+
+/// Horizontal position (0..1) of `frequency` on the log axis from `low` to
+/// `high` Hz.
+pub fn log_position(frequency: f64, low: f64, high: f64) -> f64 {
+    (frequency / low).ln() / (high / low).ln()
+}
+
+/// The node-under-cursor readout: current value and range over the recent
+/// capture.
+pub fn readout(samples: &[f64]) -> Option<(f64, f64, f64)> {
+    let &current = samples.last()?;
+    let (min, max) = samples
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &x| {
+            (lo.min(x), hi.max(x))
+        });
+    Some((current, min, max))
+}
+
+/// Four significant digits, switching to exponent form outside 1e-3..1e6.
+pub fn format_value(x: f64) -> String {
+    if !x.is_finite() {
+        return format!("{x}");
+    }
+    let magnitude = x.abs();
+    if magnitude != 0.0 && !(1e-3..1e6).contains(&magnitude) {
+        return format!("{x:.3e}");
+    }
+    let decimals = if magnitude == 0.0 {
+        0
+    } else {
+        (3 - magnitude.log10().floor() as i32).max(0) as usize
+    };
+    format!("{x:.decimals$}")
 }
 
 #[cfg(test)]
@@ -337,6 +506,99 @@ mod tests {
         assert_eq!(diagnostics.unattributed, 1);
         assert_eq!(diagnostics.summary().unwrap(), "4 warnings");
         assert_eq!(NodeDiagnostics::new(4, &[]).summary(), None);
+    }
+
+    fn sine(frequency: f64, sample_rate: f64, len: usize, amplitude: f64) -> Vec<f64> {
+        (0..len)
+            .map(|n| amplitude * (std::f64::consts::TAU * frequency * n as f64 / sample_rate).sin())
+            .collect()
+    }
+
+    #[test]
+    fn trigger_starts_periodic_windows_on_the_same_phase() {
+        // 480 Hz at 48 kHz: exactly 100 samples per period.
+        let samples = sine(480.0, 48_000.0, 4000, 0.8);
+        let start = find_trigger(&samples, 600).unwrap();
+        assert!(start + 600 <= samples.len());
+        assert!(
+            samples[start - 1] < 0.0 && samples[start] >= 0.0,
+            "rising midpoint crossing"
+        );
+        // Removing a few samples from the end still lands on the same phase.
+        let shifted = find_trigger(&samples[..3937], 600).unwrap();
+        assert_eq!(start % 100, shifted % 100);
+    }
+
+    #[test]
+    fn slow_or_flat_signals_have_no_trigger() {
+        assert_eq!(find_trigger(&[0.3; 4000], 600), None);
+        // Under two periods in the capture: better as a trend.
+        assert_eq!(find_trigger(&sine(5.0, 48_000.0, 4000, 1.0), 600), None);
+        assert_eq!(find_trigger(&[0.0; 10], 600), None);
+    }
+
+    #[test]
+    fn full_scale_sine_reads_zero_db_at_its_frequency() {
+        let sample_rate = 48_000.0;
+        let mut spectrum = Spectrum::default();
+        assert_eq!(spectrum.analyse(&[0.0; 100]), None, "needs a full window");
+        // Put the tone exactly on bin 100.
+        let frequency = 100.0 * sample_rate / SPECTRUM_SIZE as f64;
+        let db = spectrum
+            .analyse(&sine(frequency, sample_rate, SPECTRUM_SIZE, 1.0))
+            .unwrap();
+        assert!(db[100].abs() < 0.01, "{}", db[100]);
+        assert!(db[300] < -80.0, "far from the tone: {}", db[300]);
+        let half = spectrum
+            .analyse(&sine(frequency, sample_rate, SPECTRUM_SIZE, 0.5))
+            .unwrap();
+        assert!((half[100] + 6.02).abs() < 0.01, "{}", half[100]);
+    }
+
+    #[test]
+    fn log_columns_put_a_tone_where_the_axis_says() {
+        let sample_rate = 48_000.0;
+        let mut spectrum = Spectrum::default();
+        let db = spectrum
+            .analyse(&sine(1000.0, sample_rate, SPECTRUM_SIZE, 1.0))
+            .unwrap();
+        let columns = spectrum_columns(&db, sample_rate, 400, 20.0, 20_000.0);
+        let loudest = (0..columns.len())
+            .max_by(|&a, &b| columns[a].total_cmp(&columns[b]))
+            .unwrap();
+        let expected = log_position(1000.0, 20.0, 20_000.0) * 400.0;
+        assert!(
+            (loudest as f64 - expected).abs() <= 1.5,
+            "{loudest} vs {expected}"
+        );
+        assert!(columns[loudest] > -1.5, "{}", columns[loudest]);
+    }
+
+    #[test]
+    fn low_end_of_the_spectrum_is_smooth_not_stepped() {
+        // A ramp in dB across bins: columns narrower than a bin must follow it
+        // continuously instead of repeating one bin's value.
+        let db = (0..=SPECTRUM_SIZE / 2)
+            .map(|bin| -(bin as f64))
+            .collect::<Vec<_>>();
+        let columns = spectrum_columns(&db, 48_000.0, 400, 20.0, 20_000.0);
+        let low = &columns[..40];
+        assert!(
+            low.windows(2).all(|pair| pair[1] < pair[0]),
+            "strictly falling, no flat steps: {low:?}"
+        );
+    }
+
+    #[test]
+    fn readout_and_value_formatting() {
+        assert_eq!(readout(&[0.1, -0.5, 0.9, 0.25]), Some((0.25, -0.5, 0.9)));
+        assert_eq!(readout(&[]), None);
+        assert_eq!(format_value(0.25), "0.2500");
+        assert_eq!(format_value(1234.5678), "1235");
+        assert_eq!(format_value(-12.345), "-12.35");
+        assert_eq!(format_value(0.0), "0");
+        assert_eq!(format_value(1.5e-5), "1.500e-5");
+        assert_eq!(format_value(f64::NAN), "NaN");
     }
 
     #[test]
