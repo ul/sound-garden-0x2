@@ -15,11 +15,17 @@ use log::LevelFilter;
 use rkyv::{rancor::Error as RkyvError, to_bytes};
 use sound_garden_format::{NodeEdit, NodeRepository};
 use sound_garden_types::*;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Duration,
 };
+#[cfg(target_arch = "wasm32")]
+type SaveDeadline = f64; // JavaScript milliseconds since the epoch
+#[cfg(not(target_arch = "wasm32"))]
+type SaveDeadline = Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use thread_worker::Worker;
 #[cfg(target_arch = "wasm32")]
@@ -337,7 +343,7 @@ struct SoundGardenApp {
     monitor_stream_enabled: bool,
     pattern_monitors: HashMap<Id, PatternMonitor>,
     /// When the pending save should be written; None when nothing is unsaved.
-    save_due: Option<Instant>,
+    save_due: Option<SaveDeadline>,
     /// Latest node snapshot given to browser persistence (cursor moves alone do not fork demos).
     #[cfg(target_arch = "wasm32")]
     saved_nodes: Vec<Node>,
@@ -418,17 +424,25 @@ impl SoundGardenApp {
     /// edit and not pushed back by later ones, so continuous typing still
     /// saves at least every SAVE_DELAY.
     fn request_save(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
         self.save_due
             .get_or_insert_with(|| Instant::now() + SAVE_DELAY);
+        #[cfg(target_arch = "wasm32")]
+        self.save_due
+            .get_or_insert_with(|| js_sys::Date::now() + SAVE_DELAY.as_millis() as f64);
     }
 
     fn save_if_due(&mut self, ctx: &egui::Context) {
         if let Some(due) = self.save_due {
-            let now = Instant::now();
-            if now >= due {
+            #[cfg(not(target_arch = "wasm32"))]
+            let remaining = due.saturating_duration_since(Instant::now());
+            #[cfg(target_arch = "wasm32")]
+            let remaining =
+                Duration::from_secs_f64(((due - js_sys::Date::now()) / 1000.0).max(0.0));
+            if remaining.is_zero() {
                 self.save_now();
             } else {
-                ctx.request_repaint_after(due - now);
+                ctx.request_repaint_after(remaining);
             }
         }
     }
