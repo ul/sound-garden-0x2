@@ -1,13 +1,20 @@
-import init, {
+import { SoundGarden } from '../sound-garden.js';
+import { ConflictError, openProjectStore, playgroundTextFromHash, projectFromHash, projectLink } from '../editor-store.js';
+
+// Use one page-load cache key for both generated files; their browser cache lifetimes differ.
+const assetKey = new URL(import.meta.url).searchParams.get('editor') ?? crypto.randomUUID();
+const glueUrl = new URL('./pkg/sound_garden_egui.js', import.meta.url);
+glueUrl.searchParams.set('editor', assetKey);
+const wasmUrl = new URL('./pkg/sound_garden_egui_bg.wasm', import.meta.url);
+wasmUrl.searchParams.set('editor', assetKey);
+const {
+  default: init,
   start_sound_garden_editor,
   replace_sound_garden_project,
   current_sound_garden_project,
   empty_sound_garden_project,
   project_from_text,
-} from './pkg/sound_garden_egui.js';
-import { SoundGarden } from '../sound-garden.js';
-import { ConflictError, openProjectStore, playgroundTextFromHash, projectFromHash, projectLink } from '../editor-store.js';
-
+} = await import(glueUrl.href);
 const STARTER = `[ welcome to the garden: edit, then enter to commit ] drop
 2 s 1 + 220 * s
 0.25 s 0.5 * 0.5 + *
@@ -329,7 +336,7 @@ try {
     incoming = projectFromHash(location.hash);
     incomingText = await playgroundTextFromHash(location.hash);
   } catch (error) { fail(error); }
-  await init();
+  await init({ module_or_path: wasmUrl });
   if (incomingText !== null) incoming = project_from_text(incomingText);
   if (incoming) {
     initialBytes = incoming;

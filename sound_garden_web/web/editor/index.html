@@ -54,6 +54,14 @@
       <button type="button" id="save-copy">Save a copy</button>
     </menu>
   </dialog>
-  <script type="module" src="./editor.js"></script>
+  <script type="module">
+    // A fresh editor entry point cannot reuse glue cached from an earlier deployment.
+    const editorUrl = new URL('./editor.js', document.baseURI);
+    editorUrl.searchParams.set('editor', crypto.randomUUID());
+    import(editorUrl.href).catch((error) => {
+      console.error(error);
+      document.querySelector('#status').textContent = error?.message ?? String(error);
+    });
+  </script>
 </body>
 </html>
