@@ -6,7 +6,7 @@ use chrono::Local;
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2 as EVec2};
-use feedback::MeterDisplay;
+use feedback::{MeterDisplay, NodeDiagnostics};
 use log::LevelFilter;
 use rkyv::{rancor::Error as RkyvError, to_bytes};
 use sound_garden_format::{NodeEdit, NodeRepository};
@@ -30,6 +30,7 @@ const MODELINE_GAP: f32 = 12.0;
 const METER_WIDTH: f32 = 80.0;
 /// Meter bars turn warm above -6 dBFS.
 const METER_HOT_AMPLITUDE: f64 = 0.5;
+const WARNING_COLOR: Color32 = Color32::from_rgb(0xc8, 0x1e, 0x1e);
 const METER_TRACK_COLOR: Color32 = Color32::from_rgb(0xe0, 0xdc, 0xd2);
 const BACKGROUND_COLOR: Color32 = Color32::from_rgb(0xf3, 0xf0, 0xe8);
 const FOREGROUND_COLOR: Color32 = Color32::from_rgb(0x22, 0x22, 0x20);
@@ -216,6 +217,7 @@ struct SoundGardenApp {
     /// When the pending save should be written; None when nothing is unsaved.
     save_due: Option<Instant>,
     meters: MeterDisplay,
+    diagnostics: NodeDiagnostics,
 }
 
 #[derive(Clone, Copy)]
@@ -266,6 +268,7 @@ impl SoundGardenApp {
             pattern_monitors: HashMap::new(),
             save_due: None,
             meters: MeterDisplay::default(),
+            diagnostics: NodeDiagnostics::default(),
         };
         app.sync_from_repo();
         app.update_audio_monitor();
@@ -1074,14 +1077,20 @@ impl SoundGardenApp {
 
             for node in self.state.nodes.iter() {
                 self.paint_pattern_highlight(&painter, rect.min, node);
+                // A node the last compile warned about, unless it has been
+                // edited since (then it is a draft and the warning is stale).
+                let flagged = !self.state.draft_nodes.contains(&node.id)
+                    && self.diagnostics.by_node.contains_key(&u64::from(node.id));
                 let color = if comment_node_ids.contains(&node.id) {
                     COMMENT_COLOR
                 } else if self.state.draft_nodes.contains(&node.id) {
                     NODE_DRAFT_COLOR
+                } else if flagged {
+                    WARNING_COLOR
                 } else {
                     FOREGROUND_COLOR
                 };
-                painter.text(
+                let text_rect = painter.text(
                     Pos2::new(
                         rect.min.x + node.position.x as f32 * GRID_WIDTH,
                         rect.min.y + node.position.y as f32 * GRID_HEIGHT,
@@ -1091,6 +1100,12 @@ impl SoundGardenApp {
                     FontId::monospace(FONT_SIZE),
                     color,
                 );
+                if flagged {
+                    painter.line_segment(
+                        [text_rect.left_bottom(), text_rect.right_bottom()],
+                        Stroke::new(1.5, WARNING_COLOR),
+                    );
+                }
             }
         });
     }
@@ -1228,21 +1243,32 @@ impl SoundGardenApp {
         let time = ui.input(|input| input.time);
         let status_left = self.draw_engine_status(&painter, rect, time);
 
-        if let Some(help) = self
-            .op_at_cursor()
-            .and_then(|op| self.op_help.get(&op).cloned())
-        {
+        // A warning for the node under the cursor takes the help text's place.
+        let warning = self
+            .node_at_cursor()
+            .filter(|(node, _)| !self.state.draft_nodes.contains(&node.id))
+            .and_then(|(node, _)| self.diagnostics.by_node.get(&u64::from(node.id)))
+            .map(|messages| messages.join(" · "));
+        let (text, color) = match warning {
+            Some(warning) => (Some(warning), WARNING_COLOR),
+            None => (
+                self.op_at_cursor()
+                    .and_then(|op| self.op_help.get(&op).cloned()),
+                FOREGROUND_COLOR,
+            ),
+        };
+        if let Some(help) = text {
             let left = 35.0;
             let mut job = egui::text::LayoutJob::simple_singleline(
                 help,
                 FontId::monospace(MODELINE_FONT_SIZE),
-                FOREGROUND_COLOR,
+                color,
             );
             job.wrap = egui::text::TextWrapping::truncate_at_width(
                 (status_left - left - MODELINE_GAP).max(0.0),
             );
             let galley = painter.layout_job(job);
-            painter.galley(Pos2::new(left, rect.min.y + 5.0), galley, FOREGROUND_COLOR);
+            painter.galley(Pos2::new(left, rect.min.y + 5.0), galley, color);
         }
     }
 
@@ -1307,6 +1333,17 @@ impl SoundGardenApp {
                 painter.layout_no_wrap(status, FontId::monospace(MODELINE_FONT_SIZE), color);
             right -= galley.size().x;
             painter.galley(Pos2::new(right, rect.min.y + 5.0), galley, color);
+            right -= MODELINE_GAP;
+        }
+
+        if let Some(summary) = self.diagnostics.summary() {
+            let galley = painter.layout_no_wrap(
+                summary,
+                FontId::monospace(MODELINE_FONT_SIZE),
+                WARNING_COLOR,
+            );
+            right -= galley.size().x;
+            painter.galley(Pos2::new(right, rect.min.y + 5.0), galley, WARNING_COLOR);
             right -= MODELINE_GAP;
         }
         right
@@ -1452,6 +1489,13 @@ impl eframe::App for SoundGardenApp {
                 monitor_frame.midi_device.as_ref(),
                 time,
             );
+            if monitor_frame.diagnostics.generation != self.diagnostics.generation {
+                self.diagnostics = NodeDiagnostics::new(
+                    monitor_frame.diagnostics.generation,
+                    &monitor_frame.diagnostics.items,
+                );
+                ctx.request_repaint();
+            }
         }
         if self.state.play || self.meters.is_animating(time) {
             // ~30 fps is plenty for meters; pattern highlights and the

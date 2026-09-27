@@ -2,8 +2,9 @@
 //!
 //! Pure state and formatting, kept apart from drawing so it can be tested.
 use audio_ops::MidiEventKind;
+use audio_program::Diagnostic;
 use audio_server::{Meters, MidiMessage};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 /// How long a load peak, level peak, clip light or dropout warning stays up.
 const HOLD_SECONDS: f64 = 1.5;
@@ -127,6 +128,48 @@ impl MeterDisplay {
                 meter_position(self.peak[channel].value),
             )
         })
+    }
+}
+
+/// Compile warnings grouped by the node that caused them, plus the number
+/// that couldn't be tied to a node.
+#[derive(Default)]
+pub struct NodeDiagnostics {
+    pub generation: u64,
+    pub by_node: HashMap<u64, Vec<String>>,
+    pub unattributed: usize,
+}
+
+impl NodeDiagnostics {
+    pub fn new(generation: u64, items: &[Diagnostic]) -> Self {
+        let mut diagnostics = NodeDiagnostics {
+            generation,
+            ..Default::default()
+        };
+        for item in items {
+            match item.id {
+                Some(id) => diagnostics
+                    .by_node
+                    .entry(id)
+                    .or_default()
+                    .push(item.message.clone()),
+                None => diagnostics.unattributed += 1,
+            }
+        }
+        diagnostics
+    }
+
+    pub fn count(&self) -> usize {
+        self.by_node.values().map(Vec::len).sum::<usize>() + self.unattributed
+    }
+
+    /// e.g. `2 warnings`; None when the program compiled cleanly.
+    pub fn summary(&self) -> Option<String> {
+        match self.count() {
+            0 => None,
+            1 => Some("1 warning".to_owned()),
+            n => Some(format!("{n} warnings")),
+        }
     }
 }
 
@@ -270,6 +313,30 @@ mod tests {
         let mut none = MeterDisplay::default();
         none.update(&meters(0.0, 0.0, 0, 0), None, 0.0);
         assert_eq!(none.midi_status(), None);
+    }
+
+    #[test]
+    fn diagnostics_group_by_node() {
+        let item = |id: Option<u64>, message: &str| Diagnostic {
+            id,
+            message: message.to_owned(),
+        };
+        let diagnostics = NodeDiagnostics::new(
+            3,
+            &[
+                item(Some(7), "Unknown token: sine-ish"),
+                item(Some(7), "another"),
+                item(Some(9), "bad pattern"),
+                item(None, "somewhere"),
+            ],
+        );
+        assert_eq!(
+            diagnostics.by_node[&7],
+            ["Unknown token: sine-ish", "another"]
+        );
+        assert_eq!(diagnostics.unattributed, 1);
+        assert_eq!(diagnostics.summary().unwrap(), "4 warnings");
+        assert_eq!(NodeDiagnostics::new(4, &[]).summary(), None);
     }
 
     #[test]

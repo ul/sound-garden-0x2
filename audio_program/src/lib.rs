@@ -1,4 +1,5 @@
 use ahash::RandomState;
+pub use audio_ops::diagnostics::{self, Diagnostic};
 use audio_ops::*;
 #[cfg(test)]
 use audio_vm::Frame;
@@ -268,6 +269,21 @@ fn is_quotation_consumer(op: &str) -> bool {
         || template_definition_name(op).is_some()
 }
 
+/// Compile, also returning every warning raised, attributed to the node id
+/// of the op that caused it (see `audio_ops::diagnostics`).
+pub fn compile_program_with_diagnostics(
+    ops: &[TextOp],
+    sample_rate: u32,
+    ctx: &mut Context,
+) -> (Program, Vec<diagnostics::Diagnostic>) {
+    let (program, mut diagnostics) =
+        diagnostics::collect(|| compile_program(ops, sample_rate, ctx));
+    // poly/mpoly compile their body once per voice; report each problem once.
+    let mut seen = std::collections::HashSet::new();
+    diagnostics.retain(|diagnostic| seen.insert(diagnostic.clone()));
+    (program, diagnostics)
+}
+
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
     let seed = ops
         .iter()
@@ -313,9 +329,10 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
                 depth -= 1;
             }
         }
+        let _scope = diagnostics::OpScope::enter(ops[i].id);
         let Some(close) = close else {
             // Unbalanced markers should not happen; skip forgivingly.
-            log::warn!("Unbalanced quotation; ignoring it.");
+            compile_warn!("Unbalanced quotation; ignoring it.");
             segment_start = i + 1;
             i += 1;
             continue;
@@ -323,6 +340,7 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
         let body = &ops[i + 1..close];
         match ops.get(close + 1) {
             Some(consumer) if consumer.op == "poly" || consumer.op.starts_with("poly:") => {
+                let _scope = diagnostics::OpScope::enter(consumer.id);
                 program.push(Statement {
                     id: consumer.id,
                     op: Box::new(compile_poly(&consumer.op, body, sample_rate, ctx)),
@@ -330,6 +348,7 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
                 i = close + 2;
             }
             Some(consumer) if consumer.op == "mpoly" || consumer.op.starts_with("mpoly:") => {
+                let _scope = diagnostics::OpScope::enter(consumer.id);
                 program.push(Statement {
                     id: consumer.id,
                     op: Box::new(compile_mpoly(&consumer.op, body, sample_rate, ctx)),
@@ -337,7 +356,7 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
                 i = close + 2;
             }
             _ => {
-                log::warn!("Quotation marker is not followed by poly/mpoly; ignoring it.");
+                compile_warn!("Quotation marker is not followed by poly/mpoly; ignoring it.");
                 i = close + 1;
             }
         }
@@ -352,7 +371,7 @@ fn compile_ops(ops: &[TextOp], sample_rate: u32, ctx: &mut Context, program: &mu
 /// zero-voice op which preserves stack shape.
 fn compile_poly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Poly {
     let Some(voices) = parse_voice_count(op) else {
-        log::warn!(
+        compile_warn!(
             "Can't parse voice count in {}; compiling to a zero-voice poly.",
             op
         );
@@ -360,7 +379,7 @@ fn compile_poly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) 
     };
     let bodies = compile_voice_bodies(voices, body, sample_rate, ctx);
     if bodies.first().is_none_or(|body| body.is_empty()) {
-        log::warn!("Empty poly voice body; compiling to a zero-voice poly.");
+        compile_warn!("Empty poly voice body; compiling to a zero-voice poly.");
         return Poly::empty();
     }
     Poly::new(bodies)
@@ -369,7 +388,7 @@ fn compile_poly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) 
 fn compile_mpoly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context) -> MPoly {
     let midi = Arc::clone(&ctx.midi);
     let Some(voices) = parse_voice_count(op) else {
-        log::warn!(
+        compile_warn!(
             "Can't parse voice count in {}; compiling to a zero-output mpoly.",
             op
         );
@@ -377,7 +396,7 @@ fn compile_mpoly(op: &str, body: &[TextOp], sample_rate: u32, ctx: &mut Context)
     };
     let bodies = compile_voice_bodies(voices, body, sample_rate, ctx);
     if bodies.first().is_none_or(|body| body.is_empty()) {
-        log::warn!("Empty mpoly voice body; compiling to a zero-output mpoly.");
+        compile_warn!("Empty mpoly voice body; compiling to a zero-output mpoly.");
         return MPoly::empty(midi);
     }
     MPoly::new(bodies, midi)
@@ -457,6 +476,7 @@ fn compile_segment(
                 continue;
             }
         };
+        let _scope = diagnostics::OpScope::enter(id);
 
         if op.trim().is_empty() {
             continue;
@@ -666,33 +686,33 @@ fn compile_segment(
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Dig, n),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as depth", x);
+                                    compile_warn!("Can't parse {} as depth", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing depth parameter.");
+                                compile_warn!("Missing depth parameter.");
                             }
                         },
                         "-" | "bury" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Bury, n),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as depth", x);
+                                    compile_warn!("Can't parse {} as depth", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing depth parameter.");
+                                compile_warn!("Missing depth parameter.");
                             }
                         },
                         "ch" | "channel" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Channel, n),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as channel number", x);
+                                    compile_warn!("Can't parse {} as channel number", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing channel number parameter.");
+                                compile_warn!("Missing channel number parameter.");
                             }
                         },
                         "dl" | "delay" => match tokens.get(1) {
@@ -732,7 +752,7 @@ fn compile_segment(
                                 push_args!(id, ReadVariable, Arc::clone(var));
                             }
                             None => {
-                                log::warn!("Missing var name parameter.");
+                                compile_warn!("Missing var name parameter.");
                             }
                         },
                         "set" => match tokens
@@ -743,7 +763,7 @@ fn compile_segment(
                                 push_args!(id, WriteVariable, Arc::clone(var));
                             }
                             None => {
-                                log::warn!("Missing var name parameter.");
+                                compile_warn!("Missing var name parameter.");
                             }
                         },
                         "var" => match tokens
@@ -754,7 +774,7 @@ fn compile_segment(
                                 push_args!(id, TakeVariable, Arc::clone(var));
                             }
                             None => {
-                                log::warn!("Missing var name parameter.");
+                                compile_warn!("Missing var name parameter.");
                             }
                         },
                         "ft" | "ftab" | "filetable" => match tokens.get(1) {
@@ -770,7 +790,7 @@ fn compile_segment(
                                 }
                             }
                             None => {
-                                log::warn!("Missing table file parameter.");
+                                compile_warn!("Missing table file parameter.");
                             }
                         },
                         "cc" | "cc'" => {
@@ -793,7 +813,7 @@ fn compile_segment(
                                     tokens[0] == "cc"
                                 ),
                                 _ => {
-                                    log::warn!(
+                                    compile_warn!(
                                         "{op}: expected cc:<0..127>:<DEFAULT 0..1>; outputting 0."
                                     );
                                     push_args!(id, Constant, 0.0)
@@ -808,7 +828,7 @@ fn compile_segment(
                                     push_args!(id, TableGrains, sample_rate, table, grains)
                                 }
                                 (None, _) => {
-                                    log::warn!(
+                                    compile_warn!(
                                         "grain: no table or readable audio file named {name:?}; define it with wt:/ft: before grain. Compiling to silence."
                                     );
                                     program.push(Statement {
@@ -817,7 +837,7 @@ fn compile_segment(
                                     })
                                 }
                                 (_, None) => {
-                                    log::warn!(
+                                    compile_warn!(
                                         "grain: grain count must be a positive integer; compiling to silence."
                                     );
                                     program.push(Statement {
@@ -840,7 +860,7 @@ fn compile_segment(
                                     push_args!(id, LiveGrains, sample_rate, seconds, grains)
                                 }
                                 _ => {
-                                    log::warn!(
+                                    compile_warn!(
                                         "granulate: expected granulate:<SECONDS>:<GRAINS> with positive values; compiling to silence."
                                     );
                                     program.push(Statement {
@@ -856,7 +876,7 @@ fn compile_segment(
                                     push_args!(id, TableReader, sample_rate, Arc::clone(table));
                                 }
                                 None => {
-                                    log::warn!("Missing table name parameter.");
+                                    compile_warn!("Missing table name parameter.");
                                 }
                             }
                         }
@@ -883,46 +903,46 @@ fn compile_segment(
                                     push_args!(id, TableWriter, table);
                                 }
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as table length.", x);
+                                    compile_warn!("Can't parse {} as table length.", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing table name or length parameter.");
+                                compile_warn!("Missing table name or length parameter.");
                             }
                         },
                         "conv" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
-                                Ok(0) => log::warn!("Kernel length must be positive."),
+                                Ok(0) => compile_warn!("Kernel length must be positive."),
                                 Ok(window_size) => push_args!(id, Convolution, window_size),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as kernel length.", x);
+                                    compile_warn!("Can't parse {} as kernel length.", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing kernel length parameter.");
+                                compile_warn!("Missing kernel length parameter.");
                             }
                         },
                         "convm" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
-                                Ok(0) => log::warn!("Kernel length must be positive."),
+                                Ok(0) => compile_warn!("Kernel length must be positive."),
                                 Ok(window_size) => push_args!(id, ConvolutionM, window_size),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as kernel length.", x);
+                                    compile_warn!("Can't parse {} as kernel length.", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing kernel length parameter.");
+                                compile_warn!("Missing kernel length parameter.");
                             }
                         },
                         "param" => match tokens.get(1) {
                             Some(x) => match x.parse::<usize>() {
                                 Ok(n) => push_args!(id, Param, Arc::clone(&ctx.params[n])),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as param number", x);
+                                    compile_warn!("Can't parse {} as param number", x);
                                 }
                             },
                             None => {
-                                log::warn!("Missing param number parameter.");
+                                compile_warn!("Missing param number parameter.");
                             }
                         },
                         "limit" => match tokens.get(1) {
@@ -935,7 +955,7 @@ fn compile_segment(
                             Some(x) => match x.parse::<f64>() {
                                 Ok(release) => push_args!(id, Comp, sample_rate, release),
                                 Err(_) => {
-                                    log::warn!("Can't parse {} as compressor release", x);
+                                    compile_warn!("Can't parse {} as compressor release", x);
                                     push_args!(id, Comp, sample_rate, 0.1);
                                 }
                             },
@@ -956,7 +976,7 @@ fn compile_segment(
                                 op: Box::new(scale) as Box<dyn Op>,
                             }),
                             None => {
-                                log::warn!(
+                                compile_warn!(
                                     "Unknown scale: {}",
                                     tokens.get(1).copied().unwrap_or("")
                                 );
@@ -972,7 +992,7 @@ fn compile_segment(
                                 op: Box::new(scale) as Box<dyn Op>,
                             }),
                             None => {
-                                log::warn!(
+                                compile_warn!(
                                     "Invalid scale degrees: {}",
                                     tokens.get(1).copied().unwrap_or("")
                                 );
@@ -1043,13 +1063,13 @@ fn compile_segment(
                             });
                         }
                         "poly" => {
-                            log::warn!(
+                            compile_warn!(
                                 "poly without a preceding quotation; compiling to a zero-voice poly."
                             );
                             push_args!(id, Poly, Vec::new());
                         }
                         "mpoly" => {
-                            log::warn!(
+                            compile_warn!(
                                 "mpoly without a preceding quotation; compiling to a zero-output mpoly."
                             );
                             program.push(Statement {
@@ -1061,7 +1081,7 @@ fn compile_segment(
                             // Empty op (blank node) — silently skip.
                         }
                         _ => {
-                            log::warn!("Unknown token: {}", op);
+                            compile_warn!("Unknown token: {}", op);
                         }
                     }
                 }
@@ -2590,5 +2610,66 @@ mod tests {
             ops.push(op(1000, "pop"));
             assert_eq!(run_frames(&ops, 100, 1)[0], [9.0, 9.0], "{source}");
         }
+    }
+
+    #[test]
+    fn diagnostics_point_at_the_node_that_caused_them() {
+        let ops = [
+            op(10, "110"),
+            op(11, "sine-ish"),
+            op(12, "cc:300"),
+            op(13, "pat:60,[64"),
+            op(14, "["),
+            op(15, "nope"),
+            op(16, "]"),
+            op(19, "poly:2"),
+            op(20, "["),
+            op(21, "1"),
+            op(22, "]"),
+            op(17, "poly:0"),
+            op(18, "0.5"),
+        ];
+        let (_, diagnostics) = compile_program_with_diagnostics(&ops, 100, &mut Context::new());
+        let ids = diagnostics.iter().map(|d| d.id).collect::<Vec<_>>();
+        assert!(ids.contains(&Some(11)), "unknown word: {diagnostics:?}");
+        assert!(ids.contains(&Some(12)), "bad cc argument: {diagnostics:?}");
+        assert!(
+            ids.contains(&Some(13)),
+            "invalid pattern (warned inside audio_ops): {diagnostics:?}"
+        );
+        assert!(
+            ids.contains(&Some(15)),
+            "unknown word inside a poly body: {diagnostics:?}"
+        );
+        assert!(
+            ids.contains(&Some(17)),
+            "bad voice count on the poly node: {diagnostics:?}"
+        );
+        assert!(
+            ids.contains(&Some(19)),
+            "poly whose body is only an unknown word is empty: {diagnostics:?}"
+        );
+        assert!(
+            !ids.contains(&Some(10)) && !ids.contains(&Some(18)),
+            "{diagnostics:?}"
+        );
+        assert_eq!(
+            ids.iter().filter(|&&id| id == Some(15)).count(),
+            1,
+            "once, not once per voice"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d.id == Some(11) && d.message.contains("sine-ish")),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn a_clean_program_has_no_diagnostics() {
+        let ops = words("[ a comment with unknown words ] drop 110 s 0.5 *");
+        let (_, diagnostics) = compile_program_with_diagnostics(&ops, 100, &mut Context::new());
+        assert_eq!(diagnostics, []);
     }
 }

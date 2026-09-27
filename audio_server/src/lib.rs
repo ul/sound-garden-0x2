@@ -1,4 +1,4 @@
-use audio_program::{Context, TextOp, compile_program};
+use audio_program::{Context, Diagnostic, TextOp, compile_program_with_diagnostics};
 use audio_vm::{CHANNELS, Frame, Program, Sample, VM};
 use crossbeam_channel::{Receiver, Sender};
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
@@ -6,7 +6,7 @@ use rtrb::RingBuffer;
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -41,6 +41,16 @@ pub struct Monitor {
     pub meters: Meters,
     /// Name of the connected MIDI input, if any.
     pub midi_device: Option<Arc<str>>,
+    /// Warnings from the latest program compile.
+    pub diagnostics: Arc<Diagnostics>,
+}
+
+/// Compile warnings for the latest program, each tied to the node that caused
+/// it. `generation` changes with every compile.
+#[derive(Clone, Debug, Default)]
+pub struct Diagnostics {
+    pub generation: u64,
+    pub items: Vec<Diagnostic>,
 }
 
 #[derive(Archive, RkyvSerialize, RkyvDeserialize, Serialize, Deserialize)]
@@ -77,6 +87,10 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let midi_frame = Arc::clone(&ctx.midi);
     let midi_controls = Arc::clone(&ctx.midi_controls);
     let telemetry = Arc::new(telemetry::Telemetry::new());
+    // Written here after each compile, read by the monitor thread; neither is
+    // the audio thread, so a mutex is fine.
+    let diagnostics = Arc::new(Mutex::new(Arc::new(Diagnostics::default())));
+    let monitor_diagnostics = Arc::clone(&diagnostics);
     let engine_telemetry = Arc::clone(&telemetry);
     let buffer_frames = options.buffer_frames;
     let (midi_connection, midi_rx, midi_device) =
@@ -154,7 +168,11 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
                                 .unwrap_or_default();
                             let meters = telemetry.snapshot();
                             let midi_device = midi_device.clone();
-                            if tx.send(Monitor { scope: frame, patterns, meters, midi_device }).is_err() { break; };
+                            let diagnostics = monitor_diagnostics
+                                .lock()
+                                .map(|diagnostics| Arc::clone(&diagnostics))
+                                .unwrap_or_default();
+                            if tx.send(Monitor { scope: frame, patterns, meters, midi_device, diagnostics }).is_err() { break; };
                         }
                     }
                 } else {
@@ -177,7 +195,14 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
                 recorder.sender().send(x).ok();
             }
             Msg::LoadProgram(ops) => {
-                let program = compile_program(&ops, sample_rate, &mut ctx);
+                let (program, items) =
+                    compile_program_with_diagnostics(&ops, sample_rate, &mut ctx);
+                if let Ok(mut latest) = diagnostics.lock() {
+                    *latest = Arc::new(Diagnostics {
+                        generation: latest.generation + 1,
+                        items,
+                    });
+                }
                 command_tx.push(audio::Command::LoadProgram(program)).ok();
             }
             Msg::Monitor(id) => {

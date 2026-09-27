@@ -17,8 +17,8 @@ enum ParseKind {
 
 fn warn_invalid(kind: ParseKind, pattern: &str) {
     match kind {
-        ParseKind::Value => log::warn!("Invalid numeric pattern: {}", pattern),
-        ParseKind::Gate => log::warn!("Invalid gate pattern: {}", pattern),
+        ParseKind::Value => crate::compile_warn!("Invalid numeric pattern: {}", pattern),
+        ParseKind::Gate => crate::compile_warn!("Invalid gate pattern: {}", pattern),
     }
 }
 

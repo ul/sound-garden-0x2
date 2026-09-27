@@ -5,6 +5,7 @@ mod constant;
 mod convolution;
 mod crush;
 mod delay;
+pub mod diagnostics;
 mod envelopes;
 mod feedback;
 mod filters;
