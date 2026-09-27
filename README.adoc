@@ -1,5 +1,7 @@
 = Sound Garden
 
+Try the https://ul.mantike.pro/sound-garden-0x2/[browser playground].
+
 (consider reading this doc at http://ul.mantike.pro/sound-garden-0x2/README.html because GitHub parses AsciiDoc improperly)
 
 == What?

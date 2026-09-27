@@ -11,6 +11,8 @@ Serve over http(s) or localhost; browsers don't load worklets from `file://`.
 
 ## GitHub Pages
 
+Play at <https://ul.mantike.pro/sound-garden-0x2/>.
+
 Pushes to `master` build the WebAssembly playground with the locked Cargo dependencies and publish `dist/` via `.github/workflows/pages.yml`. You can also run the workflow manually from the Actions tab. The published directory includes the project manual at `README.html`.
 
 ## Playground
