@@ -323,15 +323,27 @@ code[data-lang="sg"] [data-tip]:hover, .sg-tip-owner { background: var(--accent-
 .admonitionblock.warning > table, .admonitionblock.caution > table { border-color: var(--warn); background: var(--warn-soft); padding: 0.7rem 1rem; border-radius: 0 6px 6px 0; }
 .admonitionblock.warning td.icon .title, .admonitionblock.caution td.icon .title { color: var(--warn); }
 
-/* Book-specific boxes, written as example blocks with a role: [.try], [.garden], [.deeper]. */
-.exampleblock > .content > :last-child { margin-bottom: 0; }
+/* Book-specific boxes, written as example blocks with a role: [.try], [.cutting], and the
+   folding [.branch] and [.answer] (rendered as <details> by the FoldedBoxes extension). */
+.exampleblock > .content > :last-child, details > .content > :last-child { margin-bottom: 0; }
 .exampleblock { border: 1px solid var(--rule); border-radius: 8px; padding: 1rem 1.2rem; }
 .exampleblock > .title { margin: -0.1rem 0 0.6rem; }
 .exampleblock.try > .title::before { content: "Try  ·  "; color: var(--accent); }
-.exampleblock.garden { border-color: var(--accent); background: var(--accent-soft); }
-.exampleblock.garden > .title::before { content: "Plant it  ·  "; color: var(--accent); }
-.exampleblock.deeper { background: var(--paper-2); border-color: transparent; font-size: 0.93rem; }
-.exampleblock.deeper > .title::before { content: "Going deeper  ·  "; }
+.exampleblock.cutting { border-color: var(--accent); background: var(--accent-soft); }
+.exampleblock.cutting > .title::before { content: "Take a cutting  ·  "; color: var(--accent); }
+
+details.branch, details.answer { margin-bottom: 1.25rem; border-radius: 8px; }
+details.branch { background: var(--paper-2); padding: 0.75rem 1.2rem; font-size: 0.95rem; }
+details.answer { border-top: 1px dashed var(--rule); border-radius: 0; padding-top: 0.6rem; margin: 1rem 0 0; }
+details > summary.title { cursor: pointer; list-style: none; margin: 0; display: flex; align-items: baseline; gap: 0.5rem; }
+details > summary.title::-webkit-details-marker { display: none; }
+details > summary.title::before {
+  content: "›"; display: inline-block; width: 0.8rem; color: var(--accent); font-size: 1rem; line-height: 1;
+  transition: transform 0.15s;
+}
+details[open] > summary.title::before { transform: rotate(90deg); }
+details.branch > summary.title::after { content: "branch"; margin-left: auto; font-weight: 500; color: var(--muted); opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.62rem; }
+details[open] > .content { margin-top: 0.8rem; }
 
 .sidebarblock { background: var(--paper-2); border-radius: 8px; padding: 1rem 1.2rem; font-size: 0.93rem; }
 .sidebarblock > .content > .title { font-size: 0.8rem; }

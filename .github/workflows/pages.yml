@@ -1,4 +1,4 @@
-name: Publish Sound Garden browser apps
+name: Publish Sound Garden browser apps and book
 
 on:
   push:
@@ -33,6 +33,13 @@ jobs:
           node --check sound_garden_web/web/editor-store.js
           node --check sound_garden_web/web/editor/editor.js
           test -s sound_garden_web/dist/editor/pkg/sound_garden_egui_bg.wasm
+      # The book (book/), published under book/: finished chapters only.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          sudo gem install asciidoctor rouge --no-document
+      - run: make -C book final
+      - run: cp -R book/build sound_garden_web/dist/book
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

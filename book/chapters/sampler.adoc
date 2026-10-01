@@ -133,12 +133,23 @@ WARNING: Warnings are for ears and speakers. The next example is loud.
 ====
 Replace `440` with `441` in the tuning fork and play both at once.
 What is the slow pulsing you hear, and how fast is it?
+
+[.answer]
+=====
+Two sines 1 Hz apart drift in and out of phase once a second, so the sum swells and fades once a second: a _beat_.
+
+.One beat per second
+[sound, seconds=4, show=wave]
+------
+440 s 441 s + 0.2 *
+------
+=====
 ====
 
-[.garden]
-.The first seed
+[.cutting]
+.Bell
 ====
-Every chapter ends by planting something in the reader's own garden: a template, a technique, or a piece they keep and build on.
+A cutting is a named template taken from this chapter's piece, to grow in later pieces.
 
 [source]
 ----
@@ -146,10 +157,11 @@ Every chapter ends by planting something in the reader's own garden: a template,
 ----
 ====
 
-[.deeper]
+[.branch]
 .Why 48,000?
 ====
-Deeper boxes hold the mathematics or history a reader can skip on first reading and come back to.
+Branches are optional side paths: a sound variation, a derivation, a bit of history.
+They fold under their title, and nothing later depends on them.
 ====
 
 .A sidebar

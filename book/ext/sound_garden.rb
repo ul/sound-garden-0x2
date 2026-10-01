@@ -248,6 +248,18 @@ module SoundGarden
     end
   end
 
+  # Branches and exercise answers fold: [.branch] and [.answer] example blocks become
+  # collapsible, so authors write the role and never the option.
+  class FoldedBoxes < Asciidoctor::Extensions::TreeProcessor
+    def process doc
+      doc.find_by(context: :example) { |b| b.has_role?('branch') || b.has_role?('answer') }.each do |block|
+        block.set_option 'collapsible'
+        block.title = 'Answer' if block.has_role?('answer') && !block.title?
+      end
+      nil
+    end
+  end
+
   # Rendering through book_render, cached by content hash, and the HTML around the results.
   module Media
     module_function
@@ -360,5 +372,6 @@ end
 Asciidoctor::Extensions.register do
   block SoundGarden::SoundBlock
   tree_processor SoundGarden::SoundNumbering
+  tree_processor SoundGarden::FoldedBoxes
   postprocessor SoundGarden::Finish
 end

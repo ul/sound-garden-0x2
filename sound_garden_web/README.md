@@ -1,6 +1,6 @@
 # sound_garden_web
 
-Sound Garden in the browser: the compiler and VM compiled to WebAssembly, played by an AudioWorklet. See `docs/adr/0006-browser-engine.md` for the design.
+Sound Garden in the browser: the compiler and VM compiled to WebAssembly, played by an AudioWorklet. See `docs/adr/0007-browser-engine.md` for the design.
 
 ```sh
 make -C sound_garden_web          # build dist/: both WASM modules, playground and editor

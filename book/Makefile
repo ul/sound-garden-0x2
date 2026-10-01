@@ -45,11 +45,12 @@ watch: html
 renderer:
 	@cargo build --quiet --release -p book_render
 
-# The browser engine for live editing (sound_garden_web).
+# The browser engine for live editing: just the sound_garden_web engine, not the editor.
 live:
-	@$(MAKE) --quiet -C ../sound_garden_web >/dev/null
+	@cargo build --locked --quiet --release --target wasm32-unknown-unknown -p sound_garden_web
 	@mkdir -p $(BUILD)/live
-	@cp ../sound_garden_web/dist/sound_garden_web.wasm ../sound_garden_web/dist/*.js $(BUILD)/live/
+	@cp ../target/wasm32-unknown-unknown/release/sound_garden_web.wasm \
+	    ../sound_garden_web/web/sound-garden.js ../sound_garden_web/web/worklet.js $(BUILD)/live/
 
 clean:
 	rm -rf $(BUILD)

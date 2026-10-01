@@ -73,14 +73,45 @@ A listing that should not be played is `[source]` (the book's default language i
 
 == Conventions
 
-Voice and structure are still being decided; record decisions here as they are made.
+Structure and vocabulary: `docs/adr/0008-book-structure.md` and the Book section of `CONTEXT.md`.
+The ladder of chapters and the way a chapter is made: `outline.adoc`.
 
+* Each chapter grows one piece along its main line, opening with a short excerpt of the finished piece so the destination is in view.
+* A piece is one program whose form unfolds from its own structure; its last listing is the full score.
+* Voice is "we": author and reader exploring together.
+* Maths is in the main text, introduced when the music needs it and built up from there.
 * One sentence per line in the source, so diffs and review comments stay small.
-* Levels: the reader hears the same loudness from chapter to chapter. Aim for peaks around 0.3–0.5 for studies; pieces end with `limit`.
+* Levels: the reader hears the same loudness from chapter to chapter. Aim for peaks around 0.3–0.5 for sounds; pieces end with `limit`.
 * Sample rate is 48,000 throughout.
-* Boxes, as example blocks with a role:
-** `[.try]` exercises and questions for the reader;
-** `[.garden]` what the reader keeps from the chapter: a template, technique or piece that later chapters build on;
-** `[.deeper]` mathematics or history that can be skipped on first reading;
-** `WARNING:` only for ears and speakers.
-* Math uses `stem:[...]` inline and `[stem]` blocks (LaTeX, rendered by MathJax). stem:[R] is the sample rate, stem:[n] the sample index.
+
+=== Boxes
+
+Example blocks with a role:
+
+[horizontal]
+`[.branch]`:: A branch: an optional side path (sound variation, derivation, history), folded under its title and a one-line summary. Nothing later depends on it.
+`[.try]`:: An exercise, with its answer folded underneath; a sound answer is a playable `[sound]`.
+`[.cutting]`:: Take a cutting: a named template the reader carries into later pieces.
+`WARNING:`:: Only for ears and speakers.
+
+=== Notation
+
+Compatible with Puckette's _Theory and Technique of Electronic Music_ where possible.
+Inline `stem:[...]`, display `[stem]` blocks (LaTeX, MathJax).
+
+[horizontal]
+stem:[R]:: sample rate (48,000)
+stem:[n]:: sample index
+stem:[t]:: time in seconds
+stem:[f]:: frequency in Hz
+stem:[A]:: amplitude
+stem:[\varphi]:: phase, in radians
+stem:[\omega = 2\pi f / R]:: angular frequency, radians per sample
+stem:[x[n\]]:: a signal
+
+Maths uses radians. Sound Garden's phases run over −1..1 per cycle; chapter 1 explains the mapping once, in a branch.
+
+== Publishing
+
+The `final` build is published with the playground and editor at ul.mantike.pro/sound-garden-0x2/book/ on every push to master.
+A chapter goes into `book.adoc` unconditionally only when its piece is finished; until then it is included under `ifdef::draft[]`.

@@ -4,3 +4,4 @@ target/
 .projectile-cache.eld
 book/build/
 sound_garden_web/dist/
+book/notes/

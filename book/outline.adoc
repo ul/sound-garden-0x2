@@ -1,0 +1,41 @@
+= Outline
+:notice: The ladder: a living outline, revised as chapters are written (docs/adr/0008-book-structure.md).
+
+Each chapter grows one piece. Structure climbs in DSP and maths, in music and in the piece together.
+
+[cols="1,3,6,5,4"]
+|===
+| # | Chapter | DSP and maths | Music | Piece
+
+| 1 | One Tone | numbers as sound, sample rate, sine: amplitude, frequency, phase; angles, radians, the unit circle | a held tone; listening to stillness | a breathing drone
+| 2 | Two Tones | adding signals, beats (sum to product), ratios, logarithms: octaves, cents, decibels | intervals, consonance, beating | intervals drifting through unisons, fifths, octaves
+| 3 | Overtones | harmonic series, Fourier series of saw and square, Nyquist and aliasing | timbre; the overtone series as a scale | an overtone chant
+| 4 | Shapes in Time | control signals, multiplying signals, exponential decay and _e_, triggers | events, onsets, the note | bells: inharmonic partials, each with its own decay
+| 5 | Cycles | phase as time, wrapping and modulo, patterns, Euclid's algorithm | pulse, meter, polyrhythm, phasing | a phasing study
+| 6 | Modulation | AM and ring modulation sidebands, vibrato, FM, waveshaping | timbre that moves; expressive pitch | an FM piece: bass and bells
+| 7 | Chance | randomness, white noise, sample and hold, probability, seeds | indeterminacy, generative form | rain (noise impulses and resonating sines, no filters yet)
+| 8 | Filters | averaging, one-pole recursion, frequency response, resonance, biquads; complex numbers | subtractive timbre, vowels and formants | a choir carved from noise
+| 9 | Echoes | delay lines, comb filters, feedback, Karplus–Strong, interpolation | canon, plucked strings, space as time | a plucked canon
+| 10 | Voices | polyphony and voice allocation; just and equal temperament, the twelfth root of two | chords, voice leading | a chorale
+| 11 | Space | stereo, pan laws, diffusion, reverb as feedback networks | place, distance, depth | an ambient landscape
+| 12 | Memory | tables, recording, interpolation, grains, time-stretching | sampling, texture, transformation | a glacier
+| 13 | Spectrum | the discrete Fourier transform, the FFT, windows, spectral freeze and shuffle | sound as a picture of frequencies | a spectral piece
+| 14 | Liveness | state across edits, performing structure, MIDI | improvisation, form made in real time | a live performance (form to be decided)
+|===
+
+== Making a chapter
+
+. *Play*: improvise with the chapter's core sound in the editor, from starter programs and questions.
+. *Learn*: the maths as a lesson with exercises, worked through by the author as the model reader; where it's hard becomes book text.
+. *Compose*: build the piece live; record the take we like.
+. *Write*: prose drafted from the first three steps, edited for voice and taste.
+
+== Open until the end
+
+* Title and subtitle.
+* Byline (name spelling) and how the collaboration is credited.
+* How the Liveness chapter presents a performance, and whether the editor should record replayable sessions.
+
+== Revisions
+
+Record ladder changes here with the reason, as they happen.
