@@ -1,105 +1,208 @@
-//! # Oscillator
-//! Sources to connect: frequency.
+//! # Oscillators
+//! Sources to connect: frequency (and phase offset for the `*Phase` forms).
+//!
+//! Every oscillator continues the cycle of whichever oscillator it replaces in a live edit and
+//! morphs from that oscillator's shape to its own (see waveform.rs).
 
-use crate::function::Fn1;
-use crate::phasor::{Phasor, Phasor0, phase_to_unit, poly_blep, wrap_phase};
+use crate::glide::Glide;
+use crate::phasor::{phase_to_unit, poly_blep, wrap_phase};
+use crate::pure;
+use crate::waveform::{Cycle, Draw, Morph, Oscillator, Shape, cycle_of, oscillator_perform};
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
+/// A sine, cosine or naive triangle at the frequency on the stack.
 pub struct Osc {
-    phasor: Phasor,
-    osc: Fn1,
+    phases: Frame,
+    sample_period: Sample,
+    shape: Shape,
+    f: fn(Sample) -> Sample,
+    morph: Morph,
 }
 
 impl Osc {
-    pub fn new(sample_rate: u32, f: fn(Sample) -> Sample) -> Self {
-        let phasor = Phasor::new(sample_rate);
-        let osc = Fn1::new(f);
-        Osc { phasor, osc }
+    pub fn new(sample_rate: u32, shape: Shape) -> Self {
+        Osc {
+            phases: [0.0; CHANNELS],
+            sample_period: Sample::from(sample_rate).recip(),
+            shape,
+            f: shape.function(),
+            morph: Morph::new(),
+        }
+    }
+}
+
+impl Oscillator for Osc {
+    fn cycle(&self) -> Cycle {
+        Cycle::new(self.phases, self.shape)
+    }
+}
+
+impl Draw for Osc {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
+        let frequency = stack.pop();
+        let scale = 2.0 * self.sample_period;
+        let mut frame = [0.0; CHANNELS];
+        for (phase, sample, &frequency) in izip!(&mut self.phases, &mut frame, &frequency) {
+            *phase = wrap_phase(*phase + frequency * scale);
+            *sample = (self.f)(*phase);
+        }
+        frame
+    }
+
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
     }
 }
 
 impl Op for Osc {
-    fn perform(&mut self, stack: &mut Stack) {
-        self.phasor.perform(stack);
-        self.osc.perform(stack);
-    }
+    oscillator_perform!();
 
     fn migrate(&mut self, other: &mut dyn Op) {
-        if let Some(other) = other.downcast_mut::<Self>() {
-            self.phasor.migrate_same(&other.phasor);
+        if let Some(previous) = cycle_of(other) {
+            self.phases = previous.phases;
+            self.morph.start(&previous, self.shape);
         }
     }
 }
 
+/// An oscillator at a literal frequency (`440 s`), specialised by the compiler. The frequency
+/// glides when a live edit changes it (see glide.rs) while the phase carries on.
 pub struct FixedOsc {
     phases: Frame,
-    frequency: Sample,
+    frequency: Glide,
     sample_period: Sample,
+    shape: Shape,
     f: fn(Sample) -> Sample,
+    morph: Morph,
 }
 
 impl FixedOsc {
-    pub fn new(sample_rate: u32, frequency: Sample, f: fn(Sample) -> Sample) -> Self {
+    pub fn new(sample_rate: u32, frequency: Sample, shape: Shape) -> Self {
         Self {
             phases: [0.0; CHANNELS],
-            frequency,
+            frequency: Glide::new(frequency),
             sample_period: Sample::from(sample_rate).recip(),
-            f,
+            shape,
+            f: shape.function(),
+            morph: Morph::new(),
         }
+    }
+}
+
+impl Oscillator for FixedOsc {
+    fn cycle(&self) -> Cycle {
+        Cycle::new(self.phases, self.shape)
+    }
+}
+
+impl Draw for FixedOsc {
+    #[inline(always)]
+    fn draw(&mut self, _stack: &mut Stack) -> Frame {
+        let scale = 2.0 * self.sample_period;
+        let mut frame = [0.0; CHANNELS];
+        for (phase, sample, &frequency) in
+            izip!(&mut self.phases, &mut frame, self.frequency.next())
+        {
+            *phase = wrap_phase(*phase + frequency * scale);
+            *sample = (self.f)(*phase);
+        }
+        frame
+    }
+
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
     }
 }
 
 impl Op for FixedOsc {
-    fn perform(&mut self, stack: &mut Stack) {
-        let dx = 2.0 * self.frequency * self.sample_period;
-        let mut frame = [0.0; CHANNELS];
-
-        for (phase, sample) in self.phases.iter_mut().zip(&mut frame) {
-            *phase = wrap_phase(*phase + dx);
-            *sample = (self.f)(*phase);
-        }
-
-        stack.push(&frame);
-    }
+    oscillator_perform!();
 
     fn migrate(&mut self, other: &mut dyn Op) {
         if let Some(other) = other.downcast_mut::<Self>() {
-            self.phases = other.phases;
+            self.frequency.migrate(&other.frequency);
+        }
+        if let Some(previous) = cycle_of(other) {
+            self.phases = previous.phases;
+            self.morph.start(&previous, self.shape);
         }
     }
 }
 
+/// A sine, cosine or naive triangle with a phase offset input.
 pub struct OscPhase {
-    phasor: Phasor0,
-    osc: Fn1,
+    phases: Frame,
+    phase0: Frame,
+    sample_period: Sample,
+    shape: Shape,
+    f: fn(Sample) -> Sample,
+    morph: Morph,
 }
 
 impl OscPhase {
-    pub fn new(sample_rate: u32, f: fn(Sample) -> Sample) -> Self {
-        let phasor = Phasor0::new(sample_rate);
-        let osc = Fn1::new(f);
-        OscPhase { phasor, osc }
+    pub fn new(sample_rate: u32, shape: Shape) -> Self {
+        OscPhase {
+            phases: [0.0; CHANNELS],
+            phase0: [0.0; CHANNELS],
+            sample_period: Sample::from(sample_rate).recip(),
+            shape,
+            f: shape.function(),
+            morph: Morph::new(),
+        }
+    }
+}
+
+impl Oscillator for OscPhase {
+    fn cycle(&self) -> Cycle {
+        Cycle {
+            phase0: self.phase0,
+            ..Cycle::new(self.phases, self.shape)
+        }
+    }
+}
+
+impl Draw for OscPhase {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
+        let phase0 = stack.pop();
+        let frequency = stack.pop();
+        self.phase0 = phase0;
+        // Advance every channel first, then draw: calling the shape between phase updates
+        // made this op twice as slow.
+        let scale = 2.0 * self.sample_period;
+        let mut frame = [0.0; CHANNELS];
+        for (phase, sample, &frequency, &phase0) in
+            izip!(&mut self.phases, &mut frame, &frequency, &phase0)
+        {
+            *phase = wrap_phase(*phase + frequency * scale);
+            *sample = wrap_phase(*phase + phase0);
+        }
+        frame.map(self.f)
+    }
+
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
     }
 }
 
 impl Op for OscPhase {
-    fn perform(&mut self, stack: &mut Stack) {
-        self.phasor.perform(stack);
-        self.osc.perform(stack);
-    }
+    oscillator_perform!();
 
     fn migrate(&mut self, other: &mut dyn Op) {
-        if let Some(other) = other.downcast_mut::<Self>() {
-            self.phasor.migrate_same(&other.phasor);
+        if let Some(previous) = cycle_of(other) {
+            self.phases = previous.phases;
+            self.morph.start(&previous, self.shape);
         }
     }
 }
 
+/// Band-limited triangle (`t`).
 pub struct PolyBlepTriangle {
     phases: Frame,
     outputs: Frame,
     sample_period: Sample,
+    morph: Morph,
 }
 
 impl PolyBlepTriangle {
@@ -108,12 +211,20 @@ impl PolyBlepTriangle {
             phases: [0.0; CHANNELS],
             outputs: [-1.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
+            morph: Morph::new(),
         }
     }
 }
 
-impl Op for PolyBlepTriangle {
-    fn perform(&mut self, stack: &mut Stack) {
+impl Oscillator for PolyBlepTriangle {
+    fn cycle(&self) -> Cycle {
+        Cycle::new(self.phases, Shape::Triangle)
+    }
+}
+
+impl Draw for PolyBlepTriangle {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
         let frequency = stack.pop();
         let mut frame = [0.0; CHANNELS];
         for (out, phase, tri, &frequency) in
@@ -124,36 +235,64 @@ impl Op for PolyBlepTriangle {
             *tri = poly_blep_triangle_step(*phase, dt, *tri);
             *out = *tri;
         }
-        stack.push(&frame);
+        frame
     }
+
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
+    }
+}
+
+impl Op for PolyBlepTriangle {
+    oscillator_perform!();
 
     fn migrate(&mut self, other: &mut dyn Op) {
         if let Some(other) = other.downcast_mut::<Self>() {
             self.phases = other.phases;
             self.outputs = other.outputs;
+        } else if let Some(previous) = cycle_of(other) {
+            // The triangle integrates its slope, so seed it where the triangle is at this phase.
+            self.phases = previous.phases;
+            self.outputs = previous.phases.map(pure::triangle);
+            self.morph.start(&previous, Shape::Triangle);
         }
     }
 }
 
+/// Band-limited triangle with a phase offset input (`tri`).
 pub struct PolyBlepTrianglePhase {
     phases: Frame,
+    phase0: Frame,
     outputs: Frame,
     sample_period: Sample,
+    morph: Morph,
 }
 
 impl PolyBlepTrianglePhase {
     pub fn new(sample_rate: u32) -> Self {
         Self {
             phases: [0.0; CHANNELS],
+            phase0: [0.0; CHANNELS],
             outputs: [-1.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
+            morph: Morph::new(),
         }
     }
 }
 
-impl Op for PolyBlepTrianglePhase {
-    fn perform(&mut self, stack: &mut Stack) {
-        let phase0 = stack.pop();
+impl Oscillator for PolyBlepTrianglePhase {
+    fn cycle(&self) -> Cycle {
+        Cycle {
+            phase0: self.phase0,
+            ..Cycle::new(self.phases, Shape::Triangle)
+        }
+    }
+}
+
+impl Draw for PolyBlepTrianglePhase {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
+        self.phase0 = stack.pop();
         let frequency = stack.pop();
         let mut frame = [0.0; CHANNELS];
         for (out, phase, tri, &frequency, &phase0) in izip!(
@@ -161,20 +300,40 @@ impl Op for PolyBlepTrianglePhase {
             &mut self.phases,
             &mut self.outputs,
             &frequency,
-            &phase0
+            &self.phase0
         ) {
             let dt = frequency * self.sample_period;
             *phase = wrap_phase(*phase + 2.0 * dt);
             *tri = poly_blep_triangle_step(wrap_phase(*phase + phase0), dt, *tri);
             *out = *tri;
         }
-        stack.push(&frame);
+        frame
     }
+
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
+    }
+}
+
+impl Op for PolyBlepTrianglePhase {
+    oscillator_perform!();
 
     fn migrate(&mut self, other: &mut dyn Op) {
         if let Some(other) = other.downcast_mut::<Self>() {
             self.phases = other.phases;
             self.outputs = other.outputs;
+        } else if let Some(previous) = cycle_of(other) {
+            // Seed the integrator at this phase, assuming the offset input stays as it was.
+            self.phases = previous.phases;
+            for (output, (&phase, &phase0)) in self
+                .outputs
+                .iter_mut()
+                .zip(previous.phases.iter().zip(&previous.phase0))
+            {
+                *output = pure::triangle(wrap_phase(phase + phase0));
+            }
+            self.phase0 = previous.phase0;
+            self.morph.start(&previous, Shape::Triangle);
         }
     }
 }

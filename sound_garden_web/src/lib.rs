@@ -537,6 +537,147 @@ mod tests {
         );
     }
 
+    fn collect(engine: &mut Engine, frames: usize) -> Vec<f32> {
+        (0..frames).map(|_| engine.process(1)[0]).collect()
+    }
+
+    /// Energy above `cutoff` Hz relative to all energy, in dB, over a Hann window: how much of
+    /// a 220 Hz tone's window is click.
+    fn high_band_db(xs: &[f32], cutoff: f64) -> f64 {
+        let n = xs.len();
+        let windowed = xs
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| {
+                x as f64 * (0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n as f64).cos())
+            })
+            .collect::<Vec<_>>();
+        let (mut high, mut total) = (0.0, 0.0);
+        for k in 1..n / 2 {
+            let w = std::f64::consts::TAU * k as f64 / n as f64;
+            let (re, im) = windowed
+                .iter()
+                .enumerate()
+                .fold((0.0, 0.0), |(re, im), (i, &x)| {
+                    (re + x * (w * i as f64).cos(), im - x * (w * i as f64).sin())
+                });
+            let power = re * re + im * im;
+            total += power;
+            if k as f64 * 48_000.0 / n as f64 > cutoff {
+                high += power;
+            }
+        }
+        10.0 * (high / total).log10()
+    }
+
+    #[test]
+    fn number_edits_glide_without_a_click() {
+        // Halving the amplitude of a running sine: an instant change clicks even after the
+        // reload declick (about -43 dB of the window above 1 kHz); the glide is inaudible.
+        let mut engine = engine();
+        engine.load("220 s 0.2 *");
+        run(&mut engine, 12_000);
+        let mut window = collect(&mut engine, 1024);
+        engine.load("220 s 0.1 *");
+        window.extend(collect(&mut engine, 1024));
+        let click = high_band_db(&window, 1_000.0);
+        assert!(click < -70.0, "click energy {click:.1} dB");
+    }
+
+    /// Replace `from` with `to` at several points in the cycle. Returns the worst error (dB, relative
+    /// to the signal) of the 10 ms morph against an ideal crossfade from an engine still playing
+    /// `from` to one that has played `to` all along, and of the 20 ms after it against the latter.
+    fn swap_errors(from: &str, to: &str) -> (f64, f64) {
+        let error_db = |actual: &[f32], ideal: &[f32]| {
+            let error: f64 = actual
+                .iter()
+                .zip(ideal)
+                .map(|(x, y)| ((x - y) as f64).powi(2))
+                .sum();
+            let signal: f64 = ideal.iter().map(|y| (*y as f64).powi(2)).sum();
+            10.0 * (error / signal + 1e-30).log10()
+        };
+        let (mut morph, mut after) = (f64::MIN, f64::MIN);
+        for at in [20_000, 20_037, 20_111, 20_230, 20_301] {
+            let (mut edited, mut old, mut new) = (engine(), engine(), engine());
+            edited.load(from);
+            old.load(from);
+            new.load(to);
+            for e in [&mut edited, &mut old, &mut new] {
+                run(e, at);
+            }
+            edited.load(to);
+            let (e, a, b) = (
+                collect(&mut edited, 480),
+                collect(&mut old, 480),
+                collect(&mut new, 480),
+            );
+            let ideal = (0..480)
+                .map(|i| {
+                    let w = 0.5 - 0.5 * (std::f32::consts::PI * (i + 1) as f32 / 480.0).cos();
+                    a[i] * (1.0 - w) + b[i] * w
+                })
+                .collect::<Vec<_>>();
+            morph = morph.max(error_db(&e, &ideal));
+            after = after.max(error_db(
+                &collect(&mut edited, 960),
+                &collect(&mut new, 960),
+            ));
+        }
+        (morph, after)
+    }
+
+    #[test]
+    fn waveform_swaps_morph_and_continue_the_cycle() {
+        for (from, to) in [
+            ("110 s 0.2 *", "110 0 saw 0.2 *"),
+            ("110 0 saw 0.2 *", "110 0.5 p 0.2 *"),
+            ("110 0.5 p 0.2 *", "110 s 0.2 *"),
+            ("110 s' 0.2 *", "110 t' 0.2 *"),
+            ("110 s 0.2 *", "110 >f <f s 0.2 *"),
+            ("110 w 0.2 *", "110 c 0.2 *"),
+        ] {
+            let (morph, after) = swap_errors(from, to);
+            assert!(
+                morph < -100.0,
+                "{from} -> {to}: morph {morph:.1} dB from an ideal crossfade"
+            );
+            assert!(
+                after < -100.0,
+                "{from} -> {to}: {after:.1} dB from a fresh oscillator"
+            );
+        }
+    }
+
+    #[test]
+    fn band_limited_triangle_swaps_are_continuous() {
+        // A fresh band-limited triangle locks onto its cycle with a sub-sample offset on its first
+        // wrap; one taking over a cycle is seeded exactly. That offset (about -40 dB) is all that
+        // separates them; a click would show tens of dB more.
+        for (from, to) in [
+            ("110 s 0.2 *", "110 t 0.2 *"),
+            ("110 t 0.2 *", "110 s 0.2 *"),
+        ] {
+            let (morph, after) = swap_errors(from, to);
+            assert!(
+                morph < -38.0 && after < -38.0,
+                "{from} -> {to}: {morph:.1} / {after:.1} dB"
+            );
+        }
+    }
+
+    #[test]
+    fn a_gate_turned_on_by_an_edit_opens_fully() {
+        // A plain constant may be a gate: switching it on must be an edge, not a glide, or
+        // adsr would latch the first tiny step of the glide as its peak.
+        let mut engine = engine();
+        engine.load("0 0.001 0.01 1 0.1 adsr");
+        run(&mut engine, 12_000);
+        engine.load("1 0.001 0.01 1 0.1 adsr");
+        let level = run(&mut engine, 2_000);
+        assert!(level > 0.99, "envelope reached {level}");
+    }
+
     #[test]
     fn diagnostics_point_at_words() {
         let mut engine = engine();

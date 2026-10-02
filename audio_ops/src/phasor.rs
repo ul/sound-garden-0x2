@@ -16,6 +16,7 @@
 //! themselves anymore.
 //!
 //! Sources to connect: frequency.
+use crate::waveform::{Cycle, Draw, Morph, Oscillator, Shape, cycle_of, oscillator_perform};
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
@@ -35,17 +36,23 @@ pub(crate) fn phase_to_unit(phase: Sample) -> Sample {
     (phase + 1.0) * 0.5
 }
 
+/// Correction for a discontinuity at `t` = 0 (wrapping from 1), `t` in 0..1 of a cycle.
+///
+/// Written so that the common case, away from the edge, returns before dividing and only one
+/// division happens otherwise: when the branches were symmetric the compiler could turn them
+/// into selects and divide on every sample, which made pulses 2.5x slower.
 #[inline]
 pub(crate) fn poly_blep(t: Sample, dt: Sample) -> Sample {
     let dt = dt.abs().clamp(1.0e-12, 0.5);
-    if t < dt {
-        let x = t / dt;
+    let start = t < dt;
+    if !start && t <= 1.0 - dt {
+        return 0.0;
+    }
+    let x = if start { t } else { t - 1.0 } / dt;
+    if start {
         x + x - x * x - 1.0
-    } else if t > 1.0 - dt {
-        let x = (t - 1.0) / dt;
-        x * x + x + x + 1.0
     } else {
-        0.0
+        x * x + x + x + 1.0
     }
 }
 
@@ -54,9 +61,11 @@ pub(crate) fn poly_blep_saw_sample(phase: Sample, dt: Sample) -> Sample {
     phase - 2.0 * poly_blep(phase_to_unit(phase), dt)
 }
 
+/// Raw phasor (`w`): a naive saw, also used as a phase source.
 pub struct Phasor {
     phases: [Sample; CHANNELS],
     sample_period: Sample,
+    morph: Morph,
 }
 
 impl Phasor {
@@ -64,104 +73,166 @@ impl Phasor {
         Phasor {
             phases: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
+            morph: Morph::new(),
         }
-    }
-
-    pub fn migrate_same(&mut self, other: &Self) {
-        self.phases = other.phases;
     }
 }
 
-impl Op for Phasor {
-    fn perform(&mut self, stack: &mut Stack) {
+impl Oscillator for Phasor {
+    fn cycle(&self) -> Cycle {
+        Cycle::new(self.phases, Shape::Saw)
+    }
+}
+
+impl Draw for Phasor {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
         for (phase, &frequency) in self.phases.iter_mut().zip(&stack.pop()) {
             let dx = 2.0 * frequency * self.sample_period;
             *phase = wrap_phase(*phase + dx);
         }
-        stack.push(&self.phases);
+        self.phases
     }
 
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
+    }
+}
+
+impl Op for Phasor {
+    oscillator_perform!();
+
     fn migrate(&mut self, other: &mut dyn Op) {
-        if let Some(other) = other.downcast_mut::<Self>() {
-            self.migrate_same(other);
+        if let Some(previous) = cycle_of(other) {
+            self.phases = previous.phases;
+            self.morph.start(&previous, Shape::Saw);
         }
     }
 }
 
+/// Raw phasor with a phase offset input (`saw'`).
 pub struct Phasor0 {
     phases: [Sample; CHANNELS],
+    phase0: Frame,
     sample_period: Sample,
+    morph: Morph,
 }
 
 impl Phasor0 {
     pub fn new(sample_rate: u32) -> Self {
         Phasor0 {
             phases: [0.0; CHANNELS],
+            phase0: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
+            morph: Morph::new(),
         }
-    }
-
-    pub fn migrate_same(&mut self, other: &Self) {
-        self.phases = other.phases;
     }
 }
 
-impl Op for Phasor0 {
-    fn perform(&mut self, stack: &mut Stack) {
-        let phase0 = stack.pop();
+impl Oscillator for Phasor0 {
+    fn cycle(&self) -> Cycle {
+        Cycle {
+            phase0: self.phase0,
+            ..Cycle::new(self.phases, Shape::Saw)
+        }
+    }
+}
+
+impl Draw for Phasor0 {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
+        self.phase0 = stack.pop();
         let frequency = stack.pop();
         for (phase, &frequency) in self.phases.iter_mut().zip(&frequency) {
             let dx = 2.0 * frequency * self.sample_period;
             *phase = wrap_phase(*phase + dx);
         }
         let mut output = [0.0; CHANNELS];
-        for (out, &phase, &phase0) in izip!(&mut output, &self.phases, &phase0) {
+        for (out, &phase, &phase0) in izip!(&mut output, &self.phases, &self.phase0) {
             *out = wrap_phase(phase + phase0);
         }
-        stack.push(&output);
+        output
     }
 
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
+    }
+}
+
+impl Op for Phasor0 {
+    oscillator_perform!();
+
     fn migrate(&mut self, other: &mut dyn Op) {
-        if let Some(other) = other.downcast_mut::<Self>() {
-            self.migrate_same(other);
+        if let Some(previous) = cycle_of(other) {
+            self.phases = previous.phases;
+            self.morph.start(&previous, Shape::Saw);
         }
     }
 }
 
+/// Band-limited saw with a phase offset input (`saw`).
 pub struct PolyBlepSawPhase {
     phases: [Sample; CHANNELS],
+    phase0: Frame,
+    dts: Frame,
     sample_period: Sample,
+    morph: Morph,
 }
 
 impl PolyBlepSawPhase {
     pub fn new(sample_rate: u32) -> Self {
         Self {
             phases: [0.0; CHANNELS],
+            phase0: [0.0; CHANNELS],
+            dts: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
+            morph: Morph::new(),
         }
     }
 }
 
-impl Op for PolyBlepSawPhase {
-    fn perform(&mut self, stack: &mut Stack) {
-        let phase0 = stack.pop();
+impl Oscillator for PolyBlepSawPhase {
+    fn cycle(&self) -> Cycle {
+        Cycle {
+            phase0: self.phase0,
+            dt: self.dts,
+            ..Cycle::new(self.phases, Shape::Saw)
+        }
+    }
+}
+
+impl Draw for PolyBlepSawPhase {
+    #[inline(always)]
+    fn draw(&mut self, stack: &mut Stack) -> Frame {
+        self.phase0 = stack.pop();
         let frequency = stack.pop();
         let mut output: Frame = [0.0; CHANNELS];
-        for (out, phase, &frequency, &phase0) in
-            izip!(&mut output, &mut self.phases, &frequency, &phase0)
-        {
-            let dt = frequency * self.sample_period;
-            *phase = wrap_phase(*phase + 2.0 * dt);
-            *out = poly_blep_saw_sample(wrap_phase(*phase + phase0), dt);
+        for (out, phase, dt, &frequency, &phase0) in izip!(
+            &mut output,
+            &mut self.phases,
+            &mut self.dts,
+            &frequency,
+            &self.phase0
+        ) {
+            *dt = frequency * self.sample_period;
+            *phase = wrap_phase(*phase + 2.0 * *dt);
+            *out = poly_blep_saw_sample(wrap_phase(*phase + phase0), *dt);
         }
-        stack.push(&output);
+        output
     }
 
+    fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
+        (&mut self.morph, &self.phases)
+    }
+}
+
+impl Op for PolyBlepSawPhase {
+    oscillator_perform!();
+
     fn migrate(&mut self, other: &mut dyn Op) {
-        if let Some(other) = other.downcast_mut::<Self>() {
-            self.phases = other.phases;
-        } else if let Some(other) = other.downcast_mut::<Phasor0>() {
-            self.phases = other.phases;
+        if let Some(previous) = cycle_of(other) {
+            self.phases = previous.phases;
+            self.morph.start(&previous, Shape::Saw);
         }
     }
 }

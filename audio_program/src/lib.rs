@@ -114,13 +114,13 @@ impl Waveform {
         }
     }
 
-    fn function(self) -> fn(Sample) -> Sample {
+    fn shape(self) -> Shape {
         match self {
-            Self::Cosine => pure::cosine,
-            Self::CosineFast => pure::cosine_fast,
-            Self::Sine => pure::sine,
-            Self::SineFast => pure::sine_fast,
-            Self::Triangle => pure::triangle,
+            Self::Cosine => Shape::Cosine,
+            Self::CosineFast => Shape::CosineFast,
+            Self::Sine => Shape::Sine,
+            Self::SineFast => Shape::SineFast,
+            Self::Triangle => Shape::Triangle,
         }
     }
 }
@@ -456,7 +456,7 @@ fn compile_segment(
                 waveform,
                 frequency,
             } => {
-                push_args!(id, FixedOsc, sample_rate, frequency, waveform.function());
+                push_args!(id, FixedOsc, sample_rate, frequency, waveform.shape());
                 continue;
             }
             OptimizedOp::AddConst { id, value } => {
@@ -520,8 +520,8 @@ fn compile_segment(
                 0.0,
                 op == "bend"
             ),
-            "c" => push_args!(id, Osc, sample_rate, pure::cosine),
-            "c'" => push_args!(id, Osc, sample_rate, pure::cosine_fast),
+            "c" => push_args!(id, Osc, sample_rate, Shape::Cosine),
+            "c'" => push_args!(id, Osc, sample_rate, Shape::CosineFast),
             "chance" => program.push(Statement {
                 id,
                 op: Box::new(Chance::with_seed(ctx.next_rng_seed())) as Box<dyn Op>,
@@ -537,8 +537,8 @@ fn compile_segment(
             "cos" => push_args!(id, Fn1, pure::cos),
             "cos'" => push_args!(id, Fn1, pure::cos_fast),
             "cosh" => push_args!(id, Fn1, pure::cosh),
-            "cosine" => push_args!(id, OscPhase, sample_rate, pure::cosine),
-            "cosine'" => push_args!(id, OscPhase, sample_rate, pure::cosine_fast),
+            "cosine" => push_args!(id, OscPhase, sample_rate, Shape::Cosine),
+            "cosine'" => push_args!(id, OscPhase, sample_rate, Shape::CosineFast),
             "crush" => push_args!(id, Crush, sample_rate),
             "cycle" | "cy" => push_args!(id, Cycle, sample_rate),
             "db2amp" | "db2a" => push_args!(id, Fn1, pure::db2amp),
@@ -595,8 +595,8 @@ fn compile_segment(
             "rot" => push!(id, Rot),
             "rev" | "verb" => push_args!(id, Reverb, sample_rate),
             "round" => push_args!(id, Fn1, pure::round),
-            "s" => push_args!(id, Osc, sample_rate, pure::sine),
-            "s'" => push_args!(id, Osc, sample_rate, pure::sine_fast),
+            "s" => push_args!(id, Osc, sample_rate, Shape::Sine),
+            "s'" => push_args!(id, Osc, sample_rate, Shape::SineFast),
             "saw" => push_args!(id, PolyBlepSawPhase, sample_rate),
             "saw'" => push_args!(id, Phasor0, sample_rate),
             "sh" | "sample&hold" => push!(id, SampleAndHold),
@@ -606,8 +606,8 @@ fn compile_segment(
             "sin'" => push_args!(id, Fn1, pure::sin_fast),
             "sinc" => push_args!(id, Fn1, pure::sinc),
             "sinc'" => push_args!(id, Fn1, pure::sinc_fast),
-            "sine" => push_args!(id, OscPhase, sample_rate, pure::sine),
-            "sine'" => push_args!(id, OscPhase, sample_rate, pure::sine_fast),
+            "sine" => push_args!(id, OscPhase, sample_rate, Shape::Sine),
+            "sine'" => push_args!(id, OscPhase, sample_rate, Shape::SineFast),
             "sinh" => push_args!(id, Fn1, pure::sinh),
             "spectral_shuffle" => program.push(Statement {
                 id,
@@ -650,12 +650,12 @@ fn compile_segment(
             "sr" => push_args!(id, Constant, sample_rate as _),
             "swap" => push!(id, Swap),
             "t" => push_args!(id, PolyBlepTriangle, sample_rate),
-            "t'" => push_args!(id, Osc, sample_rate, pure::triangle),
+            "t'" => push_args!(id, Osc, sample_rate, Shape::Triangle),
             "tan" => push_args!(id, Fn1, pure::tan),
             "tan'" => push_args!(id, Fn1, pure::tan_fast),
             "tanh" => push_args!(id, Fn1, pure::tanh),
             "tri" => push_args!(id, PolyBlepTrianglePhase, sample_rate),
-            "tri'" => push_args!(id, OscPhase, sample_rate, pure::triangle),
+            "tri'" => push_args!(id, OscPhase, sample_rate, Shape::Triangle),
             "tline" => push_args!(id, Transition, sample_rate, pure::linear_curve),
             "tquad" => push_args!(id, Transition, sample_rate, pure::quadratic_curve),
             "uniexp" => push_args!(id, Fn3, pure::uniexp),

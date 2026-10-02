@@ -10,6 +10,7 @@ mod envelopes;
 mod feedback;
 mod filters;
 mod function;
+mod glide;
 mod grain;
 mod input;
 mod lag;
@@ -37,8 +38,10 @@ mod spectral_transform;
 mod stack;
 mod variable;
 mod wah;
+mod waveform;
 mod yin;
 
+pub use self::waveform::Shape;
 pub use self::{
     biquad::*, channel::*, constant::*, convolution::*, crush::*, delay::*, envelopes::*,
     feedback::*, filters::*, function::*, grain::*, input::*, lag::*, limit::*, metro::*, midi::*,

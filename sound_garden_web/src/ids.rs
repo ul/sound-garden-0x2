@@ -27,16 +27,25 @@ impl Ids {
     pub fn assign(&mut self, words: &[&str]) -> Vec<u64> {
         let old = std::mem::take(&mut self.words);
         let mut ids = vec![0; words.len()];
+        let next = &mut self.next;
         let mut pair_gap =
             |ids: &mut [u64], old_gap: &[(String, u64)], new_gap: std::ops::Range<usize>| {
-                for (k, j) in new_gap.enumerate() {
-                    ids[j] = match old_gap.get(k) {
-                        Some((_, id)) => *id,
-                        None => {
-                            self.next += 1;
-                            self.next - 1
-                        }
-                    };
+                for literal in [true, false] {
+                    let mut old_ids = old_gap
+                        .iter()
+                        .rev()
+                        .filter(|(word, _)| is_literal(word) == literal)
+                        .map(|&(_, id)| id);
+                    for j in new_gap
+                        .clone()
+                        .rev()
+                        .filter(|&j| is_literal(words[j]) == literal)
+                    {
+                        ids[j] = old_ids.next().unwrap_or_else(|| {
+                            *next += 1;
+                            *next - 1
+                        });
+                    }
                 }
             };
 
@@ -88,6 +97,24 @@ impl Ids {
     }
 }
 
+/// A number as the compiler reads one: decimal, ratio (`3/2`) or pitch (`a4`, `C#4`).
+fn is_literal(word: &str) -> bool {
+    let number = |w: &str| w.parse::<f64>().is_ok();
+    if number(word) {
+        return true;
+    }
+    if let Some((numerator, denominator)) = word.split_once('/') {
+        return number(numerator) && number(denominator);
+    }
+    let mut chars = word.chars();
+    let pitch = chars
+        .next()
+        .is_some_and(|c| matches!(c.to_ascii_lowercase(), 'a'..='g'));
+    let rest = chars.as_str();
+    let rest = rest.strip_prefix(['#', 'b']).unwrap_or(rest);
+    pitch && rest.parse::<i32>().is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +146,27 @@ mod tests {
         let a = ids.assign(&words("110 s"));
         let b = ids.assign(&words("2 s 1 + 110 * s"));
         assert_eq!((b[4], b[6]), (a[0], a[1]));
+    }
+
+    #[test]
+    fn an_operator_given_new_arguments_keeps_its_id() {
+        let mut ids = Ids::default();
+        let a = ids.assign(&words("110 s 0.2 *"));
+        let b = ids.assign(&words("110 0 saw 0.2 *"));
+        assert_eq!(b[2], a[1], "saw continues the sine");
+        assert!(!a.contains(&b[1]), "the new phase argument starts fresh");
+
+        let c = ids.assign(&words("110 s 0.2 *"));
+        assert_eq!(c[1], b[2], "s continues the saw, not its argument");
+    }
+
+    #[test]
+    fn numbers_pair_with_numbers() {
+        let mut ids = Ids::default();
+        let a = ids.assign(&words("220 s 0.2 *"));
+        let b = ids.assign(&words("220 t 0.3 *"));
+        assert_eq!(a, b);
+        assert!(is_literal("a4") && is_literal("C#4") && is_literal("3/2") && !is_literal("saw"));
     }
 
     #[test]

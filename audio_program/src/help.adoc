@@ -4,6 +4,8 @@ Sound Garden programs are whitespace-separated concatenative words. Each word co
 
 Unknown words, stack underflow, and stack overflow are tolerated by the VM and effectively produce default/ignored values rather than aborting audio.
 
+Live edits keep each op's state. An edit that changes a number glides from the old value to the new one over about 10 ms, so changing `0.2` to `0.1` or `440` to `330` doesn't click; a plain number that turns on (from zero or below to positive) switches at once instead, so it still works as a gate or trigger. Replacing an oscillator with another (`s` with `t`, a saw with a pulse) continues the same cycle and morphs between the two shapes over the same 10 ms.
+
 [horizontal]
 return, ret, !:: stop compiling/evaluating the program here; the current stack/audio output is used and all following words are ignored
 

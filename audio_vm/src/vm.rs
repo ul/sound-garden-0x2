@@ -1,5 +1,5 @@
 use crate::op::Op;
-use crate::sample::{AtomicFrame, Frame, Sample};
+use crate::sample::{AtomicFrame, CHANNELS, Frame, Sample};
 use crate::stack::Stack;
 #[cfg(feature = "allocation-checks")]
 use alloc_counter::no_alloc;
@@ -52,8 +52,11 @@ pub struct VM {
     /// This frame's output of the monitored statement (or the program output
     /// for id 0), updated every frame for per-sample capture.
     scope: Frame,
-    /// Last output frame, used to measure the step introduced by a program reload.
+    /// Last three output frames: the last two predict the frame a reload replaces, and all
+    /// three show how much the signal moves by itself.
     last_frame: Frame,
+    previous_frame: Frame,
+    earlier_frame: Frame,
     /// Exponentially decaying correction that cancels the program reload step.
     declick_offset: Frame,
     /// Frames of declick correction left.
@@ -92,6 +95,8 @@ impl VM {
             monitor_countdown: 0,
             scope: Default::default(),
             last_frame: Default::default(),
+            previous_frame: Default::default(),
+            earlier_frame: Default::default(),
             declick_offset: Default::default(),
             declick_countdown: 0,
             declick_duration: DECLICK_DURATION,
@@ -204,6 +209,8 @@ impl VM {
                 }
             }
         };
+        self.earlier_frame = self.previous_frame;
+        self.previous_frame = self.last_frame;
         self.last_frame = frame;
         frame
     }
@@ -229,18 +236,41 @@ impl VM {
     }
 
     /// Cancel the step discontinuity introduced by a program reload: on the first
-    /// frame after the reload, capture the step against the last heard frame, then
-    /// add it back to the output while it decays exponentially to silence.
+    /// frame after the reload, measure the step against where the signal was heading
+    /// (a linear prediction from the last two heard frames), then add it back to the
+    /// output while it decays exponentially to silence.
+    ///
+    /// A step no larger than twice the signal's own motion (its larger recent change
+    /// between samples, or its curvature, from the last three frames) is left alone: a
+    /// moving signal differs from its last frame by itself, and "correcting" that
+    /// injected a click into every reload, even of an unchanged program. Edits that
+    /// change a number glide and oscillator swaps morph (see `audio_ops::glide` and
+    /// `audio_ops::waveform`), so their steps stay within the motion and exact. Motion is
+    /// judged only at reload time, so playing costs nothing but remembering a frame; the
+    /// price is that a reload landing exactly on a saw or pulse wrap softens that edge.
+    // Five per-channel arrays are read by channel; indexing reads clearer than zipping them.
+    #[allow(clippy::needless_range_loop)]
     fn declick(&mut self, mut frame: Frame) -> Frame {
         if self.declick_pending {
             self.declick_pending = false;
             let mut step: Sample = 0.0;
-            for (offset, (&last, &new)) in self
-                .declick_offset
-                .iter_mut()
-                .zip(self.last_frame.iter().zip(&frame))
-            {
-                *offset = last - new;
+            for c in 0..CHANNELS {
+                let (last, previous, earlier) = (
+                    self.last_frame[c],
+                    self.previous_frame[c],
+                    self.earlier_frame[c],
+                );
+                let motion = (last - previous)
+                    .abs()
+                    .max((previous - earlier).abs())
+                    .max((last - 2.0 * previous + earlier).abs());
+                let error = (2.0 * last - previous) - frame[c];
+                let offset = &mut self.declick_offset[c];
+                *offset = if error.abs() > 2.0 * motion {
+                    error
+                } else {
+                    0.0
+                };
                 step = step.max(offset.abs());
             }
             self.declick_countdown = if step > DECLICK_THRESHOLD {
@@ -589,7 +619,10 @@ mod tests {
         vm.set_declick_duration(2.0);
         vm.load_program(vec![statement(1, PushFrame([1.0, -1.0]))]);
         vm.play();
-        assert_eq!(vm.next_frame(), [1.0, -1.0]);
+        // Hold steady for a few frames so the onset is out of the three-frame history.
+        for _ in 0..3 {
+            assert_eq!(vm.next_frame(), [1.0, -1.0]);
+        }
 
         vm.load_program(vec![statement(1, PushFrame([0.0, 0.0]))]);
 
@@ -602,6 +635,34 @@ mod tests {
         assert!((frame[1] + decay).abs() < 1e-12);
         // ...and is dropped entirely after the declick duration.
         assert_eq!(vm.next_frame(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn reload_of_a_moving_signal_is_left_exact() {
+        // A ramp moves by itself; a reload that continues it must not be "corrected" towards
+        // the last heard frame (which once injected a click into every reload).
+        struct Ramp(Sample);
+        impl Op for Ramp {
+            fn perform(&mut self, stack: &mut Stack) {
+                self.0 += 0.01;
+                stack.push(&[self.0; crate::sample::CHANNELS]);
+            }
+            fn migrate(&mut self, other: &mut dyn Op) {
+                if let Some(other) = other.downcast_mut::<Self>() {
+                    self.0 = other.0;
+                }
+            }
+        }
+        let mut vm = VM::new();
+        vm.set_xfade_duration(0.0);
+        vm.load_program(vec![statement(1, Ramp(0.0))]);
+        vm.play();
+        for _ in 0..100 {
+            vm.next_frame();
+        }
+        let before = vm.next_frame()[0];
+        vm.load_program(vec![statement(1, Ramp(0.0))]);
+        assert!((vm.next_frame()[0] - (before + 0.01)).abs() < 1e-9);
     }
 
     #[test]

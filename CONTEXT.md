@@ -14,6 +14,11 @@ A uniquely identified fragment of Sound Garden text at a position on the project
 
 A shareable copy of a project that preserves its nodes' identities and positions, rather than only executable program text.
 
+### Edit glide
+
+The short transition (about 10 ms, raised cosine) by which a live edit takes effect without clicking. A changed number glides from the value its predecessor was producing to the new one; a replaced oscillator continues its predecessor's cycle and morphs from the old shape to its own. A plain number turning on (from zero or below to positive) is an edge, not a glide, so it can act as a gate or trigger. Rationale in `docs/adr/0009-number-edits-glide.md` and `docs/adr/0010-waveform-edits-morph.md`.
+_Avoid_: portamento, slide, smoothing, crossfade
+
 ### Pattern clock
 
 A pattern clock is local state owned by a pattern op. It advances by integrating a cycles-per-second (`cps`) signal consumed from the stack, similarly to how oscillators advance phase from a frequency signal. Sound Garden patterns do not initially use a shared global transport clock; synced patterns can be built explicitly by feeding them the same `cps` source, including via existing variables.

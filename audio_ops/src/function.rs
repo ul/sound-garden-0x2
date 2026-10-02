@@ -1,4 +1,5 @@
-use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
+use crate::glide::Glide;
+use audio_vm::{CHANNELS, Op, Sample, Stack};
 use itertools::izip;
 
 // Fn1..Fn5 are generic over the function so that `FnN::new(pure::add)` is
@@ -48,137 +49,69 @@ impl<F: Fn(Sample, Sample) -> Sample + Send + 'static> Op for Fn2<F> {
     }
 }
 
-pub struct AddConst {
-    value: Frame,
-}
-
-impl AddConst {
-    pub fn new(value: Sample) -> Self {
-        Self {
-            value: [value; CHANNELS],
+// Binary ops with a constant operand, specialised by the compiler from `x 0.2 *` and friends.
+// The constant glides when a live edit changes it (see glide.rs), so number edits don't click.
+macro_rules! const_op {
+    ($name:ident, |$x:ident, $value:ident| $body:expr) => {
+        pub struct $name {
+            value: Glide,
         }
-    }
-}
 
-impl Op for AddConst {
-    fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = stack.pop();
-        for (sample, &value) in frame.iter_mut().zip(&self.value) {
-            *sample += value;
+        impl $name {
+            pub fn new(value: Sample) -> Self {
+                Self {
+                    value: Glide::new(value),
+                }
+            }
         }
-        stack.push(&frame);
-    }
-}
 
-pub struct MulConst {
-    value: Frame,
-}
+        impl $name {
+            #[inline(always)]
+            fn apply(&self, stack: &mut Stack) {
+                let mut frame = stack.pop();
+                for (sample, &$value) in frame.iter_mut().zip(self.value.current()) {
+                    let $x = *sample;
+                    *sample = $body;
+                }
+                stack.push(&frame);
+            }
 
-impl MulConst {
-    pub fn new(value: Sample) -> Self {
-        Self {
-            value: [value; CHANNELS],
+            #[cold]
+            #[inline(never)]
+            fn perform_gliding(&mut self, stack: &mut Stack) {
+                self.value.step();
+                self.apply(stack);
+            }
         }
-    }
-}
 
-impl Op for MulConst {
-    fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = stack.pop();
-        for (sample, &value) in frame.iter_mut().zip(&self.value) {
-            *sample *= value;
+        impl Op for $name {
+            // A glide runs in a cold tail call, so the common case stays a leaf (see glide.rs).
+            fn perform(&mut self, stack: &mut Stack) {
+                if self.value.is_gliding() {
+                    return self.perform_gliding(stack);
+                }
+                self.apply(stack);
+            }
+
+            fn migrate(&mut self, other: &mut dyn Op) {
+                if let Some(other) = other.downcast_mut::<Self>() {
+                    self.value.migrate(&other.value);
+                }
+            }
         }
-        stack.push(&frame);
-    }
+    };
 }
 
-pub struct SubConst {
-    value: Frame,
-}
-
-impl SubConst {
-    pub fn new(value: Sample) -> Self {
-        Self {
-            value: [value; CHANNELS],
-        }
-    }
-}
-
-impl Op for SubConst {
-    fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = stack.pop();
-        for (sample, &value) in frame.iter_mut().zip(&self.value) {
-            *sample -= value;
-        }
-        stack.push(&frame);
-    }
-}
-
-pub struct RSubConst {
-    value: Frame,
-}
-
-impl RSubConst {
-    pub fn new(value: Sample) -> Self {
-        Self {
-            value: [value; CHANNELS],
-        }
-    }
-}
-
-impl Op for RSubConst {
-    fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = stack.pop();
-        for (sample, &value) in frame.iter_mut().zip(&self.value) {
-            *sample = value - *sample;
-        }
-        stack.push(&frame);
-    }
-}
-
-pub struct DivConst {
-    value: Frame,
-}
-
-impl DivConst {
-    pub fn new(value: Sample) -> Self {
-        Self {
-            value: [value; CHANNELS],
-        }
-    }
-}
-
-impl Op for DivConst {
-    fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = stack.pop();
-        for (sample, &value) in frame.iter_mut().zip(&self.value) {
-            *sample = if value != 0.0 { *sample / value } else { 0.0 };
-        }
-        stack.push(&frame);
-    }
-}
-
-pub struct RDivConst {
-    value: Frame,
-}
-
-impl RDivConst {
-    pub fn new(value: Sample) -> Self {
-        Self {
-            value: [value; CHANNELS],
-        }
-    }
-}
-
-impl Op for RDivConst {
-    fn perform(&mut self, stack: &mut Stack) {
-        let mut frame = stack.pop();
-        for (sample, &value) in frame.iter_mut().zip(&self.value) {
-            *sample = if *sample != 0.0 { value / *sample } else { 0.0 };
-        }
-        stack.push(&frame);
-    }
-}
+const_op!(AddConst, |x, value| x + value);
+const_op!(MulConst, |x, value| x * value);
+const_op!(SubConst, |x, value| x - value);
+const_op!(RSubConst, |x, value| value - x);
+const_op!(DivConst, |x, value| if value != 0.0 {
+    x / value
+} else {
+    0.0
+});
+const_op!(RDivConst, |x, value| if x != 0.0 { value / x } else { 0.0 });
 
 pub struct Fn3<F = fn(Sample, Sample, Sample) -> Sample> {
     f: F,
