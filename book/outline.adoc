@@ -7,7 +7,7 @@ Each chapter grows one piece. Structure climbs in DSP and maths, in music and in
 |===
 | # | Chapter | DSP and maths | Music | Piece
 
-| 1 | One Tone | numbers as sound, sample rate, sine: amplitude, frequency, phase; angles, radians, the unit circle | a held tone; listening to stillness | a breathing drone
+| 1 | One Tone | numbers as sound, sample rate, sine: amplitude, frequency, phase; angles, radians, the unit circle | a held tone; listening to stillness | a drone of three slowly wandering strata
 | 2 | Two Tones | adding signals, beats (sum to product), ratios, logarithms: octaves, cents, decibels | intervals, consonance, beating | intervals drifting through unisons, fifths, octaves
 | 3 | Overtones | harmonic series, Fourier series of saw and square, Nyquist and aliasing | timbre; the overtone series as a scale | an overtone chant
 | 4 | Shapes in Time | control signals, multiplying signals, exponential decay and _e_, triggers | events, onsets, the note | bells: inharmonic partials, each with its own decay
@@ -39,3 +39,5 @@ Each chapter grows one piece. Structure climbs in DSP and maths, in music and in
 == Revisions
 
 Record ladder changes here with the reason, as they happen.
+
+* 2026-10-03, chapter 1: the piece grew from one sine to three strata of sines, each wandering in its own register a twelfth apart. One sine, however it moved, gave no layering. The chapter's constraint is now sines only, with sums, products and slow control; the strata never come close enough for intervals and beating to become the subject, which stays chapter 2's.
