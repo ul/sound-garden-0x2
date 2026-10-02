@@ -541,6 +541,7 @@ fn compile_segment(
             "cosine'" => push_args!(id, OscPhase, sample_rate, Shape::CosineFast),
             "crush" => push_args!(id, Crush, sample_rate),
             "cycle" | "cy" => push_args!(id, Cycle, sample_rate),
+            "dcblock" | "dcb" => push_args!(id, DCBlock, sample_rate),
             "db2amp" | "db2a" => push_args!(id, Fn1, pure::db2amp),
             "dm" | "dmetro" => push_args!(id, DMetro, sample_rate),
             "dmh" | "dmetro_hold" => push_args!(id, DMetroHold, sample_rate),
@@ -1747,6 +1748,28 @@ mod tests {
             ),
             [20.0, 20.0]
         );
+    }
+
+    #[test]
+    fn compile_program_dcblock_removes_offset_and_keeps_bass() {
+        let frames = run_frames(
+            &[
+                op(1, "40"),
+                op(2, "s"),
+                op(3, "0.5"),
+                op(4, "*"),
+                op(5, "-0.25"),
+                op(6, "+"),
+                op(7, "dcblock"),
+            ],
+            48_000,
+            48_000,
+        );
+        let samples = channel(&frames, 0);
+        let steady = &samples[24_000..];
+        assert!(dc(steady).abs() < 0.005, "dc {}", dc(steady));
+        let level = rms(steady);
+        assert!((level - 0.5 / 2.0_f64.sqrt()).abs() < 0.02, "rms {level}");
     }
 
     #[test]

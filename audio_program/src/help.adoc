@@ -126,6 +126,7 @@ deg:<INTERVALS>:: (midi) -> snap MIDI to explicit comma-separated semitone degre
 [horizontal]
 lpf:: (x, freq) -> https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter[simple infinite impulse response low-pass filter]
 hpf:: (x, freq) -> https://en.wikipedia.org/wiki/High-pass_filter#Algorithmic_implementation[simple infinite impulse response high-pass filter]
+dcblock, dcb:: (x) -> https://ccrma.stanford.edu/~jos/filters/DC_Blocker_Software_Implementations.html[DC blocker]: removes the constant offset, corner at 10 Hz so bass passes
 lag:: (x, time) -> one-pole smoother/portamento, time in seconds
 lag2:: (x, up, down) -> lag with separate rise/fall times
 bqlpf, l:: (x, freq, Q) -> biquad LPF using https://shepazu.github.io/Audio-EQ-Cookbook/audio-eq-cookbook.html[Audio EQ Cookbook] coefficients
