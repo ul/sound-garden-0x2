@@ -7,6 +7,7 @@
 #   make watch    rebuild on every save
 #   make serve    build and serve on http://localhost:8123 (needed for live editing)
 #   make notes    render private working notes and lessons (notes/*.adoc) into build/notes/
+#   make anki     build the private Anki deck (notes/anki/*.toml) into build/notes/sound-garden.apkg
 #   make clean    remove build/ (renders are recreated on the next build)
 
 BUILD    := $(CURDIR)/build
@@ -14,7 +15,7 @@ RENDERER := ../target/release/book_render
 ASCIIDOC := asciidoctor -r ./ext/sound_garden.rb -D $(BUILD) -o index.html
 SOURCES  := $(shell find . -name '*.adoc' -not -path './build/*') $(wildcard ext/* theme/* examples/*/*)
 
-.PHONY: all html final check watch open serve clean renderer live notes
+.PHONY: all html final check watch open serve clean renderer live notes anki
 
 all: html open
 
@@ -36,6 +37,9 @@ notes: html
 	@mkdir -p $(BUILD)/notes && cp -R $(BUILD)/live $(BUILD)/notes/
 	asciidoctor -r ./ext/sound_garden.rb -D $(BUILD)/notes \
 	  -a stylesdir=../theme -a copycss! -a docinfodir=../theme notes/*.adoc
+
+anki: renderer
+	uv run --quiet --with genanki python3 notes/anki/build.py
 
 # Live editing needs http: browsers don't load audio worklets from file://.
 serve: html
