@@ -9,13 +9,14 @@ Live edits keep each op's state. An edit that changes a number glides from the o
 [horizontal]
 return, ret, !:: stop compiling/evaluating the program here; the current stack/audio output is used and all following words are ignored
 
-=== Compile-time quotations, templates, and comments
+=== Comments, compile-time quotations, and templates
 
 Square brackets collect a compile-time quotation. If the next word consumes it, that word decides what to do with the quotation; otherwise the quotation auto-expands inline. For example, `[ 440 s ] 0.2 *` is equivalent to `440 s 0.2 *`.
 
 [horizontal]
 def:<NAME>:: consume the preceding quotation and register it as a named template; sugar: `:<NAME>`, e.g. `[ dup s swap c * ] def:yay` or `[ dup s swap c * ] :yay`; writing `yay` later pushes that quotation, which can auto-expand inline or be consumed by another compile-time word
-drop:: consume and discard the preceding quotation; this is the comment form, e.g. `[ bassline notes with spaces ] drop`
+drop, --:: consume and discard the preceding quotation, which switches code off, e.g. `[ 440 s ] drop` or `[ 440 s ] --`
+( … ):: a comment, e.g. `( bassline, louder in the bass )`; a word starting with `(` opens it and it runs until its parentheses balance, so comments nest and may touch their words, `(like this)`; parentheses inside other words, as in `gate:x(3,8)`, don't open one
 
 === Reproducibility
 

@@ -260,8 +260,34 @@ fn template_definition_name(op: &str) -> Option<&str> {
     }
 }
 
+/// Remove `( … )` comments. A word starting with `(` opens one, and it runs until its
+/// parentheses balance, so comments nest and may touch their words: `(like this)`.
+/// Words elsewhere may contain parentheses (`gate:x(3,8)`); only an opening word counts.
+fn strip_paren_comments(ops: &[TextOp]) -> Vec<TextOp> {
+    let mut depth = 0isize;
+    ops.iter()
+        .filter(|op| {
+            if depth == 0 && !op.op.starts_with('(') {
+                return true;
+            }
+            let balance = op.op.chars().fold(0isize, |n, ch| match ch {
+                '(' => n + 1,
+                ')' => n - 1,
+                _ => n,
+            });
+            depth = (depth + balance).max(0);
+            false
+        })
+        .cloned()
+        .collect()
+}
+
+fn is_drop(op: &str) -> bool {
+    op == "drop" || op == "--"
+}
+
 fn is_quotation_consumer(op: &str) -> bool {
-    op == "drop"
+    is_drop(op)
         || op == "poly"
         || op.starts_with("poly:")
         || op == "mpoly"
@@ -285,6 +311,7 @@ pub fn compile_program_with_diagnostics(
 }
 
 pub fn compile_program(ops: &[TextOp], sample_rate: u32, ctx: &mut Context) -> Program {
+    let ops = strip_paren_comments(ops);
     let seed = ops
         .iter()
         .find_map(|op| op.op.strip_prefix("seed:")?.parse::<u64>().ok());
@@ -1250,9 +1277,9 @@ fn rewrite_terms(stmts: &[TextOp]) -> Vec<TextOp> {
                 }
             } else if let Some(name) = template_definition_name(&stmt.op) {
                 terms.insert(name.to_owned(), quote);
-            } else if stmt.op == "drop" {
-                // Explicitly discard the pending quotation. This is the
-                // comment form: `[ arbitrary words ] drop`.
+            } else if is_drop(&stmt.op) {
+                // Explicitly discard the pending quotation: `[ 440 s ] drop`
+                // switches code off, as does `[ 440 s ] --`.
             } else {
                 // A quotation before `poly` is compiled into a voice body:
                 // replay its body wrapped in quote markers so the compiler
@@ -1756,7 +1783,10 @@ mod tests {
         let mut context = Context::new();
         let golden = run_once(&[op(1, "golden")], &mut context)[0];
         assert!((golden * golden - golden - 1.0).abs() < 1e-12);
-        assert_eq!(run_once(&[op(1, "tau"), op(2, "pi"), op(3, "/")], &mut context), [2.0, 2.0]);
+        assert_eq!(
+            run_once(&[op(1, "tau"), op(2, "pi"), op(3, "/")], &mut context),
+            [2.0, 2.0]
+        );
     }
 
     #[test]
@@ -1906,6 +1936,47 @@ mod tests {
             ),
             run_once(&[op(1, "440"), op(8, "s")], &mut Context::new())
         );
+    }
+
+    #[test]
+    fn compile_program_ignores_paren_comments_and_double_dash_drops() {
+        let plain = run_once(
+            &[op(1, "440"), op(2, "s"), op(3, "gate:x(3,8)"), op(4, "*")],
+            &mut Context::new(),
+        );
+        let words = [
+            "(a",
+            "comment",
+            "(3",
+            "dB",
+            "per",
+            "octave),",
+            "nested)",
+            "440",
+            "s",
+            "(",
+            "seed:7",
+            "pop",
+            ")",
+            "gate:x(3,8)",
+            "[",
+            "0",
+            "]",
+            "--",
+            "(trailing)",
+            "*",
+            "(unclosed",
+            "1",
+            "+",
+        ];
+        let ops = words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| op(i as u64 + 1, w))
+            .collect::<Vec<_>>();
+        let mut context = Context::new();
+        assert_eq!(run_once(&ops, &mut context), plain);
+        assert_eq!(context.seed, None);
     }
 
     #[test]

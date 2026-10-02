@@ -967,11 +967,19 @@ quotation-taking word such as <code>poly:N</code> or <code>drop</code>.</p>
 would produce expanded `t`s with the same identity as corresponding `s`s before, preserving phase.</p>
 </div>
 <div class="paragraph">
-<p>Dropped quotations are comments and may contain whitespace:</p>
+<p>Parentheses are comments; they nest, and may touch their words:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre>[ bassline notes with spaces ] drop</pre>
+<pre>( bassline, louder in the bass (3 dB per octave) )</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Dropping a quotation with <code>drop</code>, or <code>--</code> for short, switches code off:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>[ 440 s 0.1 * ] --</pre>
 </div>
 </div>
 </div>
@@ -980,7 +988,7 @@ would produce expanded `t`s with the same identity as corresponding `s`s before,
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2026-09-27 15:14:07 +1000
+Last updated 2026-10-03 09:34:00 +1000
 </div>
 </div>
 </body>

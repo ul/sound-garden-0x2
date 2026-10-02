@@ -95,17 +95,25 @@ module SoundGarden
       end.join
     end
 
-    # Marks `[ ... ] drop` spans (with nesting) as comments.
+    # Marks comments: `( ... )` groups, which run until their parentheses balance, and
+    # `[ ... ] drop` or `[ ... ] --` spans (with nesting).
     def comment_ranges tokens, words
       marks = {}
       stack = []
+      depth = 0
       words.each_with_index do |ti, wi|
-        case tokens[ti]
+        tok = tokens[ti]
+        if depth > 0 || tok.start_with?('(')
+          depth = [depth + tok.count('(') - tok.count(')'), 0].max
+          marks[ti] = true
+          next
+        end
+        case tok
         when '[' then stack << wi
         when ']'
           next unless (open = stack.pop)
           nxt = words[wi + 1]
-          (words[open]..nxt).each { |k| marks[k] = true } if nxt && tokens[nxt] == 'drop'
+          (words[open]..nxt).each { |k| marks[k] = true } if nxt && %w[drop --].include?(tokens[nxt])
         end
       end
       marks

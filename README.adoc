@@ -241,7 +241,11 @@ will be expanded into
 Templates are livecoding-friendly, and replacing `s` in the template definition with `t`
 would produce expanded `t`s with the same identity as corresponding `s`s before, preserving phase.
 
-Dropped quotations are comments and may contain whitespace:
+Parentheses are comments; they nest, and may touch their words:
 -----
-[ bassline notes with spaces ] drop
+( bassline, louder in the bass (3 dB per octave) )
+-----
+Dropping a quotation with `drop`, or `--` for short, switches code off:
+-----
+[ 440 s 0.1 * ] --
 -----

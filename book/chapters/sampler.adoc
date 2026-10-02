@@ -59,7 +59,7 @@ Stereo programs get a lane per channel.
 .A sine drifting between the ears
 [sound, seconds=4, show=wave]
 ----
-[ a slow sine moves the position ] drop
+( a slow sine moves the position )
 220 s 0.3 * 0.5 s pan1
 ----
 

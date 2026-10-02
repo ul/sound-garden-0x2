@@ -1239,7 +1239,7 @@ impl SoundGardenApp {
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 0.0, BACKGROUND_COLOR);
             self.paint_cursor(&painter, rect.min);
-            let comment_node_ids = dropped_quotation_node_ids(&self.state.nodes);
+            let comment_node_ids = commented_node_ids(&self.state.nodes);
 
             for node in self.state.nodes.iter() {
                 self.paint_pattern_highlight(&painter, rect.min, node);
@@ -2010,14 +2010,28 @@ fn default_cycles() -> Vec<Vec<String>> {
     .collect()
 }
 
-fn dropped_quotation_node_ids(nodes: &[Node]) -> Vec<Id> {
+/// Nodes shown as comments: `( … )` groups, which run until their parentheses balance,
+/// and quotations followed by `drop` or `--`.
+fn commented_node_ids(nodes: &[Node]) -> Vec<Id> {
     let mut sorted = nodes.iter().collect::<Vec<_>>();
     sorted.sort_unstable_by_key(|node| (node.position.y as i64, node.position.x as i64));
 
     let mut result = Vec::new();
+    let mut paren_depth = 0isize;
     let mut quote_start = None;
     let mut quote_depth = 0usize;
     for (index, node) in sorted.iter().enumerate() {
+        if paren_depth > 0 || node.text.starts_with('(') {
+            let balance = node.text.chars().fold(0isize, |n, ch| match ch {
+                '(' => n + 1,
+                ')' => n - 1,
+                _ => n,
+            });
+            paren_depth = (paren_depth + balance).max(0);
+            result.push(node.id);
+            continue;
+        }
+
         if node.text.starts_with('[') {
             if quote_depth == 0 {
                 quote_start = Some(index);
@@ -2030,7 +2044,7 @@ fn dropped_quotation_node_ids(nodes: &[Node]) -> Vec<Id> {
             if quote_depth == 0 {
                 if sorted
                     .get(index + 1)
-                    .is_some_and(|next| next.text == "drop")
+                    .is_some_and(|next| next.text == "drop" || next.text == "--")
                 {
                     if let Some(start) = quote_start.take() {
                         result.extend(sorted[start..=index].iter().map(|node| node.id));
