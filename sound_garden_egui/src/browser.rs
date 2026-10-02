@@ -149,7 +149,10 @@ pub(crate) fn flush_commands(rx: &crossbeam_channel::Receiver<Message>) {
     }
 }
 
+/// Mirrors the native MIDI message so the modeline formatting compiles; the
+/// browser engine reports no MIDI messages yet.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(dead_code)]
 pub(crate) enum MidiMessage {
     Note(MidiEvent),
     Controller { controller: u8, value: f64 },

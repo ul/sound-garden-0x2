@@ -202,7 +202,7 @@ pub async fn start_sound_garden_editor(canvas_id: String) -> Result<(), wasm_bin
     browser::set_repository(Arc::clone(&repo));
     let (audio_tx, command_rx) = crossbeam_channel::unbounded();
     let (monitor_tx, monitor_rx) = crossbeam_channel::unbounded();
-    let app = SoundGardenApp::new(String::new(), repo, audio_tx, monitor_rx);
+    let app = SoundGardenApp::new(repo, audio_tx, monitor_rx);
     let runner = eframe::WebRunner::new();
     runner
         .start(
@@ -329,6 +329,7 @@ impl Default for UiState {
 
 struct SoundGardenApp {
     node_repo: Arc<Mutex<NodeRepository>>,
+    #[cfg(not(target_arch = "wasm32"))]
     filename: String,
     audio_tx: Sender<audio_server::Message>,
     monitor_rx: Receiver<audio_server::Monitor>,
@@ -380,13 +381,14 @@ impl Drop for SoundGardenApp {
 
 impl SoundGardenApp {
     fn new(
-        filename: String,
+        #[cfg(not(target_arch = "wasm32"))] filename: String,
         node_repo: Arc<Mutex<NodeRepository>>,
         audio_tx: Sender<audio_server::Message>,
         monitor_rx: Receiver<audio_server::Monitor>,
     ) -> Self {
         let mut app = Self {
             node_repo,
+            #[cfg(not(target_arch = "wasm32"))]
             filename,
             audio_tx,
             monitor_rx,
@@ -631,14 +633,12 @@ impl SoundGardenApp {
                     .send(audio_server::Message::Play(self.state.play))
                     .ok();
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Action::ToggleRecord => {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    self.state.record = !self.state.record;
-                    self.audio_tx
-                        .send(audio_server::Message::Record(self.state.record))
-                        .ok();
-                }
+                self.state.record = !self.state.record;
+                self.audio_tx
+                    .send(audio_server::Message::Record(self.state.record))
+                    .ok();
             }
             Action::Undo => {
                 self.node_repo.lock().unwrap().undo();
@@ -1269,7 +1269,7 @@ impl SoundGardenApp {
                 if flagged {
                     painter.line_segment(
                         [text_rect.left_bottom(), text_rect.right_bottom()],
-                        Stroke::new(1.5, WARNING_COLOR),
+                        Stroke::new(1.5_f32, WARNING_COLOR),
                     );
                 }
             }
@@ -1366,7 +1366,7 @@ impl SoundGardenApp {
                 Pos2::new(rect.min.x, rect.min.y + 2.0),
                 Pos2::new(rect.max.x, rect.min.y + 2.0),
             ],
-            Stroke::new(4.0, color),
+            Stroke::new(4.0_f32, color),
         );
 
         let transport_color =
@@ -1483,7 +1483,7 @@ impl SoundGardenApp {
         if self.meters.clipping(time) {
             painter.circle_filled(clip_center, 4.0, MODELINE_RECORD_COLOR);
         } else {
-            painter.circle_stroke(clip_center, 3.5, Stroke::new(1.0, COMMENT_COLOR));
+            painter.circle_stroke(clip_center, 3.5, Stroke::new(1.0_f32, COMMENT_COLOR));
         }
         right -= 8.0 + MODELINE_GAP;
 
@@ -1508,7 +1508,7 @@ impl SoundGardenApp {
                     Pos2::new(x, track.max.y + 1.0),
                 ],
                 Stroke::new(
-                    1.5,
+                    1.5_f32,
                     if hot {
                         NODE_DRAFT_COLOR
                     } else {
@@ -1600,7 +1600,7 @@ impl SoundGardenApp {
             .collect::<Vec<_>>();
         painter.add(egui::Shape::line(
             points,
-            Stroke::new(0.75, BACKGROUND_COLOR),
+            Stroke::new(0.75_f32, BACKGROUND_COLOR),
         ));
         for (y, value) in [(rect.min.y, max), (rect.max.y - GRID_HEIGHT, min)] {
             painter.text(
@@ -1632,7 +1632,7 @@ impl SoundGardenApp {
             let x = rect.min.x + feedback::log_position(frequency, LOW, high) as f32 * rect.width();
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
-                Stroke::new(1.0, grid),
+                Stroke::new(1.0_f32, grid),
             );
             let label = painter.layout_no_wrap(
                 format!("C{octave}"),
@@ -1666,7 +1666,7 @@ impl SoundGardenApp {
             .collect::<Vec<_>>();
         painter.add(egui::Shape::line(
             points,
-            Stroke::new(0.75, BACKGROUND_COLOR),
+            Stroke::new(0.75_f32, BACKGROUND_COLOR),
         ));
     }
 
@@ -1744,7 +1744,7 @@ impl SoundGardenApp {
         if points.len() > 1 {
             painter.add(egui::Shape::line(
                 points,
-                Stroke::new(0.75, BACKGROUND_COLOR),
+                Stroke::new(0.75_f32, BACKGROUND_COLOR),
             ));
         }
 
@@ -1880,6 +1880,7 @@ enum Action {
     CutNode,
     CommitProgram,
     PlayPause,
+    #[cfg(not(target_arch = "wasm32"))]
     ToggleRecord,
     Undo,
     Redo,
