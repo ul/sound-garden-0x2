@@ -30,6 +30,12 @@ struct Grain {
     amplitude: Frame,
     /// Output frames played so far; the grain is free once past every length.
     age: Sample,
+    /// Hann window by recurrence: (cos, sin) of `TAU * age / length`, rotated
+    /// one step per frame instead of calling `cos` per grain per sample.
+    phase_cos: Frame,
+    phase_sin: Frame,
+    step_cos: Frame,
+    step_sin: Frame,
     active: bool,
     /// Allocation order, for stealing the oldest grain.
     order: u64,
@@ -91,13 +97,27 @@ impl GrainPool {
     fn render(&mut self, mut read: impl FnMut(usize, Sample) -> Sample) -> Frame {
         let mut output = [0.0; CHANNELS];
         for grain in self.grains.iter_mut().filter(|grain| grain.active) {
+            if grain.age == 0.0 {
+                // Lengths are filled in by the caller after `trigger`.
+                for channel in 0..CHANNELS {
+                    let (sin, cos) = (std::f64::consts::TAU / grain.length[channel]).sin_cos();
+                    grain.phase_cos[channel] = 1.0;
+                    grain.phase_sin[channel] = 0.0;
+                    grain.step_cos[channel] = cos;
+                    grain.step_sin[channel] = sin;
+                }
+            }
             for (channel, out) in output.iter_mut().enumerate() {
                 let length = grain.length[channel];
                 if grain.age < length && grain.amplitude[channel] > 0.0 {
-                    let window = 0.5 - 0.5 * (std::f64::consts::TAU * grain.age / length).cos();
+                    let window = 0.5 - 0.5 * grain.phase_cos[channel];
                     let position = grain.start[channel] + grain.rate[channel] * grain.age;
                     *out += grain.amplitude[channel] * window * read(channel, position);
                 }
+                let (c, s) = (grain.phase_cos[channel], grain.phase_sin[channel]);
+                let (dc, ds) = (grain.step_cos[channel], grain.step_sin[channel]);
+                grain.phase_cos[channel] = c * dc - s * ds;
+                grain.phase_sin[channel] = c * ds + s * dc;
             }
             grain.age += 1.0;
             if grain.length.iter().all(|&length| grain.age >= length) {

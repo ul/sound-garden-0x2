@@ -67,6 +67,9 @@ pub struct Reverb {
     lines: [DelayLine; LINES],
     delay_seconds: [Sample; LINES],
     lowpass: [Frame; LINES],
+    /// Per-line feedback gains for `gains_time`, recomputed only when it changes.
+    gains: [Frame; LINES],
+    gains_time: Frame,
 }
 
 impl Reverb {
@@ -79,6 +82,8 @@ impl Reverb {
             lines: lengths.map(DelayLine::new),
             delay_seconds: lengths.map(|len| len as Sample / sample_rate),
             lowpass: [[0.0; CHANNELS]; LINES],
+            gains: [[0.0; CHANNELS]; LINES],
+            gains_time: [Sample::NAN; CHANNELS],
         }
     }
 
@@ -103,6 +108,15 @@ impl Op for Reverb {
         let mut sums = [0.0; CHANNELS];
         let mut output = [0.0; CHANNELS];
         let mix = (LINES as Sample).sqrt().recip();
+        for channel in 0..CHANNELS {
+            if time[channel] != self.gains_time[channel] {
+                self.gains_time[channel] = time[channel];
+                for i in 0..LINES {
+                    self.gains[i][channel] =
+                        10.0f64.powf(-3.0 * self.delay_seconds[i] / time[channel]);
+                }
+            }
+        }
 
         for i in 0..LINES {
             delayed[i] = self.lines[i].read();
@@ -120,8 +134,7 @@ impl Op for Reverb {
             let mut write = [0.0; CHANNELS];
             for channel in 0..CHANNELS {
                 let reflected = matrix_in[i][channel] - (2.0 / LINES as Sample) * sums[channel];
-                let gain = 10.0f64.powf(-3.0 * self.delay_seconds[i] / time[channel]);
-                write[channel] = input[channel] + gain * reflected;
+                write[channel] = input[channel] + self.gains[i][channel] * reflected;
             }
             self.lines[i].write_and_advance(write);
         }

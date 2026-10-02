@@ -46,7 +46,10 @@ impl Op for Impulse {
 
             let time = (self.frame - *trigger_frame) as Sample * self.sample_period;
             let h = time / apex;
-            *output = *trigger_amplitude * h * (1.0 - h).exp();
+            // Past 40 apexes the tail is below 1e-15 of the peak: skip the exp.
+            if h < 40.0 {
+                *output = *trigger_amplitude * h * (1.0 - h).exp();
+            }
         }
         self.frame += 1;
         stack.push(&frame);
