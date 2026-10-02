@@ -60,7 +60,7 @@ _Avoid_: syllabus, table of contents
 
 ### Piece
 
-The complete composition a chapter grows: étude-sized, finished in itself, and heard whole at the chapter's end. A piece is one program whose form unfolds from its own structure (signals, patterns, envelopes) rather than from edits made while it plays, so its final listing is its complete score.
+The complete composition a chapter grows: étude-sized and finished in itself. A piece is one program whose form unfolds from its own structure (signals, patterns, envelopes) rather than from edits made while it plays, so its final listing is its complete score. A piece may be of indefinite duration, with no ending; the book then presents an excerpt and the reader's engine plays it for as long as they like.
 _Avoid_: study, example, demo
 
 ### Work
