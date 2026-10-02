@@ -84,6 +84,15 @@ The ladder of chapters and the way a chapter is made: `outline.adoc`.
 * Levels: the reader hears the same loudness from chapter to chapter. Aim for peaks around 0.3–0.5 for sounds; pieces end with `limit`.
 * Sample rate is 48,000 throughout.
 
+=== Terminology
+
+The book uses the standard terms of music theory, mathematics, physics (acoustics) and signal processing, so readers can carry what they learn to other books.
+
+* Define a term where it is first needed, in bold (`*partial*`), with a plain-words gloss; later chapters use it without apology.
+* Keep near-synonyms apart: _frequency_ (a physical rate, Hz) and _pitch_ (what we hear); _amplitude_, _level_ (dB) and _loudness_ (perceived); _harmonic_ (an integer multiple of the fundamental) and _partial_ (any sinusoidal component); _waveform_ and _spectrum_; _sample_ and _frame_.
+* Where Sound Garden's vocabulary differs from the standard, name both: its phase runs over −1..1 per cycle, while mathematics uses radians.
+* Project words (op, node, cutting, branch) are in `CONTEXT.md`; terms of art are collected in the book's glossary appendix as chapters define them.
+
 === Boxes
 
 Example blocks with a role:
