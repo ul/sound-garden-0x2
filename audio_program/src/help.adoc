@@ -31,6 +31,7 @@ silence:: () -> push constant 0.0
 sr:: () -> push current sample rate
 pi:: () -> push π
 tau:: () -> push 2π
+golden:: () -> push the golden ratio Φ = (1 + √5)/2 ≈ 1.618034
 whiteNoise, noise, n:: () -> pseudo-random white noise; each sample/channel receives the next generator value
 rnd:: (trig) -> sample a new uniform random value in 0..1 on each rising edge and hold it; reproducible with `seed:<N>`
 

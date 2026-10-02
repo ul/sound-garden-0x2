@@ -582,6 +582,7 @@ fn compile_segment(
             "panx" => push!(id, Pan3),
             "pi" => push_args!(id, Constant, std::f64::consts::PI),
             "tau" => push_args!(id, Constant, 2.0 * std::f64::consts::PI),
+            "golden" => push_args!(id, Constant, (1.0 + 5.0f64.sqrt()) / 2.0),
             "pitch" => push_args!(id, Yin, sample_rate, 1024, 64, 0.2),
             "pop" => push!(id, Pop),
             "prime" => push!(id, Prime),
@@ -1748,6 +1749,14 @@ mod tests {
             ),
             [20.0, 20.0]
         );
+    }
+
+    #[test]
+    fn compile_program_pushes_named_constants() {
+        let mut context = Context::new();
+        let golden = run_once(&[op(1, "golden")], &mut context)[0];
+        assert!((golden * golden - golden - 1.0).abs() < 1e-12);
+        assert_eq!(run_once(&[op(1, "tau"), op(2, "pi"), op(3, "/")], &mut context), [2.0, 2.0]);
     }
 
     #[test]
