@@ -349,6 +349,13 @@ details[open] > .content { margin-top: 0.8rem; }
 .sidebarblock > .content > .title { font-size: 0.8rem; }
 .sidebarblock > .content > :last-child { margin-bottom: 0; }
 
+/* Hand-drawn SVG diagrams in passthrough blocks: <figure class="diagram"><svg>…</svg>
+   <figcaption>…</figcaption></figure>. Draw with currentColor and the theme's --signal colours
+   so they follow light and dark mode. */
+figure.diagram { margin: 1.75rem 0; text-align: center; color: var(--ink); }
+figure.diagram svg { width: 100%; max-width: 34rem; height: auto; }
+figure.diagram figcaption { font-family: var(--sans); font-size: 0.78rem; color: var(--muted); margin-top: 0.4rem; }
+
 /* ---------------------------------------------------------------- math, images, tables */
 
 .stemblock > .content { overflow-x: auto; overflow-y: hidden; padding: 0.3rem 0; text-align: center; }

@@ -1,0 +1,21 @@
+// Shared by the book and the lessons in notes/, so both render alike.
+:sectanchors:
+:sectlinks:
+:xrefstyle: short
+:idprefix:
+:idseparator: -
+:experimental:
+:stem: latexmath
+:source-highlighter: sg-rouge
+:rouge-css: class
+:source-language: sg
+:stylesdir: theme
+:stylesheet: book.css
+:linkcss:
+:copycss: theme/book.css
+:webfonts!:
+:docinfo: shared
+:docinfodir: theme
+:imagesdir: images
+:sound-caption: Sound
+:example-caption!:

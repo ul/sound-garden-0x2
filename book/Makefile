@@ -6,6 +6,7 @@
 #   make check    strict build: any warning (unknown word, clipping, broken xref) fails
 #   make watch    rebuild on every save
 #   make serve    build and serve on http://localhost:8123 (needed for live editing)
+#   make notes    render private working notes and lessons (notes/*.adoc) into build/notes/
 #   make clean    remove build/ (renders are recreated on the next build)
 
 BUILD    := $(CURDIR)/build
@@ -13,7 +14,7 @@ RENDERER := ../target/release/book_render
 ASCIIDOC := asciidoctor -r ./ext/sound_garden.rb -D $(BUILD) -o index.html
 SOURCES  := $(shell find . -name '*.adoc' -not -path './build/*') $(wildcard ext/* theme/* examples/*/*)
 
-.PHONY: all html final check watch open serve clean renderer live
+.PHONY: all html final check watch open serve clean renderer live notes
 
 all: html open
 
@@ -28,6 +29,13 @@ check: renderer
 
 open:
 	open $(BUILD)/index.html
+
+# Notes are gitignored (private); they render with the book's theme and extension, and share its
+# stylesheet and live engine from the main build, so build the book first.
+notes: html
+	@mkdir -p $(BUILD)/notes && cp -R $(BUILD)/live $(BUILD)/notes/
+	asciidoctor -r ./ext/sound_garden.rb -D $(BUILD)/notes \
+	  -a stylesdir=../theme -a copycss! -a docinfodir=../theme notes/*.adoc
 
 # Live editing needs http: browsers don't load audio worklets from file://.
 serve: html

@@ -8,26 +8,7 @@ Ruslan Prakapchuk
 :toc-title: Contents
 :sectnums:
 :sectnumlevels: 2
-:sectanchors:
-:sectlinks:
-:xrefstyle: short
-:idprefix:
-:idseparator: -
-:experimental:
-:stem: latexmath
-:source-highlighter: sg-rouge
-:rouge-css: class
-:source-language: sg
-:stylesdir: theme
-:stylesheet: book.css
-:linkcss:
-:copycss: theme/book.css
-:webfonts!:
-:docinfo: shared
-:docinfodir: theme
-:imagesdir: images
-:sound-caption: Sound
-:example-caption!:
+include::theme/attributes.adoc[]
 ifdef::draft[:revremark: Working draft — built {docdate}]
 
 include::chapters/preface.adoc[]
