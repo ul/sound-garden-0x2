@@ -112,14 +112,27 @@ impl VM {
         }
     }
 
+    /// Fade in. Playing while already playing changes nothing (hosts may call it on every
+    /// program commit), and reversing a fade-out midway fades back in from the level reached.
     pub fn play(&mut self) {
-        self.pause_countdown = self.xfade_duration;
-        self.status = Status::Play;
+        if !matches!(self.status, Status::Play) {
+            self.pause_countdown = self.reversed_fade();
+            self.status = Status::Play;
+        }
     }
 
+    /// Fade out; like `play`, idempotent and continuous when reversing a fade midway.
     pub fn pause(&mut self) {
-        self.pause_countdown = self.xfade_duration;
-        self.status = Status::Pause;
+        if !matches!(self.status, Status::Pause) {
+            self.pause_countdown = self.reversed_fade();
+            self.status = Status::Pause;
+        }
+    }
+
+    /// The countdown that continues the current fade level in the other direction: a fade in
+    /// has gain `1 - countdown / duration`, a fade out `countdown / duration`.
+    fn reversed_fade(&self) -> usize {
+        self.xfade_duration - self.pause_countdown.min(self.xfade_duration)
     }
 
     pub fn stop(&mut self) {
@@ -595,6 +608,38 @@ mod tests {
 
         vm.load_program(vec![statement(42, Counter::new())]);
         assert_eq!(vm.next_frame(), [2.0, 2.0]);
+    }
+
+    #[test]
+    fn play_while_playing_does_not_restart_the_fade_in() {
+        // Hosts call play() on every commit; it must not dip to silence and fade back in.
+        let mut vm = VM::new();
+        vm.set_xfade_duration(4.0);
+        vm.load_program(vec![statement(1, PushFrame([1.0, 1.0]))]);
+        vm.play();
+        for _ in 0..10 {
+            vm.next_frame();
+        }
+        vm.play();
+        assert_eq!(vm.next_frame(), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn reversing_a_fade_midway_continues_from_its_level() {
+        let mut vm = VM::new();
+        vm.set_xfade_duration(4.0);
+        vm.load_program(vec![statement(1, PushFrame([1.0, 1.0]))]);
+        vm.play();
+        for _ in 0..10 {
+            vm.next_frame();
+        }
+        vm.pause();
+        assert_eq!(vm.next_frame(), [1.0, 1.0]);
+        assert_eq!(vm.next_frame(), [0.75, 0.75]);
+        vm.play();
+        // The fade out reached 0.5; the fade in continues from there, not from silence.
+        assert_eq!(vm.next_frame(), [0.5, 0.5]);
+        assert_eq!(vm.next_frame(), [0.75, 0.75]);
     }
 
     #[test]
