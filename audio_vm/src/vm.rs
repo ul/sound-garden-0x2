@@ -253,8 +253,8 @@ impl VM {
     /// (a linear prediction from the last two heard frames), then add it back to the
     /// output while it decays exponentially to silence.
     ///
-    /// A step no larger than twice the signal's own motion (its larger recent change
-    /// between samples, or its curvature, from the last three frames) is left alone: a
+    /// A step no larger than twice the signal's own motion (the larger of its last two
+    /// first differences, or its second difference, from the last three frames) is left alone: a
     /// moving signal differs from its last frame by itself, and "correcting" that
     /// injected a click into every reload, even of an unchanged program. Edits that
     /// change a number glide and oscillator swaps morph (see `audio_ops::glide` and
@@ -273,6 +273,7 @@ impl VM {
                     self.previous_frame[c],
                     self.earlier_frame[c],
                 );
+                // First differences and the second difference (discrete second derivative).
                 let motion = (last - previous)
                     .abs()
                     .max((previous - earlier).abs())
