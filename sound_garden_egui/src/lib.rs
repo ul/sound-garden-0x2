@@ -1448,8 +1448,9 @@ impl SoundGardenApp {
         }
     }
 
-    /// Value of the node under the cursor, e.g. `0.2500  -0.9800…0.9900`,
-    /// from the last READOUT_SECONDS of its capture.
+    /// Value of the node under the cursor, e.g. ` 0.2500  -0.9800… 0.9900`,
+    /// from the last READOUT_SECONDS of its capture. Always the same width, so
+    /// the help text after it holds still while the numbers change.
     fn readout_text(&self) -> Option<String> {
         self.node_at_cursor()?;
         let sample_rate = self.meters.sample_rate()?;
@@ -1460,16 +1461,16 @@ impl SoundGardenApp {
             .copied()
             .collect::<Vec<_>>();
         let (current, min, max) = feedback::readout(&recent)?;
-        Some(if min == max {
-            feedback::format_value(current)
+        let range = if min == max {
+            " ".repeat(2 * feedback::FIXED_WIDTH + 1)
         } else {
             format!(
-                "{}  {}…{}",
-                feedback::format_value(current),
-                feedback::format_value(min),
-                feedback::format_value(max)
+                "{}…{}",
+                feedback::format_fixed(min),
+                feedback::format_fixed(max)
             )
-        })
+        };
+        Some(format!("{}  {range}", feedback::format_fixed(current)))
     }
 
     /// Right end of the modeline: engine status text, stereo level meters and

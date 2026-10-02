@@ -413,6 +413,53 @@ pub fn format_value(x: f64) -> String {
     format!("{x:.decimals$}")
 }
 
+/// Width of every `format_fixed` result: a sign column and six characters.
+pub const FIXED_WIDTH: usize = 7;
+
+/// A value in exactly `FIXED_WIDTH` characters, right-aligned, for readouts that
+/// change while you watch them: as many digits as fit in six characters (`0.2500`,
+/// `12.345`, `1234.5`), or exponent form outside 1e-3..1e6 (`1.5e-5`), with room
+/// left for a minus sign so a value crossing zero doesn't shift.
+pub fn format_fixed(x: f64) -> String {
+    if !x.is_finite() {
+        return format!("{x:>FIXED_WIDTH$}");
+    }
+    let sign = if x < 0.0 { "-" } else { "" };
+    format!(
+        "{:>FIXED_WIDTH$}",
+        format!("{sign}{}", fixed_magnitude(x.abs()))
+    )
+}
+
+fn fixed_magnitude(magnitude: f64) -> String {
+    let width = FIXED_WIDTH - 1;
+    if magnitude == 0.0 || (1e-3..1e6).contains(&magnitude) {
+        let integer_digits = if magnitude < 1.0 {
+            1
+        } else {
+            magnitude.log10().floor() as usize + 1
+        };
+        // Rounding can carry into a new digit (9.99996 -> 10.0000): retry with one fewer.
+        let mut decimals = width.saturating_sub(integer_digits + 1);
+        loop {
+            let text = format!("{magnitude:.decimals$}");
+            if text.len() <= width {
+                return text;
+            }
+            if decimals == 0 {
+                break;
+            }
+            decimals -= 1;
+        }
+    }
+    let text = format!("{magnitude:.1e}");
+    if text.len() <= width {
+        text
+    } else {
+        format!("{magnitude:.0e}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,6 +679,32 @@ mod tests {
         assert_eq!(format_value(0.0), "0");
         assert_eq!(format_value(1.5e-5), "1.500e-5");
         assert_eq!(format_value(f64::NAN), "NaN");
+    }
+
+    #[test]
+    fn fixed_values_keep_their_width() {
+        for (x, text) in [
+            (0.25, " 0.2500"),
+            (-0.6188, "-0.6188"),
+            (12.345, " 12.345"),
+            (-1234.56, "-1234.6"),
+            (123456.0, " 123456"),
+            (9.99996, " 10.000"),
+            (0.0, " 0.0000"),
+            (-0.0, " 0.0000"),
+            (0.0012345, " 0.0012"),
+            (1.5e-5, " 1.5e-5"),
+            (-2.5e7, " -2.5e7"),
+            (1e-12, "  1e-12"),
+            (f64::NAN, "    NaN"),
+            (f64::NEG_INFINITY, "   -inf"),
+        ] {
+            assert_eq!(format_fixed(x), text, "{x}");
+        }
+        for i in 0..2000 {
+            let x = (i as f64 * 0.37).sin() * 10f64.powf(i as f64 % 17.0 - 8.0);
+            assert_eq!(format_fixed(x).chars().count(), FIXED_WIDTH, "{x}");
+        }
     }
 
     #[test]
