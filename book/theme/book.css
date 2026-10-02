@@ -293,7 +293,13 @@ code[data-lang="sg"] [data-tip]:hover, .sg-tip-owner { background: var(--accent-
 .sound-file { text-decoration: none; border: 1px solid var(--rule); border-radius: 4px; padding: 0.15rem 0.35rem; }
 .sound-file:hover { color: var(--accent); border-color: var(--accent); }
 
-.sound-figures { display: grid; gap: 0.6rem; margin-top: 0.8rem; }
+.sound-figures { display: grid; gap: 0.6rem; margin-top: 0.8rem; position: relative; transition: opacity 0.2s; }
+.sound-figures.rendering { opacity: 0.45; }
+/* Figures redrawn for a live edit say so, so they aren't mistaken for the printed program's. */
+.sound-figures.edited::before {
+  content: "figures of your edit"; position: absolute; top: -0.3rem; right: 0; z-index: 1;
+  font: 600 0.62rem/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--sg-num);
+}
 .sound-figure { margin: 0; }
 .sound-figure svg { display: block; width: 100%; height: auto; overflow: visible; }
 .sound-figure img { display: block; width: 100%; height: auto; border-radius: 6px; }

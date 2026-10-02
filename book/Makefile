@@ -57,12 +57,16 @@ watch: html
 renderer:
 	@cargo build --quiet --release -p book_render
 
-# The browser engine for live editing: just the sound_garden_web engine, not the editor.
+# Live editing: the sound_garden_web engine (not the editor) to play edits, and the book's own
+# renderer compiled to wasm to redraw their figures.
 live:
 	@cargo build --locked --quiet --release --target wasm32-unknown-unknown -p sound_garden_web
+	@cargo build --locked --quiet --release --target wasm32-unknown-unknown -p book_render --lib
 	@mkdir -p $(BUILD)/live
 	@cp ../target/wasm32-unknown-unknown/release/sound_garden_web.wasm \
-	    ../sound_garden_web/web/sound-garden.js ../sound_garden_web/web/worklet.js $(BUILD)/live/
+	    ../target/wasm32-unknown-unknown/release/book_render.wasm \
+	    ../sound_garden_web/web/sound-garden.js ../sound_garden_web/web/worklet.js \
+	    theme/figures-worker.js $(BUILD)/live/
 
 clean:
 	rm -rf $(BUILD)

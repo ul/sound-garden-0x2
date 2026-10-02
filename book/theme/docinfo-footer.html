@@ -40,10 +40,51 @@
       this.block = block;
       block.live.committed = text;
       garden.play();
+      this.redraw(block, text);
       const words = text.split(/\s+/).filter(Boolean);
       warnings.replaceChildren(...found.map(({ index, message }) =>
         Object.assign(document.createElement('li'), { textContent: index >= 0 ? `${words[index]} · ${message}` : message })));
       this.mark();
+    },
+    // Figures follow the edit: the committed program is rendered from its first sample with the
+    // block's own settings by the book's renderer in a worker (live/figures-worker.js), and
+    // drawn like the printed figures. Reset restores the printed ones.
+    worker: null,
+    jobs: 0,
+    redraw(block, program) {
+      const figures = block.querySelector('.sound-figures[data-render]');
+      if (!figures) return;
+      if (!this.worker) {
+        this.worker = new Worker(new URL('live/figures-worker.js', location.href), { type: 'module' });
+        this.worker.onmessage = ({ data }) => this.drawn(data);
+      }
+      block.live.printed ??= figures.innerHTML;
+      block.live.job = ++this.jobs;
+      this.pending = this.pending || new Map();
+      this.pending.set(block.live.job, block);
+      figures.classList.add('rendering');
+      this.worker.postMessage({ id: block.live.job, program, ...JSON.parse(figures.dataset.render) });
+    },
+    drawn(result) {
+      const block = this.pending.get(result.id);
+      this.pending.delete(result.id);
+      // Ignore results overtaken by a newer commit, or for a block that was reset.
+      if (!block?.live || block.live.job !== result.id) return;
+      const figures = block.querySelector('.sound-figures');
+      figures.classList.remove('rendering');
+      figures.classList.add('edited');
+      if (result.wave) figures.querySelector('.wave').innerHTML = result.wave;
+      if (result.spectrum) figures.querySelector('.spectrum').innerHTML = result.spectrum;
+      if (result.spectrogram) {
+        const { width, height, pixels } = result.spectrogram;
+        const canvas = Object.assign(document.createElement('canvas'), { width, height });
+        canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer), width, height), 0, 0);
+        canvas.toBlob((png) => {
+          const img = figures.querySelector('.spectrogram img');
+          if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+          img.src = URL.createObjectURL(png);
+        });
+      }
     },
     toggle(block) {
       if (this.block === block && this.garden?.playing) return this.stop();
@@ -155,6 +196,11 @@
         if (live.block === block) { live.stop(); live.block = null; }
         block.live.area.remove();
         block.live.warnings.remove();
+        const figures = block.querySelector('.sound-figures');
+        if (figures && block.live.printed != null) {
+          figures.innerHTML = block.live.printed;
+          figures.classList.remove('edited', 'rendering');
+        }
         block.live = null;
         pre.hidden = false;
         block.classList.remove('editing');

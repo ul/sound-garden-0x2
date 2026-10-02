@@ -670,6 +670,7 @@ dependencies = [
  "anyhow",
  "audio_program",
  "audio_vm",
+ "getrandom 0.4.2",
  "hound",
  "log",
  "rustfft",

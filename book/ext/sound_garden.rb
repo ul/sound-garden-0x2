@@ -217,7 +217,7 @@ module SoundGarden
         box.title = %(#{caption} #{label}#{sound[:title] ? ". #{sound[:title]}" : ''})
         example = export(sound[:outdir], chapter, number, sound[:title], sound[:program])
         box << create_pass_block(box, Media.player_html(sound[:media], example, sound[:attrs]), {})
-        figures = Media.figures_html(sound[:media])
+        figures = Media.figures_html(sound[:media], sound[:attrs])
         box << create_pass_block(box, figures, {}) unless figures.empty?
       end
       nil
@@ -328,16 +328,26 @@ module SoundGarden
       HTML
     end
 
-    def figures_html media
+    # The render settings ride along as data-render, so live editing can redraw the figures of
+    # an edited program the same way (theme/docinfo-footer.html, theme/figures-worker.js).
+    def figures_html media, attrs
       f = media['files']
       abs = media['abs']
+      settings = {
+        seconds: attrs.fetch('seconds', '4').to_f,
+        show: attrs.fetch('show', '').split(/[\s,]+/),
+        from: attrs['from']&.to_f,
+        to: attrs['to']&.to_f,
+        fmax: attrs['fmax']&.to_f,
+        fscale: attrs['fscale'],
+      }.compact
       parts = []
       parts << %(<figure class="sound-figure wave">#{File.read abs['wave']}</figure>) if f['wave']
       parts << %(<figure class="sound-figure spectrum">#{File.read abs['spectrum']}</figure>) if f['spectrum']
       if f['spectrogram']
         parts << %(<figure class="sound-figure spectrogram"><img src="#{f['spectrogram']}" alt="Spectrogram" loading="lazy"></figure>)
       end
-      parts.empty? ? '' : %(<div class="sound-figures">#{parts.join}</div>)
+      parts.empty? ? '' : %(<div class="sound-figures" data-render="#{CGI.escapeHTML JSON.generate(settings)}">#{parts.join}</div>)
     end
   end
 

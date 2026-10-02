@@ -31,7 +31,7 @@ Unreferenced renders are deleted after each build.
 `chapters/`:: One file per chapter: `01-<slug>.adoc`, each starting with a `==` heading. `sampler.adoc` shows every element the book uses and is included only in draft builds; keep it current when the theme or toolchain changes.
 `examples/`:: Programs too long to live inline (pieces, studies), included into `[sound]` blocks.
 `ext/sound_garden.rb`:: The Asciidoctor extension: `sg` highlighting and `[sound]` blocks.
-`render/`:: `book_render`, which renders a program to audio and figures.
+`render/`:: `book_render`: a library that renders a program and draws its figures (waveform, spectrum, spectrogram, player overview), used by the command-line tool here and, as WebAssembly, by live editing.
 `theme/`:: Stylesheet, fonts and the player script.
 
 == Sounds
@@ -67,7 +67,7 @@ Every render is checked: unknown words, compiler warnings and clipping are build
 Programs with randomness pin a `seed:<N>` so the audio the reader hears matches the figure.
 
 Readers can press *edit* on any sound to change the program and play it live with Cmd/Ctrl+Enter, through the browser engine in `build/live/` (see `sound_garden_web`).
-Commits keep op state like the editor; *reset* returns to the printed program and its recording.
+Commits keep op state like the editor, and the block's figures are redrawn for the edited program by the book's own renderer compiled to WebAssembly (`book/render`, run in `theme/figures-worker.js`), so they match the printed figures exactly; *reset* returns to the printed program, its recording and its figures.
 
 A listing that should not be played is `[source]` (the book's default language is `sg`), with the same highlighting and tooltips.
 
