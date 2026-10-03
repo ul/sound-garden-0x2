@@ -202,9 +202,10 @@ module SoundGarden
       listing.commit_subs
       if attrs.key? 'fold-option'
         # %fold: the score is folded away under the player, for an excerpt that opens a chapter.
-        score = create_block box, :example, nil, { 'role' => 'score' }
+        score = create_block box, :example, nil, { 'role' => 'score' }, content_model: :compound
         score.title = 'Score'
         score.set_option 'collapsible'
+        listing.parent = score
         score << listing
         box << score
       else
