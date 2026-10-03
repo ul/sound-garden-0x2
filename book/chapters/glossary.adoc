@@ -1,0 +1,41 @@
+[#glossary]
+== Glossary
+
+// Terms of art, collected as chapters define them (book/README.adoc, Terminology).
+// Each entry names the chapter where the term is first needed.
+
+[horizontal]
+amplitude:: How far a signal swings; full scale is 1 (chapter 1). Compare _level_ and _loudness_.
+amplitude modulation:: One signal changing the amplitude of another (chapter 1).
+angular frequency (stem:[\omega]):: How far a sinusoid's angle advances per sample, stem:[2\pi f / R] radians (chapter 1).
+carrier, modulator:: In modulation, the signal changed and the signal changing it (chapter 1).
+cent:: 1/1200 of an octave; the distance from stem:[f_1] to stem:[f_2] is stem:[1200\log_2 (f_2/f_1)] cents (chapter 1).
+critical band:: A band of frequencies the ear analyses together; partials closer than about a band beat and roughen, further apart they are heard separately (chapter 1).
+decibel (dB):: A ratio on a logarithmic scale: stem:[20\log_{10}] of an amplitude ratio, stem:[10\log_{10}] of a power ratio (chapter 1).
+deviation, rate:: How far a modulation moves a parameter; how often (chapter 1).
+discontinuity:: A jump in a signal or in its slope, heard as a click (chapter 1).
+equal-loudness contours:: The levels at which tones of different frequencies sound equally loud (ISO 226) (chapter 1).
+frame:: The samples of all channels for one moment (chapter 1).
+frequency:: Repetitions per second of a periodic signal, in hertz (chapter 1). Compare _pitch_.
+harmonic:: A partial at an integer multiple of a fundamental frequency (chapter 1).
+incommensurate:: Of periods or frequencies, in an irrational ratio, so their sum never repeats (chapter 1).
+intermittent:: Occurring rarely and irregularly (chapter 1).
+level:: Amplitude in decibels, relative to a reference; in dBFS, relative to full scale (chapter 1).
+loudness:: How strong a sound is heard; perception, not physics (chapter 1).
+loudness compensation:: Adjusting level by register to follow the equal-loudness contours (chapter 1).
+MIDI note number:: Pitch in semitones, with A4 = 69 at 440 Hz: stem:[f = 440 \cdot 2^{(m-69)/12}] (chapter 1).
+octave, semitone:: A frequency ratio of 2; a twelfth of an octave in equal steps (chapter 1).
+overtone:: A partial above the fundamental; for a pitched tone, usually one of its upper harmonics (chapter 1).
+partial:: Any sinusoidal component of a sound (chapter 1).
+period:: The time after which a periodic signal repeats (chapter 1).
+phase:: Where in its cycle a periodic signal is, in radians; Sound Garden counts −1..1 per cycle (chapter 1).
+pitch:: How high or low a sound is heard; perception, not physics (chapter 1). Compare _frequency_.
+polarity:: The sign of a signal; inverting it flips the waveform upside down (chapter 1).
+quasi-periodic:: Built from incommensurate periods: structured, but never exactly repeating (chapter 1).
+radian:: An angle measured as arc length on the unit circle; stem:[2\pi] per turn (chapter 1).
+raised cosine:: stem:[(1 - \cos\theta)/2], a sinusoid lifted to run from 0 to 1 (chapter 1).
+rationally independent:: Of frequencies, having no whole-number combination that adds up to zero, so their phases never lock together (chapter 1).
+sample, sample rate (stem:[R]):: One number of a digital signal; how many pass per second (chapter 1).
+sideband:: A partial created by modulation, at the carrier frequency plus or minus the modulator's (chapter 1).
+twelfth:: An octave and a fifth, 19 semitones; very nearly a frequency ratio of 3 (chapter 1).
+vibrato, tremolo:: A periodic change of pitch; of loudness (chapter 1).

@@ -1,0 +1,862 @@
+[#one-tone]
+== One Tone
+
+[.lead]
+We begin with the simplest sound there is, a sine wave, and end with a piece made of nothing else: three sines wandering so slowly through their registers that the music never quite repeats.
+Along the way we meet everything a single tone is made of: samples, frequency and pitch, amplitude and level, phase, and the circle that lies behind them all.
+
+Here is where we are going.
+The piece has no ending; this is its first two minutes.
+
+.Strata, the first two minutes
+[sound%fold, seconds=120, fade=10, show=spectrogram]
+----
+include::../examples/strata.txt[]
+----
+
+Three tones, low, middle and high, each a single sine.
+Each drifts within its own register, the middle one breathes, the high one comes and goes, and now and then all three shiver at once.
+Its score is folded away above the player, about thirty lines of program; by the end of the chapter every word of it will be ours.
+
+=== Sound as numbers
+
+A digital sound is a list of numbers, one for each moment, and a loudspeaker moves to each number in turn.
+We write the list as stem:[x[n\]], where stem:[n = 0, 1, 2, \dots] is the *sample index*, and each number is a *sample*.
+The *sample rate* stem:[R] says how many samples pass per second; throughout this book stem:[R = 48\,000].
+So sample stem:[n] sounds at time
+
+[stem]
+++++
+t = \frac{n}{R},
+++++
+
+and consecutive samples are stem:[1/R \approx 20.8] microseconds apart.
+With two channels, left and right, the pair of samples for one moment is a *frame*.
+
+Zoom into a thousandth of a second of a tone and the numbers show themselves.
+
+.A thousandth of a second of a 1 kHz sine: 48 samples
+[sound, seconds=1, show=wave, from=0, to=0.001]
+----
+1000 s 0.5 *
+----
+
+The program says: push the number 1000, make a sine wave at that many cycles per second (`s`), and multiply it by 0.5 (`*`).
+Sound Garden programs are read left to right; each word takes what it needs from a stack of signals and puts its result back.
+Whatever is left on top when the program ends is what we hear.
+
+[.try]
+.Samples per cycle
+====
+How many samples does one cycle of a 440 Hz tone take?
+Is it a whole number, and what does that mean for the samples of one cycle compared with the next?
+
+[.answer]
+=====
+stem:[48\,000 / 440 \approx 109.09] samples.
+It is not a whole number, so each cycle is sampled at slightly different points: the numbers never repeat exactly from one cycle to the next, even though the tone does.
+=====
+====
+
+=== Frequency and pitch
+
+A *periodic* signal repeats itself: after some time stem:[P], its *period*, it looks the same again.
+The number of repetitions per second is its *frequency*,
+
+[stem]
+++++
+f = \frac{1}{P},
+++++
+
+measured in *hertz* (Hz), cycles per second.
+
+Frequency is physics, a rate we can measure.
+*Pitch* is perception: how high or low we hear a sound.
+The two are closely related but not the same, and the edges of hearing are where they part.
+Change the 50 below to 20, 100, 1000, 5000, 12000, 16000, and listen for where pitch begins and ends.
+
+.Where does pitch begin and end?
+[sound, seconds=4]
+----
+50 s 0.3 *
+----
+
+WARNING: Keep the volume moderate, especially at the top. Damage to high-frequency hearing is silent and permanent.
+
+The textbook range of hearing is 20 Hz to 20 kHz, and real ears and headphones vary around it.
+Below about 20 Hz pitch dissolves into a flutter of separate pulses, or a pressure felt more than heard.
+If a 10 Hz sine still seems to have a pitch, part of it is probably the headphones' *harmonic distortion*: a driver pushed hard at 10 Hz also produces some 20 and 30 Hz, and those carry the pitch.
+At the top, hearing needs more and more level: the *threshold of hearing* rises steeply above a few kilohertz, and with age.
+
+[.try]
+.Periods at the edges of hearing
+====
+What are the periods of 12 Hz and 17 kHz, in milliseconds and in samples?
+
+[.answer]
+=====
+12 Hz: stem:[P = 1/12 \approx 83.3] ms, 4 000 samples.
+17 kHz: stem:[P \approx 0.0588] ms, about 2.8 samples.
+A 17 kHz cycle is drawn with fewer than three numbers.
+(The highest frequency a sample rate can represent at all is stem:[R/2], here 24 kHz, the *Nyquist frequency*; chapter 3 explains why.)
+=====
+====
+
+=== The circle behind the sine
+
+Measure an angle not in degrees but by the distance travelled along a circle of radius 1: that distance is the angle in *radians*.
+A full turn is the whole circumference, stem:[2\pi \approx 6.283] radians; a half turn is stem:[\pi]; a right angle stem:[\pi/2].
+
+++++
+<figure class="diagram">
+<svg viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A point on the unit circle at angle theta, with its height sin theta and width cos theta">
+  <g fill="none" stroke="currentColor" stroke-width="1.2">
+    <circle cx="120" cy="120" r="90" opacity="0.5"/>
+    <line x1="20" y1="120" x2="220" y2="120" opacity="0.4"/>
+    <line x1="120" y1="20" x2="120" y2="220" opacity="0.4"/>
+    <line x1="120" y1="120" x2="183.6" y2="56.4" stroke-width="1.6"/>
+    <path d="M 150 120 A 30 30 0 0 0 141.2 98.8"/>
+  </g>
+  <line x1="183.6" y1="56.4" x2="183.6" y2="120" stroke="var(--signal-2)" stroke-width="2"/>
+  <line x1="120" y1="122" x2="183.6" y2="122" stroke="var(--signal)" stroke-width="2"/>
+  <circle cx="183.6" cy="56.4" r="4" fill="currentColor"/>
+  <g fill="currentColor" font-size="13" font-family="var(--sans)">
+    <text x="156" y="112">θ</text>
+    <text x="190" y="92" fill="var(--signal-2)">sin θ</text>
+    <text x="134" y="140" fill="var(--signal)">cos θ</text>
+    <text x="196" y="52">(cos θ, sin θ)</text>
+    <text x="230" y="124" opacity="0.6">1</text>
+  </g>
+  <polyline fill="none" stroke="var(--signal-2)" stroke-width="2" points="280.0,120.0 282.5,113.6 285.0,107.2 287.5,100.9 290.0,94.6 292.5,88.5 295.0,82.6 297.5,76.9 300.0,71.3 302.5,66.1 305.0,61.1 307.5,56.4 310.0,52.0 312.5,48.0 315.0,44.3 317.5,41.0 320.0,38.1 322.5,35.7 325.0,33.6 327.5,32.1 330.0,30.9 332.5,30.2 335.0,30.0 337.5,30.2 340.0,30.9 342.5,32.1 345.0,33.6 347.5,35.7 350.0,38.1 352.5,41.0 355.0,44.3 357.5,48.0 360.0,52.0 362.5,56.4 365.0,61.1 367.5,66.1 370.0,71.3 372.5,76.9 375.0,82.6 377.5,88.5 380.0,94.6 382.5,100.9 385.0,107.2 387.5,113.6 390.0,120.0 392.5,126.4 395.0,132.8 397.5,139.1 400.0,145.4 402.5,151.5 405.0,157.4 407.5,163.1 410.0,168.7 412.5,173.9 415.0,178.9 417.5,183.6 420.0,188.0 422.5,192.0 425.0,195.7 427.5,199.0 430.0,201.9 432.5,204.3 435.0,206.4 437.5,207.9 440.0,209.1 442.5,209.8 445.0,210.0 447.5,209.8 450.0,209.1 452.5,207.9 455.0,206.4 457.5,204.3 460.0,201.9 462.5,199.0 465.0,195.7 467.5,192.0 470.0,188.0 472.5,183.6 475.0,178.9 477.5,173.9 480.0,168.7 482.5,163.1 485.0,157.4 487.5,151.5 490.0,145.4 492.5,139.1 495.0,132.8 497.5,126.4 500.0,120.0"/>
+  <line x1="280" y1="120" x2="508" y2="120" stroke="currentColor" opacity="0.4"/>
+  <g fill="currentColor" font-size="12" font-family="var(--sans)" opacity="0.7">
+    <text x="276" y="138">0</text><text x="386" y="138">π</text><text x="494" y="138">2π</text>
+  </g>
+</svg>
+<figcaption>Walk around the circle at constant speed; your height traces the sine.</figcaption>
+</figure>
+++++
+
+A point at angle stem:[\theta] on this *unit circle* has coordinates stem:[(\cos\theta, \sin\theta)]: the *cosine* is how far right it is, the *sine* how far up.
+Pythagoras on the right triangle in the picture gives an identity we will use again and again:
+
+[stem]
+++++
+\sin^2\theta + \cos^2\theta = 1.
+++++
+
+Walk around the circle at a steady pace and your height rises and falls as a sine.
+That is all a sine wave is.
+
+[.try]
+.Reading the circle
+====
+Without a calculator: what are stem:[\sin 0], stem:[\sin(\pi/2)], stem:[\sin \pi], stem:[\sin(3\pi/2)]?
+And why must stem:[\sin(\theta + 2\pi) = \sin\theta]?
+
+[.answer]
+=====
+0, 1, 0, −1: right, top, left, bottom of the circle.
+Adding stem:[2\pi] is one more full turn, which lands on the same point.
+That is the periodicity of the sine, in one line.
+=====
+====
+
+=== From circle to sound
+
+To make a tone of frequency stem:[f], we go round the circle stem:[f] times per second.
+Between two samples the angle advances by
+
+[stem]
+++++
+\omega = \frac{2\pi f}{R}
+++++
+
+radians, the *angular frequency* (in radians per sample).
+Scale the height by an *amplitude* stem:[A] and start at an angle stem:[\varphi], the *phase*, and the samples of a sine are
+
+[stem]
+++++
+x[n] = A \sin(\omega n + \varphi).
+++++
+
+An oscillator doesn't compute stem:[\omega n] afresh each time: it keeps the current angle and adds stem:[\omega] every sample.
+That is why changing the frequency of a sounding tone is smooth: the angle carries on, only its speed changes.
+
+[.try]
+.The angle per sample
+====
+How far does the angle of a 440 Hz sine advance between samples, in radians and in degrees?
+
+[.answer]
+=====
+stem:[\omega = 2\pi \cdot 440 / 48\,000 \approx 0.0576] radians, about 3.3°.
+About 109 such steps make the full turn, as in the first exercise.
+=====
+====
+
+[.branch]
+.Sound Garden's phase
+====
+Sound Garden measures phase not in radians but as a number stem:[p] running from −1 to 1 over one cycle.
+Its oscillators add stem:[2f/R] to it each sample and wrap from 1 back to −1, and `s` computes stem:[\sin(\pi p)].
+So an angle stem:[\theta] in radians is stem:[\pi p]: Sound Garden's phase 1 is a half turn, and 0.5 a quarter turn.
+`sine` takes a starting phase as well as a frequency, so `220 1 sine` starts half a cycle later than `220 s`, and `220 0.5 sine` a quarter cycle later, which is a cosine.
+The −1..1 range has a practical virtue: the same phase can drive any waveform, and it is itself a usable signal (a sawtooth).
+====
+
+This is the first sound of our piece: the ground, a low sine at 73.42 Hz.
+
+.The ground
+[sound, seconds=8, fade=2]
+----
+73.42 s 0.3 *
+----
+
+=== Amplitude, level and decibels
+
+Amplitude stem:[A] is how far the signal swings, and Sound Garden's full scale is stem:[A = 1]: an output that swings past ±1 clips.
+Halve the amplitude again and again, 0.2, 0.1, 0.05, and so on, and listen to how each step sounds.
+
+.Four halvings, half a second each: 0.2, 0.1, 0.05, 0.025
+[sound, seconds=8, show=wave]
+----
+220 s
+0.5 cycle pat:0.2,0.1,0.05,0.025 0.01 tline *
+----
+
+(The second line steps through the four amplitudes; patterns are chapter 5's subject.)
+Each halving sounds like roughly the same step down.
+We hear amplitude by ratio, and the mathematics of ratios is the logarithm.
+
+A *logarithm* answers "how many times?".
+stem:[\log_2 x] is how many doublings make stem:[x]: stem:[\log_2 4096 = 12] because stem:[2^{12} = 4096].
+stem:[\log_{10} x] counts factors of ten.
+Logarithms turn multiplying into adding, stem:[\log(ab) = \log a + \log b], which is what quantities perceived by ratio need.
+
+The *level* of an amplitude, relative to full scale, is
+
+[stem]
+++++
+L = 20 \log_{10} A \quad \text{dBFS (decibels relative to full scale)}.
+++++
+
+One halving is stem:[20\log_{10}\tfrac{1}{2} \approx -6.02] dB.
+Twelve halvings, an amplitude of 1/4096, make about −72 dB: at a comfortable listening volume that is near the edge of audibility, and a little further down the room's own noise *masks* the tone.
+
+Why 20 and not 10?
+A decibel is defined on *power*, which is proportional to amplitude squared, and stem:[10\log_{10} A^2 = 20\log_{10} A].
+So −6 dB halves the amplitude but quarters the power.
+
+Equal steps in decibels sound roughly like equal steps, but only roughly.
+*Loudness*, the perceived strength, roughly halves for every 10 dB, not 6, and it depends on frequency too; we will need that when our tones cross registers.
+
+[.try]
+.Levels
+====
+What amplitudes are −20 dB, −40 dB and −60 dB?
+What level is the ground's amplitude of 0.3?
+
+[.answer]
+=====
+stem:[A = 10^{L/20}]: 0.1, 0.01, 0.001.
+stem:[20\log_{10} 0.3 \approx -10.5] dBFS.
+=====
+====
+
+=== Phase we can't hear
+
+Phase only says where in its cycle a tone starts.
+For one steady tone the ear can't hear it, and for a simple reason: a tone started a fraction of a cycle later is the same sound shifted in time.
+
+.Starting at phase 0
+[sound, seconds=2, show=wave, from=0, to=0.01]
+----
+220 s 0.2 *
+----
+
+.Starting half a cycle later: the mirror image to the eye, identical to the ear
+[sound, seconds=2, show=wave, from=0, to=0.01]
+----
+220 1 sine 0.2 *
+----
+
+(Helmholtz claimed more: that the ear ignores the relative phases of the partials of a sound too, extending *Ohm's acoustic law*, which says the ear hears a sound as a sum of sinusoids.
+That is only approximately true, and it will matter from chapter 2 on.)
+
+For an audible tone, then, phase is a freedom we needn't think about.
+For a slow sine it is another matter: its phase decides where its gesture starts, at a peak, at a trough or rising from zero, and that we hear very well, as the shape of the music.
+
+[.try]
+.Half a turn
+====
+Show that stem:[\sin(\theta + \pi) = -\sin\theta].
+What does that say about a tone started half a cycle late?
+
+[.answer]
+=====
+Half a turn takes the point on the circle to the opposite side, so its height changes sign.
+A tone half a cycle late is the same tone upside down: its *polarity* is inverted.
+Alone it sounds identical; added to the original, the two cancel to silence.
+Phase becomes audible as soon as there is something to compare it with, which is chapter 2.
+=====
+====
+
+=== Pitch is a ratio
+
+Let a slow sine move the frequency of an audible one, and the pitch wanders.
+
+.The pitch wanders two hertz around 110
+[sound, seconds=8]
+----
+0.25 s 2 * 110 + s 0.3 *
+----
+
+Read it from the left: a sine at 0.25 Hz, times 2, plus 110, is a frequency swinging between 108 and 112 Hz, and `s` turns that frequency into a tone.
+How far the frequency moves is the *deviation*, here ±2 Hz; how often is the *rate*, here 0.25 Hz.
+A periodic pitch change like this is a *vibrato*.
+At ±1 Hz the wandering tone still sounds like one note to most ears; at ±2 Hz it starts to sound out of tune.
+
+We hear pitch, like amplitude, by ratio: 110 to 220 Hz sounds like the same step as 220 to 440, an *octave*, a ratio of 2.
+So pitch distances are measured logarithmically, in *cents*: an octave is 1200 cents and a *semitone* 100.
+The distance from stem:[f_1] to stem:[f_2] is
+
+[stem]
+++++
+c = 1200 \log_2 \frac{f_2}{f_1}.
+++++
+
+±1 Hz around 110 Hz is about ±16 cents, ±2 Hz about ±31 cents.
+The smallest pitch change the ear notices, the *just-noticeable difference*, is a few cents in the middle of the range and grows in the bass, so at 110 Hz the edge of "out of tune" lies somewhere between 15 and 30 cents, as we just heard.
+In hertz, a deviation means nothing until we know the frequency: the same ±2 Hz around 880 Hz is only about ±4 cents.
+
+[.try]
+.Cents
+====
+How many cents is a deviation of ±2 Hz around 880 Hz?
+How many hertz of deviation around 880 Hz match ±31 cents at 110 Hz?
+
+[.answer]
+=====
+stem:[1200 \log_2 (882/880) \approx 3.9] cents.
+Pitch is a ratio, so the deviation must scale with the frequency: about stem:[2 \cdot 880 / 110 = 16] Hz.
+=====
+====
+
+A tone that moves evenly in pitch must move exponentially in frequency, since every octave up doubles it.
+Counting pitch in semitones stem:[s] above a reference frequency stem:[f_\text{ref}],
+
+[stem]
+++++
+f = f_\text{ref} \cdot 2^{s/12}.
+++++
+
+*MIDI note numbers* fix the reference: note 69 is A4 at 440 Hz and each step is a semitone, so a note stem:[m] has the frequency
+
+[stem]
+++++
+f = 440 \cdot 2^{(m - 69)/12}.
+++++
+
+That is what Sound Garden's `m2f` computes.
+Move stem:[m] evenly and the pitch moves evenly; move stem:[f] evenly and the pitch rushes through the bass and crawls through the treble.
+
+[.try]
+.Notes and frequencies
+====
+What frequencies are MIDI notes 24 and 96?
+How many octaves lie between them?
+And which note is our ground at 73.42 Hz?
+
+[.answer]
+=====
+stem:[440 \cdot 2^{(24-69)/12} \approx 32.7] Hz (C1) and stem:[440 \cdot 2^{(96-69)/12} \approx 2093] Hz (C7): 72 semitones, six octaves, a frequency ratio of stem:[2^6 = 64].
+The ground is stem:[m = 69 + 12 \log_2 (73.42/440) \approx 38], D2.
+=====
+====
+
+From now on the piece thinks in notes.
+The ground is note 38, wandering two semitones either way with a period of more than five minutes:
+
+.The ground wanders
+[sound, seconds=60, fade=5]
+----
+0.0031 s 2 * 38 + m2f s 0.3 *
+----
+
+=== How slow is slow?
+
+A sine at 0.0031 Hz is slow, but slowness isn't only a matter of rate: it depends on the depth too.
+Think of the point on the circle again, now on a circle of radius stem:[A], going round stem:[f] times a second.
+Each turn it travels the circumference, stem:[2\pi A], so its speed is stem:[2\pi f A].
+Its height changes fastest as it crosses the middle, moving straight up or down, and there the height changes at exactly that speed.
+So a sine of amplitude stem:[A] and frequency stem:[f] changes at most
+
+[stem]
+++++
+2\pi f A
+++++
+
+units per second.
+For the ground, stem:[2\pi \cdot 0.0031 \cdot 2 \approx 0.039] semitones per second: about a semitone in half a minute.
+That is a glacier.
+
+[.try]
+.A glacier that isn't
+====
+A tempting first idea for a wandering tone is `0.0071 s 24 * 0.0071 golden * s 12 * + 60 + m2f s`: two slow sines, with periods of about 141 and 87 seconds, moving a tone around middle C.
+How fast can its pitch move?
+
+[.answer]
+=====
+At most stem:[2\pi (0.0071 \cdot 24 + 0.0115 \cdot 12) \approx 1.9] semitones per second, since the speed of a sum is at most the sum of the speeds (`golden` is about 1.618, so the second rate is about 0.0115 Hz).
+In ten seconds it can climb more than an octave.
+Its periods are long, but its depths are deep, and the tone races up into the treble from the very start.
+=====
+====
+
+=== Never quite repeating
+
+A single slow sine repeats; a drone that should flow unpredictably, catching our ear's interest without ever letting it catch the pattern, needs more.
+Mathematics has a precise name for what we want.
+
+Add two slow sines with periods stem:[P_1] and stem:[P_2].
+If their ratio is a fraction, stem:[P_1 / P_2 = p/q] in lowest terms, the sum repeats after stem:[q P_1 = p P_2].
+If the ratio is *irrational*, the periods are *incommensurate* and the sum never repeats at all.
+It isn't random: it is fully determined, smooth, and full of near-repeats.
+Such signals are *quasi-periodic*.
+
+Some irrational ratios are more irrational than others: the ones that fractions approximate badly, so near-repeats are rarer and weaker.
+The most irrational of all is the *golden ratio*,
+
+[stem]
+++++
+\Phi = \frac{1 + \sqrt 5}{2} \approx 1.618034,
+++++
+
+whose best fractional approximations (3/2, 5/3, 8/5, 13/8, …, ratios of consecutive Fibonacci numbers) improve as slowly as possible.
+Sound Garden pushes it with `golden`.
+
+.Loudness moved by two slow sines in a 3/2 ratio: the shape repeats every 20 seconds
+[sound, seconds=40, show=wave]
+----
+220 s
+0.1 s 0.15 s + 0.25 * 0.5 + *
+0.3 *
+----
+
+.The same with the golden ratio: it never repeats
+[sound, seconds=40, show=wave]
+----
+220 s
+0.1 s 0.1 golden * s + 0.25 * 0.5 + *
+0.3 *
+----
+
+[.try]
+.When do they meet again?
+====
+Two slow sines at 0.1 Hz and 0.125 Hz: after how long does their sum repeat?
+
+[.answer]
+=====
+Their periods are 10 s and 8 s, in the ratio 5/4, so the sum repeats after stem:[4 \cdot 10 = 5 \cdot 8 = 40] seconds, the least common multiple of the periods.
+=====
+====
+
+The ground gets a partner: a second slow sine, golden times faster and half as deep.
+Its wandering now never repeats.
+
+.The ground, never quite repeating
+[sound, seconds=60, fade=5]
+----
+0.0031 s 2 * 0.0031 golden * s + 38 + m2f s 0.3 *
+----
+
+How fast can it move now? (stem:[2\pi \cdot 0.0031 \cdot (2 + \Phi) \approx 0.070] semitones per second: still a glacier.)
+
+=== Three strata
+
+One wandering tone is a line.
+For a texture we want layers: three tones, low, middle and high, each wandering in its own register.
+
+Adding signals mixes them: `+` adds two signals sample by sample, and the sum carries both.
+Our three tones will sit far apart, a *twelfth* from one another (19 semitones, an octave and a fifth, very nearly a frequency ratio of 3), and their wanderings never reach each other, so they never cross.
+What happens when tones come close, beating and intervals, is chapter 2's subject.
+
+Each stratum gets its own pair of slow, incommensurate rates.
+The middle and high ones pair their rates by stem:[\sqrt 2], written `2 0.5 ^` (two to the power of one half): another irrational ratio, for variety.
+
+[horizontal]
+ground:: note 38 (D2, 73 Hz), ±2 and ±1 semitones at 0.0031 Hz and golden times that.
+middle:: note 57 (A3, 220 Hz), ±5 and ±2.5 semitones at 0.0043 Hz and stem:[\sqrt 2] times that.
+high:: note 76 (E5, 659 Hz), ±7 and ±3 semitones at 0.0029·Φ Hz and stem:[\sqrt 2] times that.
+
+The lower strata wander less and the higher more, but even the high one moves at most a third of a semitone per second: still a glacier.
+
+Each note is used twice, once for the frequency and once for the loudness (below), so we keep it in a *variable*: `>g` moves the top of the stack into a variable named `g`, and `<g` reads it back as often as we like.
+
+The second thing that changes across registers is loudness.
+By the *equal-loudness contours* (standardised as ISO 226), a quiet 40 Hz sine needs roughly 30 dB more level than one at 1 kHz to sound as loud, and the gap narrows as the music gets louder.
+A tone wandering low at constant amplitude seems to recede.
+*Loudness compensation* raises the level as the pitch falls; even a crude rule helps, such as 3 dB per octave down from note 60:
+
+[stem]
+++++
+A = A_0 \cdot 2^{(60 - m)/24}.
+++++
+
+In Sound Garden, `60 <g - 24 / 2 swap ^`: 60 minus the note, divided by 24, and two to that power (`swap` puts the 2 underneath, where `^` expects its base).
+
+.Six octaves at constant amplitude: the bass seems to recede
+[sound, seconds=20, show=wave]
+----
+0.05 s 36 * 60 + m2f s 0.15 *
+----
+
+.The same sweep with 3 dB per octave of compensation
+[sound, seconds=20, show=wave]
+----
+0.05 s 36 * 60 + >m
+<m m2f s
+60 <m - 24 / 2 swap ^ 0.1 *
+*
+----
+
+[.try]
+.Decibels per octave
+====
+Why is stem:[2^{(60 - m)/24}] "3 dB per octave"?
+
+[.answer]
+=====
+An octave down is stem:[m] lower by 12, which multiplies the amplitude by stem:[2^{12/24} = \sqrt 2], and stem:[20 \log_{10} \sqrt 2 \approx 3.01] dB.
+=====
+====
+
+Here are the three strata together, each compensated, at constant loudness.
+
+.Three strata
+[sound, seconds=60, fade=5, show=spectrogram]
+----
+( three strata, each one sine wandering slowly in its own register, as MIDI note numbers )
+0.0031 s 2 * 0.0031 golden * s + 38 + >g
+0.0043 s 5 * 0.0043 2 0.5 ^ * s 2.5 * + 57 + >m
+0.0029 golden * s 7 * 0.0029 golden * 2 0.5 ^ * s 3 * + 76 + >h
+( each stratum: its tone, louder in the bass )
+<g m2f s 60 <g - 24 / 2 swap ^ *
+<m m2f s 60 <m - 24 / 2 swap ^ * +
+<h m2f s 60 <h - 24 / 2 swap ^ * +
+0.12 *
+----
+
+Words in parentheses are comments: they explain the program and make no sound.
+
+=== Slow sines as hands
+
+A sine too slow to hear is not a tone but a gesture: a hand slowly turning a knob.
+We have used slow sines to move pitch; now let one move loudness.
+Multiplying a tone by a slow sine is *amplitude modulation*: the tone is the *carrier*, the slow sine the *modulator*.
+With carrier frequency stem:[f_c] and modulator frequency stem:[f_m]:
+
+[stem]
+++++
+x(t) = \underbrace{\left(\tfrac12 + \tfrac12 \sin 2\pi f_m t\right)}_{\text{loudness goes up and down}} \sin 2\pi f_c t.
+++++
+
+Try modulator rates of 0.1, 1, 5, 20 and 50 Hz:
+
+.Breathing
+[sound, seconds=4]
+----
+110 s
+0.1 s 0.5 * 0.5 + *
+0.3 *
+----
+
+Slow, we hear *tremolo*: the loudness rising and falling.
+Faster, around 15–30 Hz, it becomes a *roughness*.
+And from around 30 Hz something new appears: not a louder or softer tone, but new pitches, *sidebands*.
+A product-to-sum identity shows where they come from:
+
+[stem]
+++++
+\sin a \,\sin b = \tfrac12\left[\cos(a - b) - \cos(a + b)\right].
+++++
+
+Applied to our product, the modulated tone is exactly a sum of three sinusoids: the carrier at stem:[f_c] with amplitude stem:[\tfrac12], and two sidebands at stem:[f_c - f_m] and stem:[f_c + f_m] with amplitude stem:[\tfrac14] each, half the carrier's, 6 dB below it.
+With stem:[f_c = 110] and stem:[f_m = 50] they are at 60, 110 and 160 Hz.
+
+Each sinusoidal component of a sound is a *partial*.
+These are not *harmonics* of the carrier, which are partials at integer multiples of a fundamental: 60 and 160 are not multiples of 110, and one of them is below it.
+Nor is *overtones* the right word for them: it suggests the partials above a fundamental, and for a pitched tone usually its harmonics.
+
+.Breathing at 50 Hz: three partials, at 60, 110 and 160 Hz
+[sound, seconds=4, show="wave spectrum", from=0, to=0.1, fscale=lin, fmax=300]
+----
+110 s
+50 s 0.5 * 0.5 + *
+0.3 *
+----
+
+[.try]
+.Predict the sidebands
+====
+Where are the partials of a 220 Hz tone breathing at 30 Hz?
+Edit the program above and check the spectrum.
+
+[.answer]
+=====
+190, 220 and 250 Hz.
+
+.220 Hz breathing at 30 Hz
+[sound, seconds=4, show=spectrum, fscale=lin, fmax=400]
+------
+220 s
+30 s 0.5 * 0.5 + *
+0.3 *
+------
+=====
+====
+
+Why do the sidebands start to stand apart around 30 Hz?
+The ear analyses sound in overlapping frequency bands, *critical bands*.
+Partials closer than about one band apart are heard together, as beating and roughness; further apart, separately.
+Around 110 Hz a band is about 37 Hz wide (its *equivalent rectangular bandwidth*, from Glasberg and Moore's empirical formula), so sidebands 30–40 Hz or more from the carrier begin to stand on their own.
+
+[.branch]
+.Deriving the product-to-sum identity
+====
+We need the cosine of a sum of angles, stem:[\cos(a + b)], in terms of the cosines and sines of stem:[a] and stem:[b] alone.
+The trick is to get to angle stem:[a + b] in two moves: first go to angle stem:[b], then turn the whole picture by stem:[a].
+
+*Getting to stem:[b].*
+The point at angle stem:[b] is stem:[(\cos b, \sin b)]: walk stem:[\cos b] along the arrow stem:[(1, 0)], then stem:[\sin b] along the arrow stem:[(0, 1)].
+
+*Turning by stem:[a].*
+A rotation turns a picture rigidly, so the two-step walk turns with it: still stem:[\cos b] along the first arrow and stem:[\sin b] along the second, only the arrows now point elsewhere.
+The first arrow, stem:[(1, 0)], ends up at angle stem:[a], at stem:[(\cos a, \sin a)].
+The second arrow is always a quarter turn ahead of the first, and a quarter turn takes a point stem:[(x, y)] to stem:[(-y, x)] (what was right becomes up, what was up becomes left), so it ends up at stem:[(-\sin a, \cos a)].
+
+++++
+<figure class="diagram">
+<svg viewBox="0 0 560 235" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Left: the point at angle b reached by cos b along (1, 0) then sin b along (0, 1). Right: the same picture turned by a; the point lands at angle a plus b.">
+  <g fill="none" stroke="currentColor" stroke-width="1.2">
+  <circle cx="130" cy="125" r="90" opacity="0.5"/>
+  <line x1="30.0" y1="125.0" x2="230.0" y2="125.0" opacity="0.4"/>
+  <line x1="130.0" y1="25.0" x2="130.0" y2="225.0" opacity="0.4"/>
+  <line x1="130.0" y1="125.0" x2="220.0" y2="125.0" stroke-width="1.6"/>
+  <line x1="130.0" y1="125.0" x2="130.0" y2="35.0" stroke-width="1.6"/>
+  <line x1="130.0" y1="125.0" x2="198.9" y2="67.1" stroke-dasharray="3 3" opacity="0.7"/>
+  <path d="M 156.0 125.0 A 26 26 0 0 0 149.9 108.3"/>
+  </g>
+  <line x1="130.0" y1="125.0" x2="198.9" y2="125.0" stroke="var(--signal)" stroke-width="2.4"/>
+  <line x1="198.9" y1="125.0" x2="198.9" y2="67.1" stroke="var(--signal-2)" stroke-width="2.4"/>
+  <circle cx="220.0" cy="125.0" r="2.5" fill="currentColor"/>
+  <circle cx="130.0" cy="35.0" r="2.5" fill="currentColor"/>
+  <circle cx="198.9" cy="67.1" r="4" fill="currentColor"/>
+  <g fill="none" stroke="currentColor" stroke-width="1.2">
+  <circle cx="400" cy="125" r="90" opacity="0.5"/>
+  <line x1="300.0" y1="125.0" x2="500.0" y2="125.0" opacity="0.4"/>
+  <line x1="400.0" y1="25.0" x2="400.0" y2="225.0" opacity="0.4"/>
+  <line x1="400.0" y1="125.0" x2="473.7" y2="73.4" stroke-width="1.6"/>
+  <line x1="400.0" y1="125.0" x2="348.4" y2="51.3" stroke-width="1.6"/>
+  <line x1="400.0" y1="125.0" x2="423.3" y2="38.1" stroke-dasharray="3 3" opacity="0.7"/>
+  <path d="M 421.3 110.1 A 26 26 0 0 0 406.7 99.9"/>
+  <path d="M 418.0 125.0 A 18 18 0 0 0 414.7 114.7"/>
+  </g>
+  <line x1="400.0" y1="125.0" x2="456.5" y2="85.5" stroke="var(--signal)" stroke-width="2.4"/>
+  <line x1="456.5" y1="85.5" x2="423.3" y2="38.1" stroke="var(--signal-2)" stroke-width="2.4"/>
+  <circle cx="473.7" cy="73.4" r="2.5" fill="currentColor"/>
+  <circle cx="348.4" cy="51.3" r="2.5" fill="currentColor"/>
+  <circle cx="423.3" cy="38.1" r="4" fill="currentColor"/>
+  <g fill="currentColor" font-size="13" font-family="var(--sans)">
+    <text x="160.1" y="114.1" >b</text>
+    <text x="164.9" y="141.0" fill="var(--signal)">cos b</text>
+    <text x="207.9" y="100.1" fill="var(--signal-2)">sin b</text>
+    <text x="226.0" y="119.0" opacity="0.7">(1, 0)</text>
+    <text x="136.0" y="31.0" opacity="0.7">(0, 1)</text>
+    <text x="204.9" y="61.1" >b</text>
+    <text x="423.2" y="118.9" >a</text>
+    <text x="418.4" y="98.8" >b</text>
+    <text x="479.7" y="75.4" opacity="0.7">(cos a, sin a)</text>
+    <text x="244.4" y="49.3" opacity="0.7">(−sin a, cos a)</text>
+    <text x="409.3" y="28.1" >a + b</text>
+    <text x="449.4" y="106.3" fill="var(--signal)">cos b</text>
+    <text x="453.9" y="60.8" fill="var(--signal-2)">sin b</text>
+  </g>
+</svg>
+<figcaption>Turn the picture by a: the walk to the point is unchanged, cos b along the first arrow and sin b along the second, but it now ends at angle a + b.</figcaption>
+</figure>
+++++
+
+*Reading off the result.*
+Walk the turned arrows: stem:[\cos b] times stem:[(\cos a, \sin a)], plus stem:[\sin b] times stem:[(-\sin a, \cos a)].
+Adding coordinate by coordinate, the walk ends at
+
+[stem]
+++++
+x = \cos a \cos b - \sin a \sin b, \qquad y = \sin a \cos b + \cos a \sin b.
+++++
+
+The walk ends at angle stem:[a + b], which is the point stem:[(\cos(a + b), \sin(a + b))].
+Two names for one point, so their coordinates agree; stem:[x] gives
+
+[stem]
+++++
+\cos(a + b) = \cos a \cos b - \sin a \sin b,
+++++
+
+and stem:[y] gives its companion, stem:[\sin(a + b) = \sin a \cos b + \cos a \sin b], for free.
+
+*Turning the other way.*
+Angle stem:[-b] is angle stem:[b] mirrored in the horizontal axis: same distance right, same distance down instead of up.
+So stem:[\cos(-b) = \cos b] and stem:[\sin(-b) = -\sin b], and putting stem:[-b] in place of stem:[b] flips one sign:
+
+[stem]
+++++
+\cos(a - b) = \cos a \cos b + \sin a \sin b.
+++++
+
+Check them on angles we know.
+With stem:[b = 0] both say stem:[\cos a = \cos a].
+With stem:[a = b = \pi/4], where cosine and sine are both stem:[\sqrt{2}/2], the first says stem:[\cos(\pi/2) = \tfrac12 - \tfrac12 = 0]: a right angle points straight up.
+
+Subtract the second formula from the first: stem:[\cos(a - b) - \cos(a + b) = 2 \sin a \sin b].
+Divide by two, and that is the product-to-sum identity.
+Chapter 6 runs it in reverse, to understand how modulation builds whole spectra, and chapter 8's complex numbers turn the whole rotation argument into one line.
+====
+
+The middle stratum breathes, with depth 0.25 (its amplitude moves between 0.5 and 1), and the rate of its breathing drifts too, from 1.3 Hz up to 51 Hz and back over seven minutes.
+On the way it passes through tremolo, roughness and sidebands, so the texture itself changes, glacially.
+Rates, like pitches, are heard by ratio, so the rate moves exponentially: two to the power of a slow sine scaled to 0..5.3, times 1.3.
+
+.The middle stratum breathes
+[sound, seconds=60, fade=5, show=spectrogram]
+----
+0.0043 s 5 * 0.0043 2 0.5 ^ * s 2.5 * + 57 + >m
+<m m2f s
+0.0023 s 0.5 * 0.5 + 5.3 * 2 swap ^ 1.3 * s 0.25 * 0.75 + *
+60 <m - 24 / 2 swap ^ *
+0.2 *
+----
+
+[.try]
+.Where the breathing goes
+====
+How fast is the middle stratum breathing at the start, and when is it fastest?
+
+[.answer]
+=====
+At the start the slow sine is 0, so the exponent is stem:[5.3 \cdot 0.5 = 2.65] and the rate stem:[1.3 \cdot 2^{2.65} \approx 8.2] Hz: tremolo turning rough.
+It is fastest when the slow sine peaks, a quarter of its period in: stem:[1/(4 \cdot 0.0023) \approx 109] s, at stem:[1.3 \cdot 2^{5.3} \approx 51] Hz, where the sidebands stand clear of the carrier.
+=====
+====
+
+=== Swells
+
+Slow sines can also bring a stratum in and out.
+A sine itself goes negative, so for loudness we lift it: stem:[(1 - \cos\theta)/2] runs from 0 to 1, starting at 0, from silence.
+It is the *raised cosine*, and it is also a squared sine, stem:[\sin^2(\theta/2)] (the branch on the product-to-sum identity has the tools to show it).
+In Sound Garden a cosine is a sine a quarter cycle ahead: `f 0.5 sine`.
+
+Each stratum gets its own swell:
+
+[horizontal]
+ground:: stem:[0.8 + 0.1(\sin a + \sin b)], between 0.6 and 1: always there, breathing slowly.
+middle:: stem:[\left(0.5 - 0.05(\cos a + \cos b)\right)^2], between 0.16 and 0.36: a gentle swell of about ±3.5 dB, never away.
+high:: stem:[0.01\,(1 - \cos a)(1 - \cos b)], a product of two raised cosines: it starts from silence, rises only when both are high, comes in after about 50 seconds and then stays away for minutes, and even at its peak is a faint halo.
+
+Each pair of rates is incommensurate, so no swell repeats.
+
+=== Where clicks come from
+
+Everything in our piece moves smoothly: every signal is a sum or product of sines.
+That is no accident, because anything sudden is heard as a click.
+
+.Switching a sine on and off: each edge is a stripe of all frequencies
+[sound, seconds=2, show="wave spectrogram", from=0.24, to=0.26]
+----
+440 s 0.2 *
+2 cycle gate:x. *
+----
+
+A click is a *discontinuity*: a jump in the waveform.
+Switch a sine off when it isn't at zero and its value jumps.
+A jump is as sudden as anything can be, and sudden means it contains energy at all frequencies, a *broadband* event: in the spectrogram above, every switch is a vertical stripe across all frequencies.
+Even switching exactly at a zero crossing leaves a sudden change of *slope*, a corner, which is a softer click.
+
+The cure is to make changes gradual, with an *envelope*, chapter 4's subject.
+It is also what Sound Garden does for us while we livecode: when we edit a number in a playing program, the old value glides to the new one over 10 ms instead of jumping.
+
+[.try]
+.Why softer at zero crossings?
+====
+Switching a sine off at its peak and at a zero crossing: which click is louder, and why?
+
+[.answer]
+=====
+At the peak, because the value jumps by the full amplitude.
+At a zero crossing the value doesn't jump, only the slope does, from its steepest to flat, and a corner has much less high-frequency energy than a step.
+In Fourier terms (chapter 13), the spectrum of a step falls by 6 dB per octave and that of a corner by 12.
+=====
+====
+
+=== Rare moments
+
+One thing is left: the specks, small quick events that surface now and then, rarely and irregularly.
+Again we make them from sines alone.
+
+Raise a slow sine to a high even power and it stays near zero most of the time, rising to a brief peak once per half cycle: stem:[\sin^{16}] is above one half only about a fifth of the time.
+Multiply slow, incommensurate sines and the product peaks only when they all peak together, which happens rarely and irregularly; the more sines, the rarer.
+A rare event needs something to be rare against, so here a steady low tone holds the ground and a second tone, a twelfth above, surfaces only when three slow sines line up.
+
+.Over a drone, a tone surfaces only when three slow sines line up
+[sound, seconds=60, show="wave spectrogram"]
+----
+110 s 0.1 *
+330 s
+0.1 s 0.1 golden * s * 0.1 2 0.5 ^ * s * 8 ^
+0.3 * *
++
+----
+
+In this minute the upper tone comes up clearly near 2, 23 and 48 seconds, strongest at 48, and a few more times faintly: irregular gaps, never twice the same height.
+Such behaviour is *intermittent*.
+
+Why three rates of 1, Φ and stem:[\sqrt 2], and not the tidier 1, Φ and stem:[\Phi^2]?
+Because stem:[\Phi^2 = \Phi + 1]: the third frequency would be the sum of the other two, its phase locked to theirs, and the three sines could never all peak together (stem:[|\sin a \,\sin b \,\sin(a+b)|] never exceeds stem:[(\sqrt3/2)^3 \approx 0.65]).
+For the alignments to keep coming, the frequencies must be *rationally independent*: no combination of them with whole-number coefficients may add up to zero.
+1, Φ and stem:[\sqrt 2] are; 1, Φ and stem:[\Phi^2] are not, since stem:[1 + \Phi - \Phi^2 = 0].
+
+In our piece a speck is a shiver: a brief vibrato, 4.3 times a second and at most 0.3 semitones deep, shared by all three strata.
+Its clock runs at 0.05 Hz, so strong specks come about every 45 seconds, fainter ones in between, never at a steady pace.
+
+=== Strata
+
+Here is the whole piece.
+Read it top to bottom: the three notes, the speck and its shiver, then each stratum's tone, compensation and swell, mixed with `+`, and at the end the overall level.
+`0.9 limit` is a safety net that would hold any peak below 0.9; at this level it never acts.
+
+.Strata
+[sound, seconds=300, fade=20, show="overview spectrogram"]
+----
+include::../examples/strata.txt[]
+----
+
+The piece has no ending, and this is its first five minutes.
+Its slowest cycles are many minutes long and none of them line up, so the piece never returns to where it began; in the editor it plays for as long as we let it.
+
+[.try]
+.Turning the knobs
+====
+Open the piece in the editor and change one thing at a time, listening for a minute after each change:
+
+* The pace: double or halve all the glacier rates (0.0031, 0.0043, 0.0029).
+How fast can the music move before it stops being a glacier?
+* The registers: move a stratum's centre note so that two strata come within a few semitones.
+What new sound appears where they meet? (Chapter 2 explains it.)
+* The breathing: fix the middle stratum's breathing rate at 3 Hz, then at 40 Hz.
+* The specks: make the shiver deeper (0.3 to 1) or quicker (4.3 to 7).
+When does a speck stop being a speck?
+====

@@ -3,7 +3,7 @@
 //! `sound::` block whose render is not cached yet.
 //!
 //! ```text
-//! book_render PROGRAM|- --seconds S [--audio OUT.mp3] [--wav OUT.wav] [--overview OUT.svg]
+//! book_render PROGRAM|- --seconds S [--fade S] [--audio OUT.mp3] [--wav OUT.wav] [--overview OUT.svg]
 //!     [--wave OUT.svg] [--spectrum OUT.svg] [--spectrogram OUT.png]
 //!     [--from T] [--to T] [--fmax HZ] [--fscale log|lin]
 //! ```
@@ -13,8 +13,8 @@
 use anyhow::{Context as _, Result, anyhow, bail};
 use audio_vm::{CHANNELS, Sample};
 use book_render::{
-    SAMPLE_RATE, SPECTROGRAM_HEIGHT, SPECTROGRAM_WIDTH, overview_svg, render, spectrogram_rgba,
-    spectrum_svg, wave_svg, window,
+    SAMPLE_RATE, SPECTROGRAM_HEIGHT, SPECTROGRAM_WIDTH, fade_out, overview_svg, render,
+    spectrogram_rgba, spectrum_svg, wave_svg, window,
 };
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -38,7 +38,10 @@ fn main() -> Result<()> {
         }
     };
 
-    let frames = render(&text, args.seconds);
+    let mut frames = render(&text, args.seconds);
+    if let Some(fade) = args.fade {
+        fade_out(&mut frames, fade);
+    }
     let stats = Stats::of(&frames);
 
     let tmp_wav;
@@ -104,6 +107,7 @@ struct Args {
     /// None reads the program from stdin.
     program: Option<PathBuf>,
     seconds: f64,
+    fade: Option<f64>,
     audio: Option<PathBuf>,
     wav: Option<PathBuf>,
     overview: Option<PathBuf>,
@@ -122,6 +126,7 @@ impl Args {
         let mut args = Args {
             program: None,
             seconds: 4.0,
+            fade: None,
             audio: None,
             wav: None,
             overview: None,
@@ -140,6 +145,7 @@ impl Args {
             let path = |v: String| std::path::absolute(v);
             match arg.as_str() {
                 "--seconds" => args.seconds = value()?.parse()?,
+                "--fade" => args.fade = Some(value()?.parse()?),
                 "--audio" => args.audio = Some(path(value()?)?),
                 "--wav" => args.wav = Some(path(value()?)?),
                 "--overview" => args.overview = Some(path(value()?)?),

@@ -55,7 +55,9 @@ A `[sound]` block is a listing that is also rendered and played:
 `show`:: Figures under the player, any of `wave`, `spectrum`, `spectrogram`. The player always shows the whole clip.
 `from`, `to`:: Waveform window in seconds. Under ~100 samples each sample is drawn as a lollipop.
 `fscale`, `fmax`:: Spectrum axis: `log` (default) or `lin`, and its top frequency (default 20000). Use `lin` to show harmonic series.
+`fade`:: Fade out the last this many seconds, for an excerpt of a piece with no ending.
 `%loop`:: Loop playback (drones, rhythms).
+`%fold`:: Fold the listing away behind a *Score* toggle above the player, for an excerpt that opens a chapter before its program can be read.
 `#id`:: Anchor for `<<id>>`; otherwise `sound-<chapter>-<n>`. Cross references read "Sound 3.2".
 
 Sounds are numbered per chapter.

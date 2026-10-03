@@ -15,6 +15,16 @@ include::chapters/preface.adoc[]
 
 // Chapters go here, one file each: chapters/01-<slug>.adoc, included in reading order.
 
+// Chapters are drafts until finished: draft builds only.
+ifdef::draft[]
+include::chapters/01-one-tone.adoc[]
+endif::[]
+
+ifdef::draft[]
+[appendix]
+include::chapters/glossary.adoc[]
+endif::[]
+
 [appendix]
 include::chapters/reference.adoc[]
 

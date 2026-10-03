@@ -1,0 +1,29 @@
+( three strata, each one sine wandering slowly in its own register, as MIDI note numbers )
+( ground: barely moves, always there )
+0.0031 s 2 * 0.0031 golden * s + 38 + >g
+( middle: a fifth or so either way )
+0.0043 s 5 * 0.0043 2 0.5 ^ * s 2.5 * + 57 + >m
+( high: wanders widest )
+0.0029 golden * s 7 * 0.0029 golden * 2 0.5 ^ * s 3 * + 76 + >h
+( tortoise specks: three quicker sines with rationally independent rates line up now and then )
+0.05 s 0.05 golden * s * 0.05 2 0.5 ^ * s * 8 ^ >speck
+( a speck is a small brief vibrato that all strata share: the glacier shivers )
+<speck 4.3 s * 0.3 * >shiver
+( each stratum: its tone, louder in the bass (3 dB per octave down from note 60), times its swell )
+<g <shiver + m2f s
+60 <g - 24 / 2 swap ^ *
+0.013 s 0.013 golden * s + 0.1 * 0.8 + *
+<m <shiver + m2f s
+( the middle breathes, its rate drifting from tremolo through roughness to sidebands )
+0.0023 s 0.5 * 0.5 + 5.3 * 2 swap ^ 1.3 * s 0.25 * 0.75 + *
+60 <m - 24 / 2 swap ^ *
+( it swells gently, never quite away )
+0.5 0.0061 0.5 sine 0.0061 golden * 0.5 sine + 0.05 * - 2 ^ *
++
+<h <shiver + m2f s
+60 <h - 24 / 2 swap ^ *
+( the high is a faint halo: it comes in later and stays away longer )
+1 0.0043 0.5 sine - 1 0.0043 2 0.5 ^ * 0.5 sine - * 0.01 * *
++
+0.3 *
+0.9 limit

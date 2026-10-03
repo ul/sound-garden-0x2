@@ -16,6 +16,7 @@ onmessage = async ({ data: job }) => {
   const input = x.br_input(bytes.length);
   new Uint8Array(x.memory.buffer, input, bytes.length).set(bytes);
   x.br_render(job.seconds);
+  if (job.fade) x.br_fade(job.fade);
   const read = (length) => new Uint8Array(x.memory.buffer, x.br_output(), length).slice();
   const text = (length) => new TextDecoder().decode(read(length));
 

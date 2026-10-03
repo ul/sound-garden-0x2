@@ -73,6 +73,14 @@ include::../../examples/ai/drum_circle.txt[]
 
 Whole pieces are included from files, so the book and the repository never disagree.
 
+A piece with no ending is shown as an excerpt that fades out (`fade`); one that opens a chapter folds its score away (`%fold`).
+
+.An excerpt with its score folded
+[sound%fold, seconds=8, fade=3]
+----
+0.1 s 2 * 57 + m2f s 0.3 *
+----
+
 .Glacier (from examples/ai)
 [sound, seconds=24]
 ----

@@ -33,6 +33,19 @@ pub fn render(text: &str, seconds: f64) -> Vec<Frame> {
         .collect()
 }
 
+/// Fade out the last `seconds` of a render with a raised cosine, so an excerpt of a piece
+/// that has no ending stops gently instead of being cut off.
+pub fn fade_out(frames: &mut [Frame], seconds: f64) {
+    let length = ((seconds * SAMPLE_RATE as f64) as usize).min(frames.len());
+    let start = frames.len() - length;
+    for (i, frame) in frames[start..].iter_mut().enumerate() {
+        let gain = 0.5 + 0.5 * (std::f64::consts::PI * (i + 1) as f64 / length as f64).cos();
+        for sample in frame.iter_mut() {
+            *sample *= gain as Sample;
+        }
+    }
+}
+
 /// Frame range of the `from`..`to` window in seconds (the whole render by default).
 pub fn window(frames: &[Frame], from: Option<f64>, to: Option<f64>) -> std::ops::Range<usize> {
     let index = |t: f64| ((t * SAMPLE_RATE as f64).round() as usize).min(frames.len());
@@ -459,6 +472,12 @@ mod wasm {
             s.frames = render(&String::from_utf8_lossy(&s.input), seconds);
             s.frames.len()
         })
+    }
+
+    /// Fade out the last `seconds` of the current render.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn br_fade(seconds: f64) {
+        with(|s| fade_out(&mut s.frames, seconds))
     }
 
     /// Waveform of the `from`..`to` window in seconds; NaN means the start or the end.

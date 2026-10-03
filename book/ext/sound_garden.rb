@@ -200,7 +200,16 @@ module SoundGarden
       listing.style = 'source'
       Asciidoctor::Parser.catalog_callouts source, doc
       listing.commit_subs
-      box << listing
+      if attrs.key? 'fold-option'
+        # %fold: the score is folded away under the player, for an excerpt that opens a chapter.
+        score = create_block box, :example, nil, { 'role' => 'score' }
+        score.title = 'Score'
+        score.set_option 'collapsible'
+        score << listing
+        box << score
+      else
+        box << listing
+      end
       box.instance_variable_set :@sound, {
         program: program, title: attrs['title'], attrs: attrs, outdir: outdir,
         media: Media.render(outdir, doc.base_dir, program, attrs, where, Asciidoctor::LoggerManager.logger),
@@ -275,7 +284,7 @@ module SoundGarden
     def render outdir, base_dir, program, attrs, where, logger
       show = attrs.fetch('show', '').split(/[\s,]+/)
       args = { 'seconds' => attrs.fetch('seconds', '4') }
-      %w[from to fmax fscale].each { |k| args[k] = attrs[k] if attrs[k] }
+      %w[fade from to fmax fscale].each { |k| args[k] = attrs[k] if attrs[k] }
       key = Digest::SHA256.hexdigest([program, args.sort, show.sort, SoundGarden.renderer_digest].inspect)[0, 16]
       base = File.join(outdir, 'media', key)
       files = {
@@ -343,6 +352,7 @@ module SoundGarden
       abs = media['abs']
       settings = {
         seconds: attrs.fetch('seconds', '4').to_f,
+        fade: attrs['fade']&.to_f,
         show: attrs.fetch('show', '').split(/[\s,]+/),
         from: attrs['from']&.to_f,
         to: attrs['to']&.to_f,
