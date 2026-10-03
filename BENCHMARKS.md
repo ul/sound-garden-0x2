@@ -43,6 +43,23 @@ The `microstructure` bench (`cargo bench --bench microstructure`) validates eyeb
 `tests/hot_path_load.rs::realtime_ops_do_not_allocate_while_rendering_or_reloading` guards the
 audio-thread no-allocation rule for these ops.
 
+## Typical-piece pass (2026-10, Apple Silicon)
+
+Profiled with `sample` on two real pieces (a granular/poly piece and a slow
+sine-strata piece), rendering speed before → after, output bit-identical at
+16 bits (seeded):
+
+| piece | before | after | main causes |
+|---|---|---|---|
+| sine strata (~20 sines, much `^`) | 28× | 39.5× | `pi`/`tau`/`golden` fold as literals (so `0.01 golden * s` is a `FixedOsc`); `x 8 ^` is `PowConst` (powi); `2 x ^` is `exp2`; oscillators shape a mono phase once instead of per channel |
+| granulate + `poly:32` + `verb` | 5.7× | 6.9× | Hann window by rotation instead of `cos` per grain-sample; `impulse` skips `exp` past 40 apexes; `verb` caches line gains; mono oscillators |
+
+`vm_next_frame/fm_arithmetic` 105 → 77 ns (−27%) from the mono-oscillator change.
+
+The largest remaining cost in poly pieces is idle voices still running every
+frame; sleeping them changes state (oscillator phase, in-voice patterns), so
+it was left out for now.
+
 Run all benchmarks:
 
 ```sh

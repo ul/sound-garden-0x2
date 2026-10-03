@@ -11,6 +11,17 @@ use crate::waveform::{Cycle, Draw, Morph, Oscillator, Shape, cycle_of, oscillato
 use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
 use itertools::izip;
 
+/// Shape every channel's phase. A mono patch keeps all channels in the same
+/// phase, so shape it once: half the `sin` calls for the usual case.
+#[inline(always)]
+fn shape_frame(f: fn(Sample) -> Sample, phases: &Frame) -> Frame {
+    if phases.iter().all(|&phase| phase == phases[0]) {
+        [f(phases[0]); CHANNELS]
+    } else {
+        phases.map(f)
+    }
+}
+
 /// A sine, cosine or naive triangle at the frequency on the stack.
 pub struct Osc {
     phases: Frame,
@@ -43,12 +54,10 @@ impl Draw for Osc {
     fn draw(&mut self, stack: &mut Stack) -> Frame {
         let frequency = stack.pop();
         let scale = 2.0 * self.sample_period;
-        let mut frame = [0.0; CHANNELS];
-        for (phase, sample, &frequency) in izip!(&mut self.phases, &mut frame, &frequency) {
+        for (phase, &frequency) in self.phases.iter_mut().zip(&frequency) {
             *phase = wrap_phase(*phase + frequency * scale);
-            *sample = (self.f)(*phase);
         }
-        frame
+        shape_frame(self.f, &self.phases)
     }
 
     fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
@@ -101,14 +110,10 @@ impl Draw for FixedOsc {
     #[inline(always)]
     fn draw(&mut self, _stack: &mut Stack) -> Frame {
         let scale = 2.0 * self.sample_period;
-        let mut frame = [0.0; CHANNELS];
-        for (phase, sample, &frequency) in
-            izip!(&mut self.phases, &mut frame, self.frequency.next())
-        {
+        for (phase, &frequency) in self.phases.iter_mut().zip(self.frequency.next()) {
             *phase = wrap_phase(*phase + frequency * scale);
-            *sample = (self.f)(*phase);
         }
-        frame
+        shape_frame(self.f, &self.phases)
     }
 
     fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {
@@ -178,7 +183,7 @@ impl Draw for OscPhase {
             *phase = wrap_phase(*phase + frequency * scale);
             *sample = wrap_phase(*phase + phase0);
         }
-        frame.map(self.f)
+        shape_frame(self.f, &frame)
     }
 
     fn morph_and_phases(&mut self) -> (&mut Morph, &Frame) {

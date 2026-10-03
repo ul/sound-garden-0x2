@@ -39,7 +39,8 @@ pub fn modulo(x: Sample, y: Sample) -> Sample {
 
 #[inline]
 pub fn pow(x: Sample, y: Sample) -> Sample {
-    x.powf(y)
+    // `2 swap ^` (octaves to ratio) is common enough for its own fast path.
+    if x == 2.0 { y.exp2() } else { x.powf(y) }
 }
 
 #[inline]

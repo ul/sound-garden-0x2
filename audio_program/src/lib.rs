@@ -153,6 +153,10 @@ enum OptimizedOp {
         id: u64,
         value: Sample,
     },
+    PowConst {
+        id: u64,
+        value: Sample,
+    },
 }
 
 const DEFAULT_GRAINS: usize = 16;
@@ -490,6 +494,10 @@ fn compile_segment(
                 push_args!(id, AddConst, value);
                 continue;
             }
+            OptimizedOp::PowConst { id, value } => {
+                push_args!(id, PowConst, value);
+                continue;
+            }
             OptimizedOp::MulConst { id, value } => {
                 push_args!(id, MulConst, value);
                 continue;
@@ -607,9 +615,7 @@ fn compile_segment(
             "pan1" => push!(id, Pan1),
             "pan2" => push!(id, Pan2),
             "panx" => push!(id, Pan3),
-            "pi" => push_args!(id, Constant, std::f64::consts::PI),
-            "tau" => push_args!(id, Constant, 2.0 * std::f64::consts::PI),
-            "golden" => push_args!(id, Constant, (1.0 + 5.0f64.sqrt()) / 2.0),
+            "pi" | "tau" | "golden" => push_args!(id, Constant, named_constant(&op).unwrap()),
             "pitch" => push_args!(id, Yin, sample_rate, 1024, 64, 0.2),
             "pop" => push!(id, Pop),
             "prime" => push!(id, Prime),
@@ -1394,10 +1400,23 @@ fn parse_note_constant(token: &str) -> Option<Sample> {
     })
 }
 
+/// Named constants, as literals so they fold like numbers.
+fn named_constant(token: &str) -> Option<Sample> {
+    match token {
+        "pi" => Some(std::f64::consts::PI),
+        "tau" => Some(2.0 * std::f64::consts::PI),
+        "golden" => Some((1.0 + 5.0f64.sqrt()) / 2.0),
+        _ => None,
+    }
+}
+
 fn optimized_op(stmt: &TextOp) -> OptimizedOp {
     match stmt.op.parse::<Sample>() {
         Ok(value) => OptimizedOp::Constant { id: stmt.id, value },
-        Err(_) => match parse_ratio_constant(&stmt.op).or_else(|| parse_note_constant(&stmt.op)) {
+        Err(_) => match parse_ratio_constant(&stmt.op)
+            .or_else(|| parse_note_constant(&stmt.op))
+            .or_else(|| named_constant(&stmt.op))
+        {
             Some(value) => OptimizedOp::Constant { id: stmt.id, value },
             None => OptimizedOp::Text(stmt.clone()),
         },
@@ -1426,6 +1445,9 @@ fn fold_tail_binary_const_terms(stmts: &[OptimizedOp]) -> Option<[OptimizedOp; 2
         }
         ("/" | "div", _, Some(value)) => {
             Some([a.clone(), OptimizedOp::DivConst { id: op.id, value }])
+        }
+        ("^" | "pow", _, Some(value)) => {
+            Some([a.clone(), OptimizedOp::PowConst { id: op.id, value }])
         }
         _ => None,
     }
@@ -1628,6 +1650,28 @@ mod tests {
                 waveform: Waveform::SineFast,
                 frequency: 440.0,
             }]
+        );
+    }
+
+    #[test]
+    fn optimize_terms_folds_named_constants_into_fixed_oscillators() {
+        assert_eq!(
+            optimize_terms(&[op(1, "0.01"), op(2, "golden"), op(3, "*"), op(4, "s")]),
+            vec![OptimizedOp::FixedOsc {
+                id: 4,
+                waveform: Waveform::Sine,
+                frequency: 0.01 * (1.0 + 5.0f64.sqrt()) / 2.0,
+            }]
+        );
+    }
+
+    #[test]
+    fn optimize_terms_specializes_constant_exponents() {
+        let ops = optimize_terms(&[op(1, "1"), op(2, "s"), op(3, "8"), op(4, "^")]);
+        assert_eq!(ops[1], OptimizedOp::PowConst { id: 4, value: 8.0 });
+        assert_eq!(
+            run_once(&[op(1, "-1.5"), op(2, "3"), op(3, "^")], &mut Context::new()),
+            [-3.375, -3.375]
         );
     }
 

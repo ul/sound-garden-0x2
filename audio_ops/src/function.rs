@@ -111,6 +111,14 @@ const_op!(DivConst, |x, value| if value != 0.0 {
 } else {
     0.0
 });
+// Integer exponents (the usual `x 2 ^`) take powi; a gliding exponent falls back to powf.
+const_op!(PowConst, |x, value| if value == 2.0 {
+    x * x
+} else if value.fract() == 0.0 && value.abs() <= 64.0 {
+    x.powi(value as i32)
+} else {
+    x.powf(value)
+});
 const_op!(RDivConst, |x, value| if x != 0.0 { value / x } else { 0.0 });
 
 pub struct Fn3<F = fn(Sample, Sample, Sample) -> Sample> {
