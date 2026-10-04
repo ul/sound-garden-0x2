@@ -8,7 +8,7 @@ Each chapter grows one piece. Structure climbs in DSP and maths, in music and in
 | # | Chapter | DSP and maths | Music | Piece
 
 | 1 | One Tone | numbers as sound, sample rate, sine: amplitude, frequency, phase; angles, radians, the unit circle | a held tone; listening to stillness | a drone of three slowly wandering strata
-| 2 | Two Tones | adding signals, beats (sum to product), ratios, logarithms: octaves, cents, decibels | intervals, consonance, beating | intervals drifting through unisons, fifths, octaves
+| 2 | Two Tones | superposition and interference, beats (sum to product), critical bands and roughness, frequency ratios, combination tones | intervals, consonance and roughness, beating | intervals drifting through unisons, fifths, octaves
 | 3 | Overtones | harmonic series, Fourier series of saw and square, Nyquist and aliasing | timbre; the overtone series as a scale | an overtone chant
 | 4 | Shapes in Time | control signals, multiplying signals, exponential decay and _e_, triggers | events, onsets, the note | bells: inharmonic partials, each with its own decay
 | 5 | Cycles | phase as time, wrapping and modulo, patterns, Euclid's algorithm | pulse, meter, polyrhythm, phasing | a phasing study
@@ -41,3 +41,4 @@ Each chapter grows one piece. Structure climbs in DSP and maths, in music and in
 Record ladder changes here with the reason, as they happen.
 
 * 2026-10-03, chapter 1: the piece grew from one sine to three strata of sines, each wandering in its own register a twelfth apart. One sine, however it moved, gave no layering. The chapter's constraint is now sines only, with sums, products and slow control; the strata never come close enough for intervals and beating to become the subject, which stays chapter 2's.
+* 2026-10-05, chapter 2: logarithms, octaves, cents and decibels moved to chapter 1, which needed them for levels and for tones crossing registers. Chapter 2 takes up what two tones do to each other instead: interference, beats, roughness within a critical band, intervals as ratios, and the combination tones the ear itself adds.
