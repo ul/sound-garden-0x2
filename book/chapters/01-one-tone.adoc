@@ -42,8 +42,7 @@ Zoom into a thousandth of a second of a tone and the numbers show themselves.
 ----
 
 The program says: push the number 1000, make a sine wave at that many cycles per second (`s`), and multiply it by 0.5 (`*`).
-Sound Garden programs are read left to right; each word takes what it needs from a stack of signals and puts its result back.
-Whatever is left on top when the program ends is what we hear.
+How to read such a program is the subject of the next section.
 
 [.try]
 .Samples per cycle
@@ -57,6 +56,69 @@ stem:[48\,000 / 440 \approx 109.09] samples.
 It is not a whole number, so each cycle is sampled at slightly different points: the numbers never repeat exactly from one cycle to the next, even though the tone does.
 =====
 ====
+
+=== Reading a program
+
+A Sound Garden program is a sequence of *words* separated by spaces; line breaks are only for us, to group words into phrases.
+Words are read from left to right, and they work on a *stack*: a pile of signals, of which only the top is within reach.
+A number pushes itself onto the stack.
+Any other word takes the signals it needs off the top and pushes its result back.
+
+So operands come first and the operation after them, which is called *postfix* notation: where we would write stem:[0.2 \times \sin(\ldots)], the program says `440 s 0.2 *`.
+Here is the stack after each word, with the top at the right:
+
+[cols="1,4"]
+|===
+| Word | Stack afterwards
+
+| `440` | 440
+| `s` | a sine at 440 Hz
+| `0.2` | a sine at 440 Hz, 0.2
+| `*` | the sine times 0.2
+|===
+
+The <<reference,reference appendix>> describes each word by its *stack effect*: what it takes and what it leaves.
+`s` is `(freq) -> sine`; `*` is `(a, b) -> a·b`; `sine` is `(freq, phase0) -> sine`, taking two signals.
+Inputs are listed oldest first, so `b` is the one on top.
+Order matters for words like `-`, `/` and `^`: `60 38 -` is stem:[60 - 38], and `2 3 ^` is stem:[2^3].
+A few words only rearrange the stack: `swap` exchanges the top two signals, `dup` duplicates the top one, `pop` throws it away.
+
+Everything on the stack is a signal, a stream of samples.
+A number is a signal too, one that happens to stay constant, and the whole program runs once for every sample, 48,000 times a second.
+Words with memory, such as oscillators, keep it between samples: `s` remembers where it is on the circle and advances by one step each time.
+Because every input is a signal, any signal can take the place of a number: put a slowly moving signal where `440` was and the frequency moves.
+Most of this chapter is built on that one idea.
+
+What we hear is the top of the stack after the last word.
+Anything left below it is silently ignored, and a word Sound Garden doesn't know is skipped (the book's listings underline it, and the editor warns), so that a slip of the keyboard never stops the music.
+
+[.try]
+.What do we hear?
+====
+What do these programs sound like?
+
+. `220 s 330 s 0.3 *`
+. `220 s 330 s + 0.15 *`
+. `0.3 220 s *`
+
+[.answer]
+=====
+. Only 330 Hz, at 0.3: the 220 Hz sine is left underneath, unheard.
+. Both tones, added together by `+` and then scaled: each at 0.15.
+. A 220 Hz sine at 0.3. Multiplication doesn't care about order, so the amplitude may come first.
+=====
+====
+
+When we need a signal in more than one place, we name it.
+`>g` moves the top of the stack into a *variable* named `g`, taking it off the stack; `=g` copies it there and leaves it; `<g` pushes its value as often as we like.
+A variable read before it is written in the program gets its value from the previous sample, a one-sample delay that later chapters use for feedback.
+
+Words in parentheses, `( like these )`, are *comments*: they explain the program and make no sound.
+
+Every sound in this book can be changed while it plays.
+Press *edit* under a listing, change the program and press kbd:[Cmd+Enter] (kbd:[Ctrl+Enter] elsewhere) to hear the change; *reset* returns to the printed program.
+The edit is not a restart: each word keeps its state, so a sine keeps its place on the circle, and a changed number glides to its new value instead of jumping.
+This is *livecoding*: composing by changing a program while we listen to it.
 
 === Frequency and pitch
 
@@ -494,7 +556,7 @@ high:: note 76 (E5, 659 Hz), ±7 and ±3 semitones at 0.0029·Φ Hz and stem:[\s
 
 The lower strata wander less and the higher more, but even the high one moves at most a third of a semitone per second: still a glacier.
 
-Each note is used twice, once for the frequency and once for the loudness (below), so we keep it in a *variable*: `>g` moves the top of the stack into a variable named `g`, and `<g` reads it back as often as we like.
+Each note is used twice, once for the frequency and once for the loudness (below), so each goes into a variable: `>g`, `>m` and `>h`, read back with `<g`, `<m` and `<h`.
 
 The second thing that changes across registers is loudness.
 By the *equal-loudness contours* (standardised as ISO 226), a quiet 40 Hz sine needs roughly 30 dB more level than one at 1 kHz to sound as loud, and the gap narrows as the music gets louder.
@@ -550,7 +612,6 @@ Here are the three strata together, each compensated, at constant loudness.
 0.12 *
 ----
 
-Words in parentheses are comments: they explain the program and make no sound.
 
 === Slow sines as hands
 
