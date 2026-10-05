@@ -30,6 +30,8 @@ pub struct MeterDisplay {
     clip_until: f64,
     dropouts: u64,
     dropout_until: f64,
+    #[cfg(not(target_arch = "wasm32"))]
+    record_dropped: u64,
     received: bool,
     midi_device: Option<Arc<str>>,
     last_midi: Option<MidiMessage>,
@@ -84,6 +86,13 @@ impl MeterDisplay {
             self.dropout_until = time + HOLD_SECONDS;
         }
         self.dropouts = meters.dropouts;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if meters.record_dropped > self.record_dropped {
+                self.dropout_until = time + HOLD_SECONDS;
+            }
+            self.record_dropped = meters.record_dropped;
+        }
     }
 
     /// Whether anything is still animating (held peaks falling, lights on),
@@ -120,7 +129,8 @@ impl MeterDisplay {
         })
     }
 
-    /// e.g. `48k · 128 · 2.7ms · dsp 12%`, plus `· 3 dropouts` once any occur.
+    /// e.g. `48k · 128 · 2.7ms · dsp 12%`, plus `· 3 dropouts` once any occur and
+    /// `· rec lost 21ms` once a recording has missed audio.
     pub fn status(&self) -> Option<String> {
         if !self.received || self.sample_rate == 0 {
             return None;
@@ -144,6 +154,13 @@ impl MeterDisplay {
             0 => {}
             1 => status.push_str(" · 1 dropout"),
             n => status.push_str(&format!(" · {n} dropouts")),
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.record_dropped > 0 {
+            status.push_str(&format!(
+                " · rec lost {:.0}ms",
+                (1000.0 * self.record_dropped as f64 / self.sample_rate as f64).max(1.0)
+            ));
         }
         #[cfg(target_arch = "wasm32")]
         if self.dropouts > 0 {
@@ -479,6 +496,7 @@ mod tests {
             peak: [peak; 2],
             rms: [peak / 2.0; 2],
             clipped,
+            record_dropped: 0,
             last_midi: None,
         }
     }
@@ -493,6 +511,22 @@ mod tests {
         // After the hold the load follows the input again.
         display.update_meters(&meters(0.1, 0.0, 0, 0), 2.0);
         assert_eq!(display.status().unwrap(), "48k · 128 · 2.7ms · dsp 10%");
+    }
+
+    #[test]
+    fn audio_missing_from_a_recording_shows_and_warns() {
+        let mut display = MeterDisplay::default();
+        display.update_meters(&meters(0.1, 0.0, 0, 0), 0.0);
+        assert!(!display.status().unwrap().contains("rec"));
+        display.update_meters(
+            &Meters {
+                record_dropped: 1024,
+                ..meters(0.1, 0.0, 0, 0)
+            },
+            1.0,
+        );
+        assert!(display.dropout_warning(1.5));
+        assert!(display.status().unwrap().ends_with("· rec lost 21ms"));
     }
 
     #[test]

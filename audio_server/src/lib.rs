@@ -22,8 +22,10 @@ pub use record::timestamp;
 pub use telemetry::Meters;
 
 const CHANNEL_CAPACITY: usize = 64;
-/// It's about 500ms, should be more than enough for write cycle of ~10ms.
-const RECORD_BUFFER_CAPACITY: usize = 48000;
+/// Samples, both channels interleaved: 8 MB, ~11 s at 48 kHz and ~2.7 s at
+/// 192 kHz. The recorder drains it every ~10 ms; the slack rides out disk or
+/// indexing stalls, and frames that still don't fit are counted in Meters.
+const RECORD_BUFFER_CAPACITY: usize = 1 << 20;
 const OSCILLOSCOPE_POLL_MS: u64 = 10;
 /// Per-sample scope capture between polls; ~340 ms at 48 kHz, far more than
 /// one poll interval.

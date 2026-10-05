@@ -33,6 +33,9 @@ pub struct Meters {
     pub rms: Frame,
     /// Samples that exceeded ±1.0 and were clipped.
     pub clipped: u64,
+    /// Frames left out of recordings because the recorder fell behind, since
+    /// the engine started.
+    pub record_dropped: u64,
     /// The most recent MIDI message and a sequence number that changes with
     /// every new one.
     pub last_midi: Option<(u64, MidiMessage)>,
@@ -48,6 +51,7 @@ pub struct Telemetry {
     sum_squares: [AtomicU64; CHANNELS],
     frames: AtomicU64,
     clipped: AtomicU64,
+    record_dropped: AtomicU64,
     midi_count: AtomicU64,
     midi_last: AtomicU64,
 }
@@ -96,6 +100,10 @@ impl Telemetry {
         self.clipped.fetch_add(levels.clipped, Ordering::Relaxed);
     }
 
+    pub(crate) fn record_dropped(&self, frames: u64) {
+        self.record_dropped.fetch_add(frames, Ordering::Relaxed);
+    }
+
     /// Called from the MIDI input thread for every decoded message.
     pub(crate) fn record_midi(&self, message: MidiMessage) {
         self.midi_last.store(pack_midi(message), Ordering::Relaxed);
@@ -124,6 +132,7 @@ impl Telemetry {
             peak,
             rms,
             clipped: self.clipped.swap(0, Ordering::Relaxed),
+            record_dropped: self.record_dropped.load(Ordering::Relaxed),
             last_midi: match self.midi_count.load(Ordering::Acquire) {
                 0 => None,
                 count => unpack_midi(self.midi_last.load(Ordering::Relaxed)).map(|m| (count, m)),

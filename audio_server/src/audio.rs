@@ -270,8 +270,12 @@ impl Engine {
 
         // Decide once per callback, and only if the whole callback fits, so the
         // recorder never sees a partial frame (which would swap its channels).
-        let record =
-            self.recording.load(Ordering::Acquire) && self.record_tx.slots() >= output.len();
+        let recording = self.recording.load(Ordering::Acquire);
+        let record = recording && self.record_tx.slots() >= output.len();
+        if recording && !record {
+            self.telemetry
+                .record_dropped((output.len() / channels.max(1)) as u64);
+        }
 
         // MIDI that arrived during the previous callback period is placed at
         // the same relative position within this buffer: a constant one-period
@@ -456,6 +460,11 @@ mod tests {
         h.callback(16);
         h.callback(20);
         assert_eq!(h.recorded(), 32);
+        assert_eq!(
+            h.engine.telemetry.snapshot().record_dropped,
+            20,
+            "frames, not samples"
+        );
     }
 
     #[test]
