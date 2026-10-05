@@ -1,10 +1,59 @@
-use alloc_counter::{AllocCounterSystem, count_alloc};
 use audio_program::{Context, TextOp, compile_program};
 use audio_vm::VM;
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::time::Instant;
 
+/// Counts this thread's (allocations, reallocations, deallocations), so tests
+/// running in parallel don't see each other's.
+struct CountingAllocator;
+
+thread_local! {
+    static COUNTS: Cell<(usize, usize, usize)> = const { Cell::new((0, 0, 0)) };
+}
+
+fn bump(f: impl FnOnce(&mut (usize, usize, usize))) {
+    // try_with: the allocator also runs while thread-locals are being torn down.
+    let _ = COUNTS.try_with(|counts| {
+        let mut c = counts.get();
+        f(&mut c);
+        counts.set(c);
+    });
+}
+
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        bump(|c| c.0 += 1);
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        bump(|c| c.0 += 1);
+        unsafe { System.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        bump(|c| c.1 += 1);
+        unsafe { System.realloc(ptr, layout, new_size) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        bump(|c| c.2 += 1);
+        unsafe { System.dealloc(ptr, layout) }
+    }
+}
+
 #[global_allocator]
-static A: AllocCounterSystem = AllocCounterSystem;
+static A: CountingAllocator = CountingAllocator;
+
+/// Runs `f`, returning what it allocated, reallocated and deallocated on this thread.
+fn count_alloc<T>(f: impl FnOnce() -> T) -> ((usize, usize, usize), T) {
+    let before = COUNTS.with(Cell::get);
+    let value = f();
+    let after = COUNTS.with(Cell::get);
+    let counts = (after.0 - before.0, after.1 - before.1, after.2 - before.2);
+    (counts, value)
+}
 
 const SAMPLE_RATE: u32 = 48_000;
 
@@ -42,6 +91,17 @@ fn time_load(old_source: &str, new_source: &str) -> ((usize, usize, usize), std:
     std::mem::forget(garbage);
 
     (counts, elapsed)
+}
+
+#[test]
+fn allocation_counter_sees_allocations() {
+    let (counts, v) = count_alloc(|| {
+        let mut v = std::hint::black_box(Vec::<u8>::with_capacity(1));
+        v.extend_from_slice(&[0; 64]);
+        v
+    });
+    drop(v);
+    assert_eq!(counts, (1, 1, 0));
 }
 
 #[test]

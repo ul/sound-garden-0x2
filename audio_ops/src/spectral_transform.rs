@@ -13,6 +13,12 @@ use rustfft::{Fft, FftPlanner};
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+/// Symmetric Hann window value at `i` of `size` (zero at both ends).
+fn hann(i: usize, size: usize) -> Sample {
+    let x = (std::f64::consts::PI * i as Sample) / (size - 1) as Sample;
+    0.5 - 0.5 * (2.0 * x).cos()
+}
+
 pub type TransformFn =
     Box<dyn FnMut(usize, usize, &mut [Complex<Sample>], &[Sample], &[bool]) + Send>;
 
@@ -81,7 +87,9 @@ impl SpectralTransform {
         n_controls: usize,
         transform: TransformFn,
     ) -> Self {
-        let window = apodize::hanning_iter(window_size).collect::<Vec<Sample>>();
+        let window = (0..window_size)
+            .map(|i| hann(i, window_size))
+            .collect::<Vec<Sample>>();
         let cola = (0..window_size)
             .step_by(period)
             .map(|i| window[i] * window[i])

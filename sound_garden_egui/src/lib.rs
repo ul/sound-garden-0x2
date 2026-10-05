@@ -3,8 +3,6 @@ mod feedback;
 use anyhow::Result;
 use audio_program::{TextOp, get_help};
 #[cfg(not(target_arch = "wasm32"))]
-use chrono::Local;
-#[cfg(not(target_arch = "wasm32"))]
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2 as EVec2};
@@ -137,7 +135,7 @@ pub fn native_main() -> Result<()> {
     let filename = matches
         .get_one::<String>("FILENAME")
         .cloned()
-        .unwrap_or_else(|| format!("{}.sg", Local::now().to_rfc3339()));
+        .unwrap_or_else(|| format!("{}.sg", audio_server::timestamp()));
 
     // Refuse to start on an unreadable project: opening it as empty would
     // overwrite it on the first save.

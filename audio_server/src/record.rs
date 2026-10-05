@@ -1,8 +1,8 @@
 use anyhow::Result;
 use audio_vm::{CHANNELS, Sample};
-use chrono::Local;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use hound::{SampleFormat, WavSpec, WavWriter};
+use jiff::Zoned;
 use rtrb::Consumer;
 use std::{
     fs::File,
@@ -14,6 +14,14 @@ use std::{
 };
 
 const POLL_INTERVAL_MS: u64 = 10;
+
+/// Local time as RFC 3339 (`2026-10-05T14:03:12.5+02:00`), for naming new files.
+pub fn timestamp() -> String {
+    let now = Zoned::now();
+    now.timestamp()
+        .display_with_offset(now.offset())
+        .to_string()
+}
 
 /// 32-bit float, so recordings keep the engine's resolution instead of being
 /// truncated to 16 bits without dither.
@@ -57,7 +65,7 @@ pub fn main(
             Ok(on) => {
                 stop(&mut writer, &mut consumer);
                 if on {
-                    let filename = format!("{}.wav", Local::now().to_rfc3339());
+                    let filename = format!("{}.wav", timestamp());
                     writer = Some(WavWriter::create(filename, spec)?);
                     recording.store(true, Ordering::Release);
                 }
@@ -104,5 +112,13 @@ mod tests {
         // 1e-6 would be 0 in 16-bit (one step is ~3e-5).
         assert_eq!(read, samples.map(|x| x as f32));
         std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn timestamp_is_a_plain_rfc3339_file_name() {
+        let ts = timestamp();
+        // No `[Area/City]` suffix: a `/` would put the file in a directory.
+        assert!(!ts.contains('/') && !ts.contains('['), "{ts}");
+        assert!(ts.parse::<jiff::Timestamp>().is_ok(), "{ts}");
     }
 }

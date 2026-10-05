@@ -457,8 +457,8 @@ pub unsafe extern "C" fn sg_process(engine: *mut Engine, frames: usize) -> *cons
 
 // -------------------------------------------------------------------------------------------
 // Randomness. getrandom's browser backend needs wasm-bindgen's `crypto` glue, which the worklet
-// can't load, so getrandom (0.3 via ahash, 0.4 via rand) is pointed at this generator, seeded
-// from the page. `seed:<N>` programs don't use it and stay reproducible.
+// can't load, so getrandom (via rand) is pointed at this generator, seeded from the page.
+// `seed:<N>` programs don't use it and stay reproducible.
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // getrandom only calls in on wasm
 mod rng {
@@ -481,7 +481,7 @@ mod rng {
     }
 }
 
-/// Both getrandom 0.3 and 0.4 link their "custom" backend to this symbol.
+/// getrandom 0.4 still links its "custom" backend to the 0.3-named symbol.
 ///
 /// # Safety
 /// Called by getrandom with a valid `dest` of `len` bytes.

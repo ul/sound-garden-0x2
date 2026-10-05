@@ -525,7 +525,7 @@ mod wasm {
         SPECTROGRAM_HEIGHT
     }
 
-    // getrandom (0.3 via ahash, 0.4 via rand) uses its "custom" backend on wasm (see
+    // getrandom (via rand) uses its "custom" backend on wasm (see
     // .cargo/config.toml). Unseeded noise in a figure is arbitrary anyway, so a fixed SplitMix64
     // stream is enough and keeps figures stable between commits.
     static RNG: std::sync::atomic::AtomicU64 =

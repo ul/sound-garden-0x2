@@ -21,7 +21,6 @@ sound_garden_types = { path = "../sound_garden_types" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rkyv.workspace = true
-chrono.workspace = true
 clap.workspace = true
 eframe.workspace = true
 simple_logger.workspace = true

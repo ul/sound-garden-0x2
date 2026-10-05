@@ -4,10 +4,6 @@ version = "0.1.0"
 authors = ["Ruslan Prokopchuk <fer.obbee@gmail.com>"]
 edition = "2024"
 
-[features]
-allocation-checks = ["dep:alloc_counter"]
-
 [dependencies]
 smallvec.workspace = true
 downcast-rs.workspace = true
-alloc_counter = { workspace = true, optional = true }

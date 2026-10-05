@@ -9,14 +9,10 @@ description = "Sound Garden Audio Synth Server"
 name = "audio_server"
 path = "./src/lib.rs"
 
-[features]
-allocation-checks = ["dep:alloc_counter"]
-
 [dependencies]
-alloc_counter = { workspace = true, optional = true }
 anyhow.workspace = true
 rkyv.workspace = true
-chrono.workspace = true
+jiff.workspace = true
 cpal.workspace = true
 clap.workspace = true
 crossbeam-channel.workspace = true

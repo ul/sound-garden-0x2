@@ -1,9 +1,9 @@
-use ahash::RandomState;
 pub use audio_ops::diagnostics::{self, Diagnostic};
 use audio_ops::*;
 #[cfg(test)]
 use audio_vm::Frame;
 use audio_vm::{AtomicFrame, AtomicSample, Op, Program, Sample, Statement};
+use foldhash::fast::RandomState;
 use regex::Regex;
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
@@ -37,8 +37,8 @@ impl Context {
         Context {
             input: Default::default(),
             params: Default::default(),
-            tables: HashMap::with_hasher(RandomState::new()),
-            variables: HashMap::with_hasher(RandomState::new()),
+            tables: HashMap::default(),
+            variables: HashMap::default(),
             midi: Arc::new(MidiFrameEvents::new()),
             midi_controls: Arc::new(MidiControls::new()),
             seed: None,
@@ -1670,7 +1670,10 @@ mod tests {
         let ops = optimize_terms(&[op(1, "1"), op(2, "s"), op(3, "8"), op(4, "^")]);
         assert_eq!(ops[1], OptimizedOp::PowConst { id: 4, value: 8.0 });
         assert_eq!(
-            run_once(&[op(1, "-1.5"), op(2, "3"), op(3, "^")], &mut Context::new()),
+            run_once(
+                &[op(1, "-1.5"), op(2, "3"), op(3, "^")],
+                &mut Context::new()
+            ),
             [-3.375, -3.375]
         );
     }

@@ -18,6 +18,7 @@ mod midi;
 mod record;
 mod telemetry;
 
+pub use record::timestamp;
 pub use telemetry::Meters;
 
 const CHANNEL_CAPACITY: usize = 64;

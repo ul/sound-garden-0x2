@@ -9,7 +9,6 @@ itertools.workspace = true
 log.workspace = true
 nom.workspace = true
 rustfft.workspace = true
-apodize.workspace = true
 micromath.workspace = true
 rand.workspace = true
 audio_vm = { path = "../audio_vm" }
