@@ -1871,16 +1871,16 @@ impl eframe::App for SoundGardenApp {
             egui::Panel::bottom("oscilloscope")
                 .resizable(true)
                 .default_size(140.0)
-                .show_inside(ui, |ui| self.draw_oscilloscope(ui));
+                .show(ui, |ui| self.draw_oscilloscope(ui));
         }
 
         egui::Panel::bottom("modeline")
             .exact_size(MODELINE_HEIGHT)
-            .show_inside(ui, |ui| self.draw_modeline(ui));
+            .show(ui, |ui| self.draw_modeline(ui));
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(BACKGROUND_COLOR))
-            .show_inside(ui, |ui| self.draw_canvas(ui));
+            .show(ui, |ui| self.draw_canvas(ui));
 
         // Last, so edits made while drawing (e.g. node drags) are included.
         self.save_if_due(&ctx);

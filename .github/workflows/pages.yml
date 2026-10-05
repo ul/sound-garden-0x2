@@ -21,12 +21,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo install wasm-bindgen-cli --version 0.2.122 --locked
+      - run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: cargo test --locked -p sound_garden_format -p sound_garden_web
       - run: make -C sound_garden_web
       - run: |
@@ -40,9 +40,9 @@ jobs:
           sudo gem install asciidoctor rouge --no-document
       - run: make -C book final
       - run: cp -R book/build sound_garden_web/dist/book
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: sound_garden_web/dist
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

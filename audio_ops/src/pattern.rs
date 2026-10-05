@@ -7,7 +7,7 @@ use nom::bytes::complete::take_while1;
 use nom::character::complete::{char, digit1, multispace0};
 use nom::combinator::{all_consuming, map, map_res, opt, value};
 use nom::multi::{many0, separated_list1};
-use nom::sequence::{delimited, preceded, terminated, tuple};
+use nom::sequence::{delimited, preceded, terminated};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ParseKind {
@@ -270,31 +270,33 @@ fn update_cycle_counts(
     }
 }
 
-fn ws<'a, F, O>(parser: F) -> impl FnMut(&'a str) -> IResult<&'a str, O>
+fn ws<'a, F, O>(parser: F) -> impl Parser<&'a str, Output = O, Error = nom::error::Error<&'a str>>
 where
-    F: Parser<&'a str, O, nom::error::Error<&'a str>>,
+    F: Parser<&'a str, Output = O, Error = nom::error::Error<&'a str>>,
 {
     delimited(multispace0, parser, multispace0)
 }
 
 fn unsigned(input: &str) -> IResult<&str, usize> {
-    map_res(digit1, str::parse::<usize>)(input)
+    map_res(digit1, str::parse::<usize>).parse(input)
 }
 
 fn signed(input: &str) -> IResult<&str, isize> {
     map_res(
-        tuple((opt(char('-')), digit1)),
+        (opt(char('-')), digit1),
         |(sign, digits): (Option<char>, &str)| {
             let value = digits.parse::<isize>()?;
             Ok::<_, std::num::ParseIntError>(if sign.is_some() { -value } else { value })
         },
-    )(input)
+    )
+    .parse(input)
 }
 
 fn repeat_suffix(input: &str) -> IResult<&str, usize> {
     map(opt(preceded(char('*'), unsigned)), |repeat| {
         repeat.unwrap_or(1)
-    })(input)
+    })
+    .parse(input)
 }
 
 fn positive_repeat(input: &str) -> IResult<&str, usize> {
@@ -409,49 +411,52 @@ fn finite_sample_token(input: &str) -> IResult<&str, Sample> {
     map_res(
         take_while1(|ch: char| ch != ',' && ch != ')' && !ch.is_ascii_whitespace()),
         parse_value_constant,
-    )(input)
+    )
+    .parse(input)
 }
 
 fn euclidean_args(input: &str) -> IResult<&str, (usize, usize, isize)> {
     delimited(
         char('('),
         map(
-            tuple((
+            (
                 ws(unsigned),
                 char(','),
                 ws(unsigned),
                 opt(preceded(char(','), ws(signed))),
-            )),
+            ),
             |(pulses, _, steps, offset)| (pulses, steps, offset.unwrap_or(0)),
         ),
         char(')'),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn value_euclidean_args(input: &str) -> IResult<&str, (usize, usize, isize, Sample)> {
     delimited(
         char('('),
         map(
-            tuple((
+            (
                 ws(unsigned),
                 char(','),
                 ws(unsigned),
                 opt(preceded(char(','), ws(signed))),
                 opt(preceded(char(','), ws(finite_sample_token))),
-            )),
+            ),
             |(pulses, _, steps, offset, off)| {
                 (pulses, steps, offset.unwrap_or(0), off.unwrap_or(0.0))
             },
         ),
         char(')'),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     alt((
         value(vec![PatternElement::Atom(None)], char('_')),
         map_res(
-            tuple((
+            (
                 take_while1(|ch: char| {
                     !ch.is_ascii_whitespace()
                         && ch != ','
@@ -465,7 +470,7 @@ fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>>
                         && ch != '('
                 }),
                 opt(value_euclidean_args),
-            )),
+            ),
             |(token, euclid): (&str, Option<(usize, usize, isize, Sample)>)| {
                 let value = parse_value_constant(token)?;
                 Ok::<_, ()>(match euclid {
@@ -476,14 +481,16 @@ fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>>
                 })
             },
         ),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 fn value_group(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     map(
         delimited(char('['), value_sequence, char(']')),
         |elements| vec![PatternElement::Group(elements)],
-    )(input)
+    )
+    .parse(input)
 }
 
 fn value_alternate(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
@@ -494,15 +501,16 @@ fn value_alternate(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sampl
             char('>'),
         ),
         |alternatives| vec![PatternElement::Alternate(alternatives)],
-    )(input)
+    )
+    .parse(input)
 }
 
 fn value_base(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
-    ws(alt((value_group, value_alternate, value_atom)))(input)
+    ws(alt((value_group, value_alternate, value_atom))).parse(input)
 }
 
 fn value_item(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
-    let (input, choices) = separated_list1(char('|'), value_base)(input)?;
+    let (input, choices) = separated_list1(char('|'), value_base).parse(input)?;
     let elements = if choices.len() == 1 {
         choices.into_iter().next().unwrap()
     } else {
@@ -515,7 +523,8 @@ fn value_item(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>>
 fn value_sequence(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     map(separated_list1(char(','), value_item), |items| {
         items.into_iter().flatten().collect()
-    })(input)
+    })
+    .parse(input)
 }
 
 fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
@@ -538,7 +547,7 @@ fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
 }
 
 fn parse_values(pattern: &str, seed_perturbation: u64) -> Pattern<Sample> {
-    let parsed = all_consuming(terminated(value_sequence, multispace0))(pattern);
+    let parsed = all_consuming(terminated(value_sequence, multispace0)).parse(pattern);
     match parsed {
         Ok((_, elements)) => {
             let period = pattern_period(&elements).max(1);
@@ -583,13 +592,15 @@ fn gate_atom(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
                 euclidean_values(pulses, steps, offset, true, false).unwrap_or_default()
             },
         ),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 fn gate_group(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     map(delimited(char('['), gate_sequence, char(']')), |elements| {
         vec![PatternElement::Group(elements)]
-    })(input)
+    })
+    .parse(input)
 }
 
 fn gate_alternate(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
@@ -600,15 +611,16 @@ fn gate_alternate(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
             char('>'),
         ),
         |alternatives| vec![PatternElement::Alternate(alternatives)],
-    )(input)
+    )
+    .parse(input)
 }
 
 fn gate_base(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
-    ws(alt((gate_group, gate_alternate, gate_atom)))(input)
+    ws(alt((gate_group, gate_alternate, gate_atom))).parse(input)
 }
 
 fn gate_item(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
-    let (input, choices) = separated_list1(char('|'), gate_base)(input)?;
+    let (input, choices) = separated_list1(char('|'), gate_base).parse(input)?;
     let elements = if choices.len() == 1 {
         choices.into_iter().next().unwrap()
     } else {
@@ -622,11 +634,12 @@ fn gate_sequence(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
     map(
         many0(alt((gate_item, value(Vec::new(), ws(char(',')))))),
         |items| items.into_iter().flatten().collect(),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_gates(pattern: &str, seed_perturbation: u64) -> Pattern<bool> {
-    match all_consuming(terminated(gate_sequence, multispace0))(pattern) {
+    match all_consuming(terminated(gate_sequence, multispace0)).parse(pattern) {
         Ok((_, elements)) if !elements.is_empty() => {
             let pattern = compile_pattern(elements, seed_perturbation);
             if pattern.is_empty() {
