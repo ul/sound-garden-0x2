@@ -91,6 +91,12 @@ pub fn native_main() -> Result<()> {
                 .help("Connect a MIDI input for the embedded audio server: 'auto', device index, or case-insensitive name substring."),
         )
         .arg(
+            Arg::new("audio-device")
+                .long("audio-device")
+                .value_name("DEVICE")
+                .help("Audio output: index from --list-audio or case-insensitive name substring. Default: the system's."),
+        )
+        .arg(
             Arg::new("sample-rate")
                 .long("sample-rate")
                 .value_name("HZ")
@@ -158,6 +164,7 @@ pub fn native_main() -> Result<()> {
         })
         .unwrap_or_default();
 
+    let audio_device = matches.get_one::<String>("audio-device").cloned();
     let sample_rate = matches.get_one::<u32>("sample-rate").copied();
     let buffer_frames = matches.get_one::<u32>("buffer").copied();
     let audio_control = if let Some(port) = matches.get_one::<String>("audio-port") {
@@ -182,6 +189,7 @@ pub fn native_main() -> Result<()> {
                 tx,
                 audio_server::Options {
                     midi,
+                    audio_device,
                     sample_rate,
                     buffer_frames,
                 },

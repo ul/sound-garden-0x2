@@ -21,6 +21,7 @@ log.workspace = true
 midir.workspace = true
 rtrb.workspace = true
 serde.workspace = true
+simple_logger.workspace = true
 audio_ops = { path = "../audio_ops" }
 audio_program = { path = "../audio_program" }
 audio_vm = { path = "../audio_vm" }

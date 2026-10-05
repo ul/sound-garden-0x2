@@ -12,6 +12,9 @@ use thread_worker::Worker;
 const CHANNEL_CAPACITY: usize = 64;
 
 fn main() -> Result<()> {
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Info)
+        .init()?;
     let matches = Command::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!())
@@ -34,6 +37,12 @@ fn main() -> Result<()> {
         .arg(Arg::new("midi").long("midi").value_name("DEVICE").help(
             "Connect a MIDI input: 'auto', device index, or case-insensitive name substring.",
         ))
+        .arg(
+            Arg::new("audio-device")
+                .long("audio-device")
+                .value_name("DEVICE")
+                .help("Audio output: index from --list-audio or case-insensitive name substring. Default: the system's."),
+        )
         .arg(
             Arg::new("sample-rate")
                 .long("sample-rate")
@@ -89,6 +98,7 @@ fn main() -> Result<()> {
             }
         })
         .unwrap_or_default();
+    let audio_device = matches.get_one::<String>("audio-device").cloned();
     let sample_rate = matches.get_one::<u32>("sample-rate").copied();
     let buffer_frames = matches.get_one::<u32>("buffer").copied();
     let worker = Worker::spawn("Synth", CHANNEL_CAPACITY, move |rx, tx| {
@@ -97,6 +107,7 @@ fn main() -> Result<()> {
             tx,
             Options {
                 midi,
+                audio_device,
                 sample_rate,
                 buffer_frames,
             },

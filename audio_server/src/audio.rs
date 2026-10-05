@@ -1,4 +1,5 @@
 use crate::{
+    Options,
     midi::{MidiMessage, TimedMidiEvent},
     telemetry::{CallbackTiming, OutputLevels, Telemetry},
 };
@@ -55,22 +56,19 @@ struct CallbackState {
     timing: CallbackTiming,
 }
 
-/// `sample_rate` requests a device sample rate, falling back to the device
-/// default if the device can't run at it; `buffer_frames` requests a device
-/// buffer size, clamped to what the device supports. `None` keeps the device
-/// default for either.
+/// Opens the output device `options` ask for and plays `engine` on it. Each
+/// request falls back to the device's own setting, with a warning, if the
+/// device can't honour it.
 pub fn main(
     mut engine: Engine,
-    sample_rate: Option<u32>,
-    buffer_frames: Option<u32>,
+    options: &Options,
     rx: Receiver<()>,
     tx: Sender<u32>,
 ) -> Result<()> {
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or(anyhow::anyhow!("No default device available."))?;
-    let config = output_config(&device, sample_rate)?;
+    let device = output_device(options.audio_device.as_deref())?;
+    log::info!("Audio output: {device}");
+    let config = output_config(&device, options.sample_rate)?;
+    let buffer_frames = options.buffer_frames;
     let mut stream_config = config.config();
     if let Some(frames) = buffer_frames {
         let frames = match config.buffer_size() {
@@ -111,6 +109,35 @@ pub fn main(
     }
 }
 
+/// The default output device, or the one `selection` names by its
+/// --list-audio index or a case-insensitive part of its name; falls back to
+/// the default if none matches.
+fn output_device(selection: Option<&str>) -> Result<cpal::Device> {
+    let host = cpal::default_host();
+    let default = || {
+        host.default_output_device()
+            .ok_or(anyhow::anyhow!("No default audio output available."))
+    };
+    let Some(query) = selection else {
+        return default();
+    };
+    let mut devices = host.output_devices()?;
+    let found = match query.parse::<usize>() {
+        Ok(index) => devices.nth(index),
+        Err(_) => {
+            let query = query.to_lowercase();
+            devices.find(|device| device.to_string().to_lowercase().contains(&query))
+        }
+    };
+    match found {
+        Some(device) => Ok(device),
+        None => {
+            log::warn!("No audio output matching {query:?}; using the default. See --list-audio.");
+            default()
+        }
+    }
+}
+
 /// The device default config, or one at `sample_rate` if the device supports
 /// it with our channel count, preferring the default sample format.
 fn output_config(
@@ -145,19 +172,19 @@ fn output_config(
 }
 
 /// Output devices of the default host and the configs each supports, one
-/// line per device followed by indented config lines.
+/// numbered line per device (the number selects it) followed by indented
+/// config lines.
 pub fn list_outputs() -> Result<Vec<String>> {
     let host = cpal::default_host();
     let default_id = host
         .default_output_device()
         .and_then(|device| device.id().ok());
     let mut lines = Vec::new();
-    for device in host.output_devices()? {
+    for (index, device) in host.output_devices()?.enumerate() {
         let is_default = default_id.is_some() && device.id().ok() == default_id;
         lines.push(format!(
-            "{}{}",
-            device,
-            if is_default { " (default, used)" } else { "" }
+            "{index}: {device}{}",
+            if is_default { " (default)" } else { "" }
         ));
         if let Ok(config) = device.default_output_config() {
             lines.push(format!(

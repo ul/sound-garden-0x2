@@ -568,6 +568,7 @@ dependencies = [
  "rkyv",
  "rtrb",
  "serde",
+ "simple_logger",
  "thread_worker",
 ]
 
