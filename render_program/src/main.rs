@@ -12,17 +12,22 @@ fn main() {
         .expect("Failed to read stdin");
 
     let mut stats_enabled = false;
-    let args = std::env::args()
-        .skip(1)
-        .filter(|arg| {
-            if arg == "--stats" {
-                stats_enabled = true;
-                false
-            } else {
-                true
-            }
-        })
-        .collect::<Vec<_>>();
+    let mut sample_rate: u32 = 48000;
+    let mut args = Vec::new();
+    let mut raw_args = std::env::args().skip(1);
+    while let Some(arg) = raw_args.next() {
+        if arg == "--stats" {
+            stats_enabled = true;
+        } else if arg == "--sample-rate" {
+            sample_rate = raw_args
+                .next()
+                .and_then(|x| x.parse::<u32>().ok())
+                .filter(|&x| x > 0)
+                .expect("Please provide --sample-rate in Hz, e.g. 96000.");
+        } else {
+            args.push(arg);
+        }
+    }
     let mut args = args.into_iter();
 
     let duration = args
@@ -30,8 +35,6 @@ fn main() {
         .and_then(|x| x.parse::<f64>().ok())
         .expect("Please provide duration in seconds.");
     let output = args.next().expect("Please provide output path.");
-
-    let sample_rate: u32 = 48000;
 
     let spec = WavSpec {
         channels: CHANNELS as _,

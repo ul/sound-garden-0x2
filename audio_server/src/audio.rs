@@ -55,10 +55,13 @@ struct CallbackState {
     timing: CallbackTiming,
 }
 
-/// `buffer_frames` requests a device buffer size, clamped to what the device
-/// supports; `None` keeps the device default.
+/// `sample_rate` requests a device sample rate, falling back to the device
+/// default if the device can't run at it; `buffer_frames` requests a device
+/// buffer size, clamped to what the device supports. `None` keeps the device
+/// default for either.
 pub fn main(
     engine: Engine,
+    sample_rate: Option<u32>,
     buffer_frames: Option<u32>,
     rx: Receiver<()>,
     tx: Sender<u32>,
@@ -67,7 +70,7 @@ pub fn main(
     let device = host
         .default_output_device()
         .ok_or(anyhow::anyhow!("No default device available."))?;
-    let config = device.default_output_config()?;
+    let config = output_config(&device, sample_rate)?;
     let mut stream_config = config.config();
     if let Some(frames) = buffer_frames {
         let frames = match config.buffer_size() {
@@ -105,6 +108,100 @@ pub fn main(
             "Unsupported sample format: {sample_format:?}"
         )),
     }
+}
+
+/// The device default config, or one at `sample_rate` if the device supports
+/// it with our channel count, preferring the default sample format.
+fn output_config(
+    device: &cpal::Device,
+    sample_rate: Option<u32>,
+) -> Result<cpal::SupportedStreamConfig> {
+    let default = device.default_output_config()?;
+    let Some(rate) = sample_rate.filter(|&rate| rate != default.sample_rate()) else {
+        return Ok(default);
+    };
+    let mut ranges = device
+        .supported_output_configs()?
+        .filter(|range| range.channels() as usize == CHANNELS && range.contains_rate(rate))
+        .filter(|range| {
+            matches!(
+                range.sample_format(),
+                cpal::SampleFormat::F32 | cpal::SampleFormat::I16 | cpal::SampleFormat::U16
+            )
+        })
+        .collect::<Vec<_>>();
+    ranges.sort_by_key(|range| range.sample_format() != default.sample_format());
+    match ranges.into_iter().next() {
+        Some(range) => Ok(range.with_sample_rate(rate)),
+        None => {
+            log::warn!(
+                "Sample rate {rate} Hz isn't supported by the device; using {} Hz. See --list-audio.",
+                default.sample_rate()
+            );
+            Ok(default)
+        }
+    }
+}
+
+/// Output devices of the default host and the configs each supports, one
+/// line per device followed by indented config lines.
+pub fn list_outputs() -> Result<Vec<String>> {
+    let host = cpal::default_host();
+    let default_id = host
+        .default_output_device()
+        .and_then(|device| device.id().ok());
+    let mut lines = Vec::new();
+    for device in host.output_devices()? {
+        let is_default = default_id.is_some() && device.id().ok() == default_id;
+        lines.push(format!(
+            "{}{}",
+            device,
+            if is_default { " (default, used)" } else { "" }
+        ));
+        if let Ok(config) = device.default_output_config() {
+            lines.push(format!(
+                "    default: {} ch, {}, {} Hz",
+                config.channels(),
+                config.sample_format(),
+                config.sample_rate()
+            ));
+        }
+        let Ok(ranges) = device.supported_output_configs() else {
+            lines.push("    supported configs unavailable".to_string());
+            continue;
+        };
+        // Devices often report one range per rate; group them by channels,
+        // format and buffer size so each group is one line of rates.
+        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+        for range in ranges {
+            let key = format!(
+                "{} ch, {}, buffer {}",
+                range.channels(),
+                range.sample_format(),
+                match range.buffer_size() {
+                    cpal::SupportedBufferSize::Range { min, max } => format!("{min}..={max}"),
+                    cpal::SupportedBufferSize::Unknown => "unknown".to_string(),
+                }
+            );
+            let rates = if range.min_sample_rate() == range.max_sample_rate() {
+                range.min_sample_rate().to_string()
+            } else {
+                format!("{}..={}", range.min_sample_rate(), range.max_sample_rate())
+            };
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, group)) => {
+                    if !group.contains(&rates) {
+                        group.push(rates)
+                    }
+                }
+                None => groups.push((key, vec![rates])),
+            }
+        }
+        for (key, rates) in groups {
+            lines.push(format!("    {key}: {} Hz", rates.join(", ")));
+        }
+    }
+    Ok(lines)
 }
 
 fn run<T>(

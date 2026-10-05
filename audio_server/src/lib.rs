@@ -31,10 +31,13 @@ const SCOPE_RING_FRAMES: usize = 16384;
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     pub midi: MidiInputSelection,
+    /// Requested sample rate in Hz; None keeps the device default.
+    pub sample_rate: Option<u32>,
     /// Requested audio buffer size in frames; None keeps the device default.
     pub buffer_frames: Option<u32>,
 }
 
+pub use audio::list_outputs as list_audio_outputs;
 pub use midi::{MidiInputSelection, MidiMessage, list_inputs as list_midi_inputs};
 
 #[derive(Clone, Debug)]
@@ -98,6 +101,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
     let diagnostics = Arc::new(Mutex::new(Arc::new(Diagnostics::default())));
     let monitor_diagnostics = Arc::clone(&diagnostics);
     let engine_telemetry = Arc::clone(&telemetry);
+    let requested_sample_rate = options.sample_rate;
     let buffer_frames = options.buffer_frames;
     let (midi_connection, midi_rx, midi_device) =
         match midi::open_input(&options.midi, Arc::clone(&telemetry)) {
@@ -144,7 +148,7 @@ pub fn run_with_options(rx: Receiver<Msg>, tx: Sender<Monitor>, options: Options
             telemetry: engine_telemetry,
             scope_tx,
         };
-        audio::main(engine, buffer_frames, i, o).unwrap();
+        audio::main(engine, requested_sample_rate, buffer_frames, i, o).unwrap();
     });
     let sample_rate = player.receiver().recv().unwrap();
 

@@ -93,11 +93,24 @@ pub fn native_main() -> Result<()> {
                 .help("Connect a MIDI input for the embedded audio server: 'auto', device index, or case-insensitive name substring."),
         )
         .arg(
+            Arg::new("sample-rate")
+                .long("sample-rate")
+                .value_name("HZ")
+                .value_parser(clap::value_parser!(u32).range(8000..=384000))
+                .help("Sample rate in Hz, e.g. 96000; falls back to the device's own if unsupported. On macOS this sets the device's rate system-wide. Default: the device's own."),
+        )
+        .arg(
             Arg::new("buffer")
                 .long("buffer")
                 .value_name("FRAMES")
                 .value_parser(clap::value_parser!(u32).range(16..=8192))
                 .help("Audio buffer size in frames, e.g. 128 for low latency; clamped to what the device supports. Default: the device's own."),
+        )
+        .arg(
+            Arg::new("list-audio")
+                .long("list-audio")
+                .action(clap::ArgAction::SetTrue)
+                .help("List audio output devices with their supported sample rates and exit."),
         )
         .arg(
             Arg::new("list-midi")
@@ -106,6 +119,13 @@ pub fn native_main() -> Result<()> {
                 .help("List available MIDI input devices and exit."),
         )
         .get_matches();
+
+    if matches.get_flag("list-audio") {
+        for line in audio_server::list_audio_outputs()? {
+            println!("{line}");
+        }
+        return Ok(());
+    }
 
     if matches.get_flag("list-midi") {
         for line in audio_server::list_midi_inputs()? {
@@ -140,6 +160,7 @@ pub fn native_main() -> Result<()> {
         })
         .unwrap_or_default();
 
+    let sample_rate = matches.get_one::<u32>("sample-rate").copied();
     let buffer_frames = matches.get_one::<u32>("buffer").copied();
     let audio_control = if let Some(port) = matches.get_one::<String>("audio-port") {
         let address = format!("127.0.0.1:{}", port);
@@ -163,6 +184,7 @@ pub fn native_main() -> Result<()> {
                 tx,
                 audio_server::Options {
                     midi,
+                    sample_rate,
                     buffer_frames,
                 },
             );
