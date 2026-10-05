@@ -1,4 +1,4 @@
-use crate::op::Op;
+use crate::op::{Op, PatternSpan};
 use crate::sample::{AtomicFrame, CHANNELS, Frame, Sample};
 use crate::stack::Stack;
 use smallvec::SmallVec;
@@ -48,8 +48,8 @@ pub struct VM {
     /// What Statement output we want to monitor.
     /// 0 has a special meaning of the last Statement.
     monitor_id: u64,
-    /// Statement outputs used for GUI pattern highlighting.
-    pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>>,
+    /// Sounding parts of pattern statements, for GUI pattern highlighting.
+    pattern_monitor: Arc<Mutex<Vec<(u64, PatternSpan)>>>,
     /// Frames until monitors are published next; 0 publishes on the next frame.
     monitor_countdown: usize,
     /// This frame's output of the monitored statement (or the program output
@@ -80,7 +80,7 @@ impl Default for VM {
 
 impl VM {
     pub fn new() -> Self {
-        let pattern_monitor: Arc<Mutex<Vec<(u64, Frame)>>> = Default::default();
+        let pattern_monitor: Arc<Mutex<Vec<(u64, PatternSpan)>>> = Default::default();
         // Some platforms (e.g. pthread-backed std Mutex on macOS) allocate the OS
         // lock lazily on first use. Lock once here so that allocation happens on
         // the constructing thread, not on the audio thread's first try_lock.
@@ -251,7 +251,7 @@ impl VM {
         Arc::clone(&self.monitor)
     }
 
-    pub fn pattern_monitor(&self) -> Arc<Mutex<Vec<(u64, Frame)>>> {
+    pub fn pattern_monitor(&self) -> Arc<Mutex<Vec<(u64, PatternSpan)>>> {
         Arc::clone(&self.pattern_monitor)
     }
 
@@ -347,12 +347,12 @@ impl VM {
     }
 }
 
-/// Replace the statement ids whose outputs are published to `monitor` (see
+/// Replace the statement ids whose pattern spans are published to `monitor` (see
 /// `VM::pattern_monitor`). This takes the shared monitor rather than the VM
 /// because it blocks on the lock and allocates, so it must be called off the
 /// audio thread; `next_frame` only ever `try_lock`s and skips a frame if busy.
-pub fn set_pattern_monitor_ids(monitor: &Mutex<Vec<(u64, Frame)>>, ids: &[u64]) {
-    let entries = ids.iter().map(|&id| (id, Frame::default())).collect();
+pub fn set_pattern_monitor_ids(monitor: &Mutex<Vec<(u64, PatternSpan)>>, ids: &[u64]) {
+    let entries = ids.iter().map(|&id| (id, PatternSpan::default())).collect();
     if let Ok(mut monitor) = monitor.lock() {
         // Swap under the lock and drop the old Vec after releasing it.
         let _old = std::mem::replace(&mut *monitor, entries);
@@ -426,7 +426,7 @@ fn perform_and_monitor(
     program: &mut Program,
     stack: &mut Stack,
     scope_id: u64,
-    mut pattern_monitor: Option<&mut [(u64, Frame)]>,
+    mut pattern_monitor: Option<&mut [(u64, PatternSpan)]>,
 ) -> (Frame, Frame) {
     let mut scope = Default::default();
     stack.reset();
@@ -437,10 +437,9 @@ fn perform_and_monitor(
             scope = frame;
         }
         if let Some(pattern_monitor) = &mut pattern_monitor
-            && let Some((_, pattern_frame)) =
-                pattern_monitor.iter_mut().find(|(id, _)| *id == stmt.id)
+            && let Some((_, span)) = pattern_monitor.iter_mut().find(|(id, _)| *id == stmt.id)
         {
-            *pattern_frame = frame;
+            *span = stmt.op.pattern_span();
         }
     }
 

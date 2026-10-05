@@ -60,6 +60,23 @@ The largest remaining cost in poly pieces is idle voices still running every
 frame; sleeping them changes state (oscillator phase, in-voice patterns), so
 it was left out for now.
 
+## Pattern highlight spans (2026-10, Apple Silicon)
+
+Pattern ops report the text of the cell they're playing (`Op::pattern_span`) for the
+editor's highlight. Each pattern keeps those text ranges in one list beside its cells, so
+the per-sample cell scan is unchanged; the VM asks only monitored statements, once per
+monitor interval.
+
+| bench | before | after | change |
+|---|---|---|---|
+| `vm_next_frame/long_patterns_32_cells` | 58.8 ns | 55.2 ns | noise |
+| `vm_state_paths/monitor_4_patterns` | 57.9 ns | 56.2 ns | noise |
+| `compile_program/long_patterns_32_cells` | 29.2 µs | 29.5 µs | +2% |
+| `compile_program/random_choice_patterns` | 76.2 µs | 84.4 µs | +11% |
+
+A random choice compiles a variant per cycle of its 256-cycle period; one list of spans
+per variant instead of one per pattern cost +58% there.
+
 Run all benchmarks:
 
 ```sh

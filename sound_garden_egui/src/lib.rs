@@ -2,6 +2,7 @@ mod feedback;
 
 use anyhow::Result;
 use audio_program::{TextOp, get_help};
+use audio_vm::PatternSpan;
 #[cfg(not(target_arch = "wasm32"))]
 use clap::{Arg, Command, crate_authors, crate_description, crate_name, crate_version};
 use crossbeam_channel::{Receiver, Sender};
@@ -370,7 +371,8 @@ struct SoundGardenApp {
     oscilloscope_min: f64,
     oscilloscope_max: f64,
     monitor_stream_enabled: bool,
-    pattern_monitors: HashMap<Id, PatternMonitor>,
+    /// Sounding part of each committed pattern node's text, as the engine reports it.
+    pattern_monitors: HashMap<Id, PatternSpan>,
     /// When the pending save should be written; None when nothing is unsaved.
     save_due: Option<SaveDeadline>,
     /// Latest node snapshot given to browser persistence (cursor moves alone do not fork demos).
@@ -381,15 +383,6 @@ struct SoundGardenApp {
     /// Every sample (left channel) of the node under the cursor, newest last.
     capture: VecDeque<f64>,
     spectrum: Spectrum,
-}
-
-#[derive(Clone, Copy)]
-struct PatternMonitor {
-    source_id: u64,
-    clocked: bool,
-    phase: f64,
-    cycle_count: usize,
-    last_time: Option<f64>,
 }
 
 #[derive(Clone, Copy)]
@@ -778,66 +771,28 @@ impl SoundGardenApp {
         };
         let mut pattern_monitor_ids = self
             .pattern_monitors
-            .values()
-            .map(|monitor| monitor.source_id)
+            .keys()
+            .map(|&id| u64::from(id))
             .collect::<Vec<_>>();
         pattern_monitor_ids.sort_unstable();
-        pattern_monitor_ids.dedup();
         self.audio_tx
             .send(audio_server::Message::PatternMonitors(pattern_monitor_ids))
             .ok();
         self.update_monitor_stream();
     }
 
-    fn pattern_monitors(
-        &self,
-        old_monitors: HashMap<Id, PatternMonitor>,
-    ) -> HashMap<Id, PatternMonitor> {
-        // The compiler drops comments and seed: words, so a pattern's input is
-        // the nearest preceding word that survives them.
-        let comment_node_ids = commented_node_ids(&self.state.nodes);
-        let live_nodes = self
-            .state
+    /// Committed pattern nodes, keeping the spans already known. A node the
+    /// engine doesn't run (commented out, or inside a quotation) stays unlit.
+    fn pattern_monitors(&self, old_monitors: HashMap<Id, PatternSpan>) -> HashMap<Id, PatternSpan> {
+        self.state
             .nodes
             .iter()
             .filter(|node| {
-                !comment_node_ids.contains(&node.id) && !node.text.starts_with("seed:")
+                !self.state.draft_nodes.contains(&node.id) && pattern_text(&node.text).is_some()
             })
-            .collect::<Vec<_>>();
-        live_nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(index, node)| {
-                if self.state.draft_nodes.contains(&node.id) {
-                    return None;
-                }
-                let source_node = live_nodes.get(index.checked_sub(1)?)?;
-                if self.state.draft_nodes.contains(&source_node.id) {
-                    return None;
-                }
-                let (clocked, _, _) = pattern_text(&node.text)?;
-                let source_id = u64::from(source_node.id);
-                let old = old_monitors.get(&node.id);
-                Some((
-                    node.id,
-                    PatternMonitor {
-                        source_id,
-                        clocked,
-                        phase: old
-                            .filter(|monitor| {
-                                monitor.source_id == source_id && monitor.clocked == clocked
-                            })
-                            .map(|monitor| monitor.phase)
-                            .unwrap_or(0.0),
-                        cycle_count: old
-                            .filter(|monitor| {
-                                monitor.source_id == source_id && monitor.clocked == clocked
-                            })
-                            .map(|monitor| monitor.cycle_count)
-                            .unwrap_or(0),
-                        last_time: None,
-                    },
-                ))
+            .map(|node| {
+                let span = old_monitors.get(&node.id).copied().unwrap_or_default();
+                (node.id, span)
             })
             .collect()
     }
@@ -1332,24 +1287,12 @@ impl SoundGardenApp {
         if self.state.draft_nodes.contains(&node.id) {
             return;
         }
-        let Some(monitor) = self.pattern_monitors.get(&node.id) else {
+        let Some(&span) = self.pattern_monitors.get(&node.id) else {
             return;
         };
-        let Some((_, dense, pattern)) = pattern_text(&node.text) else {
+        let Some((column, width)) = highlight_columns(&node.text, span) else {
             return;
         };
-        let Some((start, end)) = active_pattern_span(
-            pattern,
-            dense,
-            monitor.phase.rem_euclid(1.0),
-            monitor.cycle_count,
-        ) else {
-            return;
-        };
-        // Spans are byte offsets into the pattern; the grid counts characters.
-        let pattern_start = node.text.len() - pattern.len();
-        let column = node.text[..pattern_start + start].chars().count();
-        let width = pattern[start..end].chars().count();
         let x = origin.x + (node.position.x as f32 + column as f32) * GRID_WIDTH;
         let y = origin.y + node.position.y as f32 * GRID_HEIGHT;
         painter.rect_filled(
@@ -1814,28 +1757,9 @@ impl eframe::App for SoundGardenApp {
         let time = ctx.input(|input| input.time);
         let mut received_monitor_frame = false;
         while let Ok(monitor_frame) = self.monitor_rx.try_recv() {
-            for (source_id, frame) in monitor_frame.patterns {
-                for monitor in self
-                    .pattern_monitors
-                    .values_mut()
-                    .filter(|monitor| monitor.source_id == source_id)
-                {
-                    let previous_phase = monitor.phase;
-                    if monitor.clocked {
-                        if let Some(last_time) = monitor.last_time {
-                            let dt = (time - last_time).max(0.0);
-                            monitor.phase = (monitor.phase + frame[0] * dt).rem_euclid(1.0);
-                            if previous_phase > monitor.phase {
-                                monitor.cycle_count = monitor.cycle_count.wrapping_add(1);
-                            }
-                        }
-                        monitor.last_time = Some(time);
-                    } else {
-                        monitor.phase = frame[0].rem_euclid(1.0);
-                        if previous_phase > monitor.phase {
-                            monitor.cycle_count = monitor.cycle_count.wrapping_add(1);
-                        }
-                    }
+            for (id, span) in monitor_frame.patterns {
+                if let Some(monitor) = self.pattern_monitors.get_mut(&Id::from(id)) {
+                    *monitor = span;
                     received_monitor_frame = true;
                 }
             }
@@ -2150,232 +2074,23 @@ fn remap(x: f64, from_min: f64, from_max: f64, to_min: f64, to_max: f64) -> f64 
     to_min + (x - from_min) * (to_max - to_min) / (from_max - from_min)
 }
 
-fn pattern_text(text: &str) -> Option<(bool, bool, &str)> {
+/// The pattern part of a pattern op's text, e.g. `x.x` of `gate:x.x`.
+fn pattern_text(text: &str) -> Option<&str> {
     let (op, pattern) = text.split_once(':')?;
-    match op {
-        "pat" => Some((false, false, pattern)),
-        "gate" | "trig" => Some((false, true, pattern)),
-        "cpat" => Some((true, false, pattern)),
-        "cgate" | "ctrig" => Some((true, true, pattern)),
-        _ => None,
-    }
+    matches!(op, "pat" | "gate" | "trig" | "cpat" | "cgate" | "ctrig").then_some(pattern)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum VisualPatternElement {
-    Atom((usize, usize)),
-    Group(Vec<VisualPatternElement>),
-    Alternate(Vec<Vec<VisualPatternElement>>),
-}
-
-fn active_pattern_span(
-    pattern: &str,
-    dense: bool,
-    phase: f64,
-    cycle: usize,
-) -> Option<(usize, usize)> {
-    active_span(
-        &mut VisualPatternParser::new(pattern, dense).parse(),
-        phase,
-        cycle,
-    )
-}
-
-fn active_span(
-    elements: &mut [VisualPatternElement],
-    phase: f64,
-    cycle: usize,
-) -> Option<(usize, usize)> {
-    let len = elements.len();
-    if len == 0 {
+/// Grid column (from the node's start) and width of a span of a pattern node's
+/// text. The span is in bytes of the pattern part; the grid counts characters.
+fn highlight_columns(text: &str, span: PatternSpan) -> Option<(usize, usize)> {
+    let pattern = pattern_text(text)?;
+    let sounding = pattern.get(span.start as usize..span.end as usize)?;
+    if sounding.is_empty() {
         return None;
     }
-    let position = phase.rem_euclid(1.0) * len as f64;
-    let index = (position as usize).min(len - 1);
-    let local_phase = position - index as f64;
-    match &mut elements[index] {
-        VisualPatternElement::Atom(span) => Some(*span),
-        VisualPatternElement::Group(children) => active_span(children, local_phase, cycle),
-        VisualPatternElement::Alternate(alternatives) => {
-            let alternative_index = cycle % alternatives.len();
-            let alternative = alternatives.get_mut(alternative_index)?;
-            active_span(alternative, local_phase, cycle)
-        }
-    }
-}
-
-fn parse_euclidean_steps(args: &str) -> Option<usize> {
-    let mut parts = args.split(',');
-    let pulses = parts.next()?.trim().parse::<usize>().ok()?;
-    let steps = parts.next()?.trim().parse::<usize>().ok()?;
-    (steps > 0 && pulses <= steps).then_some(steps)
-}
-
-struct VisualPatternParser<'a> {
-    pattern: &'a str,
-    dense: bool,
-    index: usize,
-}
-
-impl<'a> VisualPatternParser<'a> {
-    fn new(pattern: &'a str, dense: bool) -> Self {
-        Self {
-            pattern,
-            dense,
-            index: 0,
-        }
-    }
-
-    fn parse(mut self) -> Vec<VisualPatternElement> {
-        self.sequence(&[])
-    }
-
-    fn sequence(&mut self, stops: &[char]) -> Vec<VisualPatternElement> {
-        let mut elements = Vec::new();
-        while let Some(ch) = self.peek() {
-            if stops.contains(&ch) {
-                break;
-            }
-            if ch == ',' || ch.is_whitespace() {
-                self.bump();
-                continue;
-            }
-            if let Some(element) = self.item() {
-                elements.extend(element);
-            } else {
-                self.bump();
-            }
-        }
-        elements
-    }
-
-    fn item(&mut self) -> Option<Vec<VisualPatternElement>> {
-        let start = self.index;
-        let mut elements = self.base()?;
-        // A random choice `a|b` takes one step; which branch the engine picked
-        // is unknown here, so the whole choice lights up.
-        if self.peek() == Some('|') {
-            while self.peek() == Some('|') {
-                self.bump();
-                self.base();
-            }
-            elements = vec![VisualPatternElement::Atom((start, self.index))];
-        }
-        let repeat = self.repeat();
-        Some((0..repeat).flat_map(|_| elements.clone()).collect())
-    }
-
-    fn base(&mut self) -> Option<Vec<VisualPatternElement>> {
-        Some(match self.peek()? {
-            '[' => vec![self.group('[', ']')?],
-            '<' => vec![self.alternate()?],
-            _ => self.atom()?,
-        })
-    }
-
-    fn group(&mut self, open: char, close: char) -> Option<VisualPatternElement> {
-        debug_assert_eq!(self.peek(), Some(open));
-        self.bump();
-        let children = self.sequence(&[close]);
-        if self.peek() == Some(close) {
-            self.bump();
-        }
-        Some(VisualPatternElement::Group(children))
-    }
-
-    fn alternate(&mut self) -> Option<VisualPatternElement> {
-        debug_assert_eq!(self.peek(), Some('<'));
-        self.bump();
-        let mut alternatives = Vec::new();
-        while self.peek().is_some() && self.peek() != Some('>') {
-            alternatives.push(self.sequence(&[';', '>']));
-            if self.peek() == Some(';') {
-                self.bump();
-            }
-        }
-        if self.peek() == Some('>') {
-            self.bump();
-        }
-        (!alternatives.is_empty()).then_some(VisualPatternElement::Alternate(alternatives))
-    }
-
-    fn atom(&mut self) -> Option<Vec<VisualPatternElement>> {
-        let start = self.index;
-        let steps = if self.dense && matches!(self.peek()?, 'x' | 'X' | 'e' | '.') {
-            let ch = self.bump()?;
-            if matches!(ch, 'x' | 'X' | 'e') {
-                self.euclidean_suffix_steps()
-            } else {
-                None
-            }
-        } else {
-            while let Some(ch) = self.peek() {
-                if ch == ','
-                    || ch == ']'
-                    || ch == '>'
-                    || ch == ';'
-                    || ch == '*'
-                    || ch == '|'
-                    || ch.is_whitespace()
-                    || matches!(ch, '[' | '<' | '(')
-                {
-                    break;
-                }
-                self.bump();
-            }
-            self.euclidean_suffix_steps()
-        };
-        if self.index <= start {
-            return None;
-        }
-        let span = (start, self.index);
-        Some(vec![VisualPatternElement::Atom(span); steps.unwrap_or(1)])
-    }
-
-    fn euclidean_suffix_steps(&mut self) -> Option<usize> {
-        if self.peek() != Some('(') {
-            return None;
-        }
-        let content_start = self.index + '('.len_utf8();
-        let mut depth = 0usize;
-        while let Some(ch) = self.peek() {
-            self.bump();
-            match ch {
-                '(' => depth += 1,
-                ')' => {
-                    depth = depth.saturating_sub(1);
-                    if depth == 0 {
-                        let content_end = self.index - ch.len_utf8();
-                        return parse_euclidean_steps(&self.pattern[content_start..content_end]);
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
-    }
-
-    fn repeat(&mut self) -> usize {
-        if self.peek() != Some('*') {
-            return 1;
-        }
-        self.bump();
-        let start = self.index;
-        while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
-            self.bump();
-        }
-        self.pattern[start..self.index].parse().unwrap_or(1)
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.pattern[self.index..].chars().next()
-    }
-
-    fn bump(&mut self) -> Option<char> {
-        let ch = self.peek()?;
-        self.index += ch.len_utf8();
-        Some(ch)
-    }
+    let pattern_start = text.len() - pattern.len();
+    let column = text[..pattern_start + span.start as usize].chars().count();
+    Some((column, sounding.chars().count()))
 }
 
 #[cfg(test)]
@@ -2507,124 +2222,39 @@ mod tests {
     }
 
     #[test]
-    fn active_pattern_span_enters_alternations() {
-        assert_eq!(
-            active_pattern_span("60,<64;67>,72", false, 0.0, 0),
-            Some((0, 2))
-        );
-        assert_eq!(
-            active_pattern_span("60,<64;67>,72", false, 0.4, 0),
-            Some((4, 6))
-        );
-        assert_eq!(
-            active_pattern_span("60,<64;67>,72", false, 0.4, 1),
-            Some((7, 9))
-        );
-        assert_eq!(
-            active_pattern_span("60,<64;67,68>,72(3,8)", false, 0.8, 0),
-            Some((14, 21))
-        );
-        assert_eq!(
-            active_pattern_span("<60,64;67,72>", false, 0.25, 0),
-            Some((1, 3))
-        );
-        assert_eq!(
-            active_pattern_span("<60,64;67,72>", false, 0.25, 1),
-            Some((7, 9))
-        );
+    fn highlight_columns_map_pattern_bytes_to_grid_columns() {
+        let span = |start, end| PatternSpan { start, end };
+        assert_eq!(highlight_columns("pat:60,64", span(3, 5)), Some((7, 2)));
+        assert_eq!(highlight_columns("gate:x(3,8).", span(0, 6)), Some((5, 6)));
+        assert_eq!(highlight_columns("pat:é,60", span(3, 5)), Some((6, 2)));
+        assert_eq!(highlight_columns("pat:60,64", span(0, 0)), None);
+        assert_eq!(highlight_columns("pat:60,64", span(3, 9)), None);
+        assert_eq!(highlight_columns("pat:é,60", span(1, 3)), None);
+        assert_eq!(highlight_columns("sine", span(0, 1)), None);
     }
 
     #[test]
-    fn active_pattern_span_enters_nested_groups() {
-        assert_eq!(
-            active_pattern_span("x[<x.;.x>]x", true, 0.0, 0),
-            Some((0, 1))
-        );
-        assert_eq!(
-            active_pattern_span("x[<x.;.x>]x", true, 0.5, 0),
-            Some((4, 5))
-        );
-        assert_eq!(
-            active_pattern_span("x[<x.;.x>]x", true, 0.5, 1),
-            Some((7, 8))
-        );
-        assert_eq!(active_pattern_span("x(3,8).", true, 0.25, 0), Some((0, 6)));
-        assert_eq!(active_pattern_span("x(3,8).", true, 0.75, 0), Some((0, 6)));
-        assert_eq!(active_pattern_span("x(3,8).", true, 0.95, 0), Some((6, 7)));
-        assert_eq!(active_pattern_span("e(1,2).", true, 0.4, 0), Some((0, 6)));
-        assert_eq!(
-            active_pattern_span("60(3,8),72", false, 0.75, 0),
-            Some((0, 7))
-        );
-        assert_eq!(
-            active_pattern_span("60(3,8),72", false, 0.95, 0),
-            Some((8, 10))
-        );
-    }
-
-    #[test]
-    fn active_pattern_span_treats_a_random_choice_as_one_step() {
-        assert_eq!(
-            active_pattern_span("60|64,72", false, 0.25, 0),
-            Some((0, 5))
-        );
-        assert_eq!(
-            active_pattern_span("60|64,72", false, 0.75, 0),
-            Some((6, 8))
-        );
-        assert_eq!(active_pattern_span("x|.x", true, 0.25, 0), Some((0, 3)));
-        assert_eq!(active_pattern_span("x|.x", true, 0.75, 0), Some((3, 4)));
-        assert_eq!(
-            active_pattern_span("[60,64]|<67;69>*2,72", false, 0.4, 0),
-            Some((0, 15))
-        );
-        assert_eq!(
-            active_pattern_span("[60,64]|<67;69>*2,72", false, 0.9, 0),
-            Some((18, 20))
-        );
-    }
-
-    #[test]
-    fn pattern_monitors_skip_comments_and_seeds_to_find_the_source() {
+    fn pattern_monitors_watch_committed_pattern_nodes() {
         let mut app = app_with_nodes(
             vec![
                 node(1, 0.0, 0.0, "1"),
                 node(2, 2.0, 0.0, "phasor"),
-                node(3, 9.0, 0.0, "(beat"),
-                node(4, 15.0, 0.0, "clock)"),
-                node(5, 22.0, 0.0, "seed:3"),
-                node(6, 29.0, 0.0, "gate:x."),
-            ],
-            Point::new(0.0, 0.0),
-        );
-        app.commit_program();
-        app.sync_from_repo();
-
-        let monitors = app.pattern_monitors(HashMap::new());
-
-        assert_eq!(monitors.len(), 1);
-        assert_eq!(monitors[&Id::from(6)].source_id, 2);
-    }
-
-    #[test]
-    fn pattern_monitors_ignore_commented_out_patterns() {
-        let mut app = app_with_nodes(
-            vec![
-                node(1, 0.0, 0.0, "phasor"),
-                node(2, 7.0, 0.0, "("),
                 node(3, 9.0, 0.0, "gate:x."),
-                node(4, 17.0, 0.0, ")"),
-                node(5, 0.0, 1.0, "phasor"),
-                node(6, 7.0, 1.0, "[gate:x."),
-                node(7, 16.0, 1.0, "]"),
-                node(8, 18.0, 1.0, "--"),
+                node(4, 17.0, 0.0, "cpat:60,64"),
             ],
             Point::new(0.0, 0.0),
         );
         app.commit_program();
         app.sync_from_repo();
+        let kept = PatternSpan { start: 0, end: 1 };
+        let old = HashMap::from([(Id::from(3), kept), (Id::from(2), kept)]);
 
-        assert!(app.pattern_monitors(HashMap::new()).is_empty());
+        let monitors = app.pattern_monitors(old);
+
+        assert_eq!(
+            monitors,
+            HashMap::from([(Id::from(3), kept), (Id::from(4), PatternSpan::default())])
+        );
     }
 
     #[test]

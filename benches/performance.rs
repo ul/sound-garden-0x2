@@ -1,5 +1,5 @@
 use audio_program::{Context, TextOp, compile_program};
-use audio_vm::{Stack, VM};
+use audio_vm::{Stack, VM, set_pattern_monitor_ids};
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
@@ -155,6 +155,11 @@ fn long_pattern_ops() -> Vec<TextOp> {
     ))
 }
 
+/// Random choices, which compile to a variant per cycle of the random period.
+fn random_choice_pattern_ops() -> Vec<TextOp> {
+    words("1 cycle pat:60|64|67,[62|65]*4,<70;72|74> 1 cycle gate:x|.,x(3,8)|x(5,8),[x.]|[.x] +")
+}
+
 fn sliding_convolution_ops() -> Vec<TextOp> {
     words("110 s 220 s conv:256")
 }
@@ -198,6 +203,8 @@ fn compile_benchmarks(c: &mut Criterion) {
         ("constant_arithmetic_64_terms", constant_arithmetic_ops(64)),
         ("pitch_detection_yin", pitch_detection_ops()),
         ("poly_8_voices", poly_voices_ops()),
+        ("long_patterns_32_cells", long_pattern_ops()),
+        ("random_choice_patterns", random_choice_pattern_ops()),
     ] {
         group.bench_function(name, |b| {
             b.iter_batched(
@@ -354,6 +361,19 @@ fn monitor_and_reload_benchmarks(c: &mut Criterion) {
     group.bench_function("monitor_selected_statement", |b| {
         let mut vm = vm_from_ops(&ops);
         vm.set_monitor_id(2);
+        b.iter(|| black_box(vm.next_frame()));
+    });
+
+    group.bench_function("monitor_4_patterns", |b| {
+        let ops = long_pattern_ops();
+        let mut vm = vm_from_ops(&ops);
+        let ids = ops
+            .iter()
+            .filter(|op| op.op.contains(':'))
+            .map(|op| op.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids.len(), 4);
+        set_pattern_monitor_ids(&vm.pattern_monitor(), &ids);
         b.iter(|| black_box(vm.next_frame()));
     });
 

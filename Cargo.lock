@@ -3972,6 +3972,7 @@ dependencies = [
  "audio_ops",
  "audio_program",
  "audio_server",
+ "audio_vm",
  "clap",
  "crossbeam-channel",
  "eframe",

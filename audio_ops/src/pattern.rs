@@ -1,5 +1,5 @@
 use crate::pure;
-use audio_vm::{CHANNELS, Frame, Op, Sample, Stack};
+use audio_vm::{CHANNELS, Frame, Op, PatternSpan, Sample, Stack};
 use nom::IResult;
 use nom::Parser;
 use nom::branch::alt;
@@ -40,7 +40,8 @@ struct Cell<T> {
 
 #[derive(Clone, Debug, PartialEq)]
 enum PatternElement<T> {
-    Atom(T),
+    /// A value and the text it came from.
+    Atom(T, PatternSpan),
     Group(Vec<PatternElement<T>>),
     Alternate(Vec<Vec<PatternElement<T>>>),
     Random(Vec<Vec<PatternElement<T>>>),
@@ -67,7 +68,7 @@ fn lcm(a: usize, b: usize) -> usize {
 
 fn element_period<T>(element: &PatternElement<T>) -> usize {
     match element {
-        PatternElement::Atom(_) => 1,
+        PatternElement::Atom(..) => 1,
         PatternElement::Group(elements) => pattern_period(elements),
         PatternElement::Alternate(alternatives) => alternatives
             .iter()
@@ -111,7 +112,7 @@ fn flatten_elements<T: Copy>(
     random_counter: &mut usize,
     start: Sample,
     duration: Sample,
-    cells: &mut Vec<Cell<T>>,
+    variant: &mut Variant<'_, T>,
     seed_perturbation: u64,
 ) {
     let step = duration / elements.len() as Sample;
@@ -123,18 +124,21 @@ fn flatten_elements<T: Copy>(
             cell_start + step
         };
         match element {
-            PatternElement::Atom(value) => cells.push(Cell {
-                start: cell_start,
-                end: cell_end,
-                value: *value,
-            }),
+            PatternElement::Atom(value, span) => {
+                variant.cells.push(Cell {
+                    start: cell_start,
+                    end: cell_end,
+                    value: *value,
+                });
+                variant.spans.push(*span);
+            }
             PatternElement::Group(group) => flatten_elements(
                 group,
                 cycle,
                 random_counter,
                 cell_start,
                 step,
-                cells,
+                variant,
                 seed_perturbation,
             ),
             PatternElement::Alternate(alternatives) => {
@@ -145,7 +149,7 @@ fn flatten_elements<T: Copy>(
                     random_counter,
                     cell_start,
                     step,
-                    cells,
+                    variant,
                     seed_perturbation,
                 );
             }
@@ -160,7 +164,7 @@ fn flatten_elements<T: Copy>(
                     random_counter,
                     cell_start,
                     step,
-                    cells,
+                    variant,
                     seed_perturbation,
                 );
             }
@@ -168,12 +172,24 @@ fn flatten_elements<T: Copy>(
     }
 }
 
+/// One cycle's cells being flattened; the text each came from goes to the
+/// pattern's shared list.
+struct Variant<'a, T> {
+    cells: Vec<Cell<T>>,
+    spans: &'a mut Vec<PatternSpan>,
+}
+
+/// One cycle's cells, appending the text each came from to `spans`.
 fn flatten_pattern<T: Copy>(
     elements: &[PatternElement<T>],
     cycle: usize,
     seed_perturbation: u64,
+    spans: &mut Vec<PatternSpan>,
 ) -> Vec<Cell<T>> {
-    let mut cells = Vec::new();
+    let mut variant = Variant {
+        cells: Vec::new(),
+        spans,
+    };
     if !elements.is_empty() {
         let mut random_counter = 0;
         flatten_elements(
@@ -182,11 +198,11 @@ fn flatten_pattern<T: Copy>(
             &mut random_counter,
             0.0,
             1.0,
-            &mut cells,
+            &mut variant,
             seed_perturbation,
         );
     }
-    cells
+    variant.cells
 }
 
 /// Index of the first cell containing the wrapped phase, or the last cell if none does.
@@ -227,15 +243,62 @@ fn cell_index_hinted<T>(phase: Sample, cells: &[Cell<T>], hint: &mut usize) -> u
 #[derive(Clone, PartialEq)]
 struct Pattern<T> {
     variants: Vec<Vec<Cell<T>>>,
+    /// The text each cell came from, every variant's end to end. Kept apart so
+    /// the per-sample cell scan doesn't carry it, and in one list so patterns
+    /// with many variants (random choices make 256) don't allocate one per variant.
+    spans: Vec<PatternSpan>,
+    /// Where each variant's cells start in `spans`.
+    span_starts: Vec<usize>,
 }
 
 impl<T> Pattern<T> {
+    fn empty() -> Self {
+        Self {
+            variants: Vec::new(),
+            spans: Vec::new(),
+            span_starts: Vec::new(),
+        }
+    }
+
+    /// `period` variants made by `flatten`, which returns a cycle's cells and
+    /// appends their spans to the list it's given.
+    fn new(
+        period: usize,
+        mut flatten: impl FnMut(usize, &mut Vec<PatternSpan>) -> Vec<Cell<T>>,
+    ) -> Self {
+        let mut pattern = Self {
+            variants: Vec::with_capacity(period),
+            spans: Vec::new(),
+            span_starts: Vec::with_capacity(period),
+        };
+        for cycle in 0..period {
+            pattern.span_starts.push(pattern.spans.len());
+            let cells = flatten(cycle, &mut pattern.spans);
+            if cells.is_empty() {
+                return Self::empty();
+            }
+            pattern.variants.push(cells);
+        }
+        pattern
+    }
+
     fn is_empty(&self) -> bool {
         self.variants.is_empty()
     }
 
     fn cells(&self, cycle: usize) -> &[Cell<T>] {
         &self.variants[cycle % self.variants.len()]
+    }
+
+    fn span(&self, cycle: usize, cell: usize) -> PatternSpan {
+        if self.variants.is_empty() {
+            return PatternSpan::default();
+        }
+        let variant = cycle % self.variants.len();
+        if cell >= self.variants[variant].len() {
+            return PatternSpan::default();
+        }
+        self.spans[self.span_starts[variant] + cell]
     }
 }
 
@@ -244,16 +307,9 @@ fn compile_pattern<T: Copy>(
     seed_perturbation: u64,
 ) -> Pattern<T> {
     let period = pattern_period(&elements).max(1);
-    let variants = (0..period)
-        .map(|cycle| flatten_pattern(&elements, cycle, seed_perturbation))
-        .collect::<Vec<_>>();
-    if variants.iter().any(Vec::is_empty) {
-        Pattern {
-            variants: Vec::new(),
-        }
-    } else {
-        Pattern { variants }
-    }
+    Pattern::new(period, |cycle, spans| {
+        flatten_pattern(&elements, cycle, seed_perturbation, spans)
+    })
 }
 
 fn update_cycle_counts(
@@ -325,11 +381,14 @@ fn euclidean_values<T: Copy>(
         (0..steps)
             .map(|step| {
                 let rotated_step = (step as isize - offset).rem_euclid(steps as isize) as usize;
-                PatternElement::Atom(if (rotated_step * pulses) % steps < pulses {
-                    on
-                } else {
-                    off
-                })
+                PatternElement::Atom(
+                    if (rotated_step * pulses) % steps < pulses {
+                        on
+                    } else {
+                        off
+                    },
+                    PatternSpan::default(),
+                )
             })
             .collect(),
     )
@@ -452,9 +511,52 @@ fn value_euclidean_args(input: &str) -> IResult<&str, (usize, usize, isize, Samp
     .parse(input)
 }
 
+/// Mark the atoms `parser` makes with the text they came from. Parsers only see
+/// what's left of the input, so this records lengths left before and after the
+/// atom; `locate` turns them into offsets once the whole pattern is parsed.
+fn spanned<'a, T>(
+    mut parser: impl FnMut(&'a str) -> IResult<&'a str, Vec<PatternElement<T>>>,
+) -> impl FnMut(&'a str) -> IResult<&'a str, Vec<PatternElement<T>>> {
+    move |input| {
+        let (rest, mut elements) = parser(input)?;
+        for element in &mut elements {
+            if let PatternElement::Atom(_, span) = element {
+                *span = PatternSpan {
+                    start: input.len() as u32,
+                    end: rest.len() as u32,
+                };
+            }
+        }
+        Ok((rest, elements))
+    }
+}
+
+/// Turn the lengths `spanned` recorded into byte offsets into the `len`-byte pattern.
+fn locate<T>(elements: &mut [PatternElement<T>], len: usize) {
+    for element in elements {
+        match element {
+            PatternElement::Atom(_, span) => {
+                *span = PatternSpan {
+                    start: len as u32 - span.start,
+                    end: len as u32 - span.end,
+                };
+            }
+            PatternElement::Group(elements) => locate(elements, len),
+            PatternElement::Alternate(alternatives) | PatternElement::Random(alternatives) => {
+                for elements in alternatives {
+                    locate(elements, len);
+                }
+            }
+        }
+    }
+}
+
 fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
     alt((
-        value(vec![PatternElement::Atom(None)], char('_')),
+        value(
+            vec![PatternElement::Atom(None, PatternSpan::default())],
+            char('_'),
+        ),
         map_res(
             (
                 take_while1(|ch: char| {
@@ -477,7 +579,7 @@ fn value_atom(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>>
                     Some((pulses, steps, offset, off)) => {
                         euclidean_values(pulses, steps, offset, Some(value), Some(off)).ok_or(())?
                     }
-                    None => vec![PatternElement::Atom(Some(value))],
+                    None => vec![PatternElement::Atom(Some(value), PatternSpan::default())],
                 })
             },
         ),
@@ -506,7 +608,7 @@ fn value_alternate(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sampl
 }
 
 fn value_base(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
-    ws(alt((value_group, value_alternate, value_atom))).parse(input)
+    ws(alt((value_group, value_alternate, spanned(value_atom)))).parse(input)
 }
 
 fn value_item(input: &str) -> IResult<&str, Vec<PatternElement<Option<Sample>>>> {
@@ -549,27 +651,20 @@ fn resolve_value_holds(cells: Vec<Cell<Option<Sample>>>) -> Vec<Cell<Sample>> {
 fn parse_values(pattern: &str, seed_perturbation: u64) -> Pattern<Sample> {
     let parsed = all_consuming(terminated(value_sequence, multispace0)).parse(pattern);
     match parsed {
-        Ok((_, elements)) => {
+        Ok((_, mut elements)) => {
+            locate(&mut elements, pattern.len());
             let period = pattern_period(&elements).max(1);
-            let variants = (0..period)
-                .map(|cycle| {
-                    resolve_value_holds(flatten_pattern(&elements, cycle, seed_perturbation))
-                })
-                .collect::<Vec<_>>();
-            if variants.iter().any(Vec::is_empty) {
+            let values = Pattern::new(period, |cycle, spans| {
+                resolve_value_holds(flatten_pattern(&elements, cycle, seed_perturbation, spans))
+            });
+            if values.is_empty() {
                 warn_invalid(ParseKind::Value, pattern);
-                Pattern {
-                    variants: Vec::new(),
-                }
-            } else {
-                Pattern { variants }
             }
+            values
         }
         Err(_) => {
             warn_invalid(ParseKind::Value, pattern);
-            Pattern {
-                variants: Vec::new(),
-            }
+            Pattern::empty()
         }
     }
 }
@@ -582,10 +677,13 @@ fn gate_atom(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
                 Some((pulses, steps, offset)) => {
                     euclidean_values(pulses, steps, offset, true, false).unwrap_or_default()
                 }
-                None => vec![PatternElement::Atom(true)],
+                None => vec![PatternElement::Atom(true, PatternSpan::default())],
             },
         ),
-        value(vec![PatternElement::Atom(false)], char('.')),
+        value(
+            vec![PatternElement::Atom(false, PatternSpan::default())],
+            char('.'),
+        ),
         map(
             preceded(char('e'), euclidean_args),
             |(pulses, steps, offset)| {
@@ -616,7 +714,7 @@ fn gate_alternate(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
 }
 
 fn gate_base(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
-    ws(alt((gate_group, gate_alternate, gate_atom))).parse(input)
+    ws(alt((gate_group, gate_alternate, spanned(gate_atom)))).parse(input)
 }
 
 fn gate_item(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
@@ -640,21 +738,13 @@ fn gate_sequence(input: &str) -> IResult<&str, Vec<PatternElement<bool>>> {
 
 fn parse_gates(pattern: &str, seed_perturbation: u64) -> Pattern<bool> {
     match all_consuming(terminated(gate_sequence, multispace0)).parse(pattern) {
-        Ok((_, elements)) if !elements.is_empty() => {
-            let pattern = compile_pattern(elements, seed_perturbation);
-            if pattern.is_empty() {
-                Pattern {
-                    variants: Vec::new(),
-                }
-            } else {
-                pattern
-            }
+        Ok((_, mut elements)) if !elements.is_empty() => {
+            locate(&mut elements, pattern.len());
+            compile_pattern(elements, seed_perturbation)
         }
         _ => {
             warn_invalid(ParseKind::Gate, pattern);
-            Pattern {
-                variants: Vec::new(),
-            }
+            Pattern::empty()
         }
     }
 }
@@ -784,6 +874,12 @@ impl PatternValue {
 }
 
 impl Op for PatternValue {
+    fn pattern_span(&self) -> PatternSpan {
+        self.pattern
+            .values
+            .span(self.cycle_counts[0], self.cell_hints[0])
+    }
+
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
         update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
@@ -819,6 +915,12 @@ impl PatternGate {
 }
 
 impl Op for PatternGate {
+    fn pattern_span(&self) -> PatternSpan {
+        self.pattern
+            .gates
+            .span(self.cycle_counts[0], self.cell_hints[0])
+    }
+
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
         update_cycle_counts(&phase, &mut self.previous_phases, &mut self.cycle_counts);
@@ -909,6 +1011,12 @@ impl PatternTrigger {
 }
 
 impl Op for PatternTrigger {
+    fn pattern_span(&self) -> PatternSpan {
+        self.pattern
+            .gates
+            .span(self.cycle_counts[0], self.cell_hints[0])
+    }
+
     fn perform(&mut self, stack: &mut Stack) {
         let phase = stack.pop();
         let frame = self.render(&phase);
@@ -948,6 +1056,12 @@ impl ClockedPatternValue {
 }
 
 impl Op for ClockedPatternValue {
+    fn pattern_span(&self) -> PatternSpan {
+        self.pattern
+            .values
+            .span(self.cycle_counts[0], self.cell_hints[0])
+    }
+
     fn perform(&mut self, stack: &mut Stack) {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
@@ -994,6 +1108,12 @@ impl ClockedPatternGate {
 }
 
 impl Op for ClockedPatternGate {
+    fn pattern_span(&self) -> PatternSpan {
+        self.pattern
+            .gates
+            .span(self.cycle_counts[0], self.cell_hints[0])
+    }
+
     fn perform(&mut self, stack: &mut Stack) {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
@@ -1033,6 +1153,10 @@ impl ClockedPatternTrigger {
 }
 
 impl Op for ClockedPatternTrigger {
+    fn pattern_span(&self) -> PatternSpan {
+        self.trigger.pattern_span()
+    }
+
     fn perform(&mut self, stack: &mut Stack) {
         let cps = stack.pop();
         let phase = self.cycle.current_then_advance(&cps);
@@ -1446,5 +1570,87 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The text an op reports as sounding.
+    fn sounding<'a>(op: &dyn Op, pattern: &'a str) -> &'a str {
+        let span = op.pattern_span();
+        &pattern[span.start as usize..span.end as usize]
+    }
+
+    #[test]
+    fn value_pattern_reports_the_sounding_atom() {
+        let text = " 60 , 64,[67,69]";
+        let mut pat = PatternValue::new(text);
+        assert_eq!(sounding(&pat, text), "60");
+        perform(&mut pat, [0.4, 0.0]);
+        assert_eq!(sounding(&pat, text), "64");
+        perform(&mut pat, [0.7, 0.0]);
+        assert_eq!(sounding(&pat, text), "67");
+        perform(&mut pat, [0.9, 0.0]);
+        assert_eq!(sounding(&pat, text), "69");
+    }
+
+    #[test]
+    fn pattern_spans_cover_holds_euclidean_steps_and_alternations() {
+        let text = "60,_";
+        let mut pat = PatternValue::new(text);
+        assert_eq!(perform(&mut pat, [0.75, 0.0])[0], 60.0);
+        assert_eq!(sounding(&pat, text), "_");
+
+        let text = "x(3,8).";
+        let mut gate = PatternGate::new(text);
+        perform(&mut gate, [0.1, 0.0]);
+        assert_eq!(sounding(&gate, text), "x(3,8)");
+        perform(&mut gate, [0.95, 0.0]);
+        assert_eq!(sounding(&gate, text), ".");
+
+        let text = "<60;64>*2";
+        let mut pat = PatternValue::new(text);
+        perform(&mut pat, [0.25, 0.0]);
+        assert_eq!(sounding(&pat, text), "60");
+        perform(&mut pat, [0.1, 0.0]);
+        assert_eq!(sounding(&pat, text), "64");
+    }
+
+    #[test]
+    fn random_choice_reports_the_branch_that_plays() {
+        let text = "60|64|67,72";
+        let mut pat = PatternValue::with_seed(text, 7);
+        let mut seen = std::collections::HashSet::new();
+        for cycle in 0..64 {
+            for phase in [0.0, 0.25] {
+                let value = perform(&mut pat, [cycle as Sample + phase, 0.0])[0];
+                let atom = sounding(&pat, text);
+                assert_eq!(atom.parse::<Sample>().unwrap(), value, "cycle {cycle}");
+                seen.insert(atom);
+            }
+        }
+        assert_eq!(seen.len(), 3);
+    }
+
+    #[test]
+    fn triggers_and_clocked_patterns_report_spans_and_invalid_ones_none() {
+        let text = "x.x";
+        let mut trig = PatternTrigger::new(text);
+        perform(&mut trig, [0.5, 0.0]);
+        assert_eq!(trig.pattern_span(), PatternSpan { start: 1, end: 2 });
+
+        let mut clocked = ClockedPatternGate::new(4, text);
+        perform(&mut clocked, [1.0, 1.0]);
+        perform(&mut clocked, [1.0, 1.0]);
+        assert_eq!(sounding(&clocked, text), "x");
+        perform(&mut clocked, [1.0, 1.0]);
+        assert_eq!(sounding(&clocked, text), ".");
+
+        let mut clocked = ClockedPatternTrigger::new(4, text);
+        for _ in 0..3 {
+            perform(&mut clocked, [1.0, 1.0]);
+        }
+        assert_eq!(sounding(&clocked, text), ".");
+
+        let mut invalid = PatternValue::new("60,[");
+        perform(&mut invalid, [0.5, 0.5]);
+        assert_eq!(invalid.pattern_span(), PatternSpan::default());
     }
 }

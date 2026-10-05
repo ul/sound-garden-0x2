@@ -119,7 +119,7 @@ export class SoundGarden {
   }
 
   /** ~30Hz onmonitor: {scope:[L,R],samples:Float32Array interleaved LR,
-   * patterns:[{id,value:[L,R]}],meters:{peak,rms,sampleRate,bufferFrames,
+   * patterns:[{id,value:[start,end]}] (byte range of the sounding pattern text),meters:{peak,rms,sampleRate,bufferFrames,
    * clipped,load,dropouts,loadAvailable,dropoutsAvailable,dropoutsEstimated},midiDevice,generation,playing}.
    * `clipped` is a window count; `dropouts` counts estimated over-budget
    * render quantums, not hardware underruns. Without a worklet monotonic timer,

@@ -173,13 +173,13 @@ impl Engine {
         self.meter_frames = 0;
         if let Ok(patterns) = self.vm.pattern_monitor().lock() {
             for (i, &id) in self.pattern_ids.iter().enumerate() {
-                let frame = patterns
+                let span = patterns
                     .iter()
                     .find(|(key, _)| *key == id)
-                    .map(|(_, frame)| *frame)
+                    .map(|(_, span)| *span)
                     .unwrap_or_default();
-                self.monitor[6 + i * 2] = frame[0] as f32;
-                self.monitor[7 + i * 2] = frame[1] as f32;
+                self.monitor[6 + i * 2] = span.start as f32;
+                self.monitor[7 + i * 2] = span.end as f32;
             }
         }
         self.monitor.len()
@@ -743,10 +743,16 @@ mod tests {
     #[test]
     fn monitor_samples_patterns_and_stereo_meters_are_bounded() {
         let mut engine = engine();
-        engine.load_nodes(&[TextOp {
-            id: 123,
-            op: "0.5".into(),
-        }]);
+        engine.load_nodes(&[
+            TextOp {
+                id: 1,
+                op: "0.6".into(),
+            },
+            TextOp {
+                id: 123,
+                op: "pat:0.25,0.5".into(),
+            },
+        ]);
         set_pattern_monitor_ids(&engine.vm.pattern_monitor(), &[123]);
         engine.pattern_ids.push(123);
         engine.monitor.resize(8, 0.0);
@@ -759,7 +765,8 @@ mod tests {
         assert_eq!(engine.capture_monitor(), 8);
         assert!(engine.monitor[2] > 0.0 && engine.monitor[3] > 0.0);
         assert!(engine.monitor[4] > 0.0 && engine.monitor[5] > 0.0);
-        assert!((engine.monitor[6] - 0.5).abs() < 1e-6);
+        // The sounding part of the pattern's text: bytes 5..8, "0.5".
+        assert_eq!(engine.monitor[6..8], [5.0, 8.0]);
         assert!((engine.monitor[0] - 0.5).abs() < 1e-6);
         assert!(
             engine

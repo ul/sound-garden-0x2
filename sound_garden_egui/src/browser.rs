@@ -2,6 +2,7 @@
 //! IDs are always 16-digit hex strings on the JavaScript side (JSON numbers lose u64 precision).
 use audio_ops::MidiEvent;
 use audio_program::{Diagnostic, TextOp};
+use audio_vm::PatternSpan;
 use sound_garden_format::NodeRepository;
 use std::{
     cell::{Cell, RefCell},
@@ -181,7 +182,7 @@ pub(crate) struct Diagnostics {
 
 pub(crate) struct Monitor {
     pub scope: [f64; 2],
-    pub patterns: Vec<(u64, [f64; 2])>,
+    pub patterns: Vec<(u64, PatternSpan)>,
     pub meters: Meters,
     pub midi_device: Option<Arc<str>>,
     pub diagnostics: Arc<Diagnostics>,
@@ -219,6 +220,7 @@ struct RawDiagnostic {
 #[serde(default, rename_all = "camelCase")]
 struct RawMonitor {
     scope: [f64; 2],
+    /// Sounding byte range `[start, end]` of each monitored pattern's text.
     patterns: Vec<(String, [f64; 2])>,
     samples: Vec<[f64; 2]>,
     meters: RawMeters,
@@ -272,7 +274,15 @@ pub(crate) fn poll_monitors(tx: &crossbeam_channel::Sender<Monitor>) {
             patterns: raw
                 .patterns
                 .into_iter()
-                .filter_map(|(id, value)| Some((parse_id(&id)?, value)))
+                .filter_map(|(id, [start, end])| {
+                    Some((
+                        parse_id(&id)?,
+                        PatternSpan {
+                            start: start as u32,
+                            end: end as u32,
+                        },
+                    ))
+                })
                 .collect(),
             samples: raw.samples,
             meters,

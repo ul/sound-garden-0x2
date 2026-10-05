@@ -16,6 +16,7 @@ log.workspace = true
 rustfft.workspace = true
 audio_ops = { path = "../audio_ops" }
 audio_program = { path = "../audio_program" }
+audio_vm = { path = "../audio_vm" }
 sound_garden_format = { path = "../sound_garden_format" }
 sound_garden_types = { path = "../sound_garden_types" }
 

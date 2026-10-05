@@ -1,5 +1,5 @@
 use audio_program::{Context, Diagnostic, TextOp, compile_program_with_diagnostics};
-use audio_vm::{CHANNELS, Frame, Program, Sample, VM};
+use audio_vm::{CHANNELS, Frame, PatternSpan, Program, Sample, VM};
 use crossbeam_channel::{Receiver, Sender};
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use rtrb::RingBuffer;
@@ -49,7 +49,8 @@ pub use midi::{MidiInputSelection, MidiMessage, list_inputs as list_midi_inputs}
 #[derive(Clone, Debug)]
 pub struct Monitor {
     pub scope: Frame,
-    pub patterns: Vec<(u64, Frame)>,
+    /// Sounding part of each monitored pattern's text.
+    pub patterns: Vec<(u64, PatternSpan)>,
     pub meters: Meters,
     /// Name of the connected MIDI input, if any.
     pub midi_device: Option<Arc<str>>,

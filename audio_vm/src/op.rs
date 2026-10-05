@@ -13,6 +13,19 @@ pub trait Op: Send + Downcast {
     /// Implementations may copy small state or steal large state from the previous Op.
     /// Keep it efficient as it can block an audio thread.
     fn migrate(&mut self, _other: &mut dyn Op) {}
+
+    /// The part of a pattern op's text sounding on the first channel, for the
+    /// GUI's highlight. Called only for monitored statements, once per monitor interval.
+    fn pattern_span(&self) -> PatternSpan {
+        PatternSpan::default()
+    }
+}
+
+/// Byte range `start..end` of a pattern's text; empty when nothing is sounding.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PatternSpan {
+    pub start: u32,
+    pub end: u32,
 }
 
 impl_downcast!(Op);
