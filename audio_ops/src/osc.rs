@@ -38,7 +38,7 @@ impl Osc {
             sample_period: Sample::from(sample_rate).recip(),
             shape,
             f: shape.function(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }
@@ -91,11 +91,11 @@ impl FixedOsc {
     pub fn new(sample_rate: u32, frequency: Sample, shape: Shape) -> Self {
         Self {
             phases: [0.0; CHANNELS],
-            frequency: Glide::new(frequency),
+            frequency: Glide::new(sample_rate, frequency),
             sample_period: Sample::from(sample_rate).recip(),
             shape,
             f: shape.function(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }
@@ -153,7 +153,7 @@ impl OscPhase {
             sample_period: Sample::from(sample_rate).recip(),
             shape,
             f: shape.function(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }
@@ -216,7 +216,7 @@ impl PolyBlepTriangle {
             phases: [0.0; CHANNELS],
             outputs: [-1.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }
@@ -280,7 +280,7 @@ impl PolyBlepTrianglePhase {
             phase0: [0.0; CHANNELS],
             outputs: [-1.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }

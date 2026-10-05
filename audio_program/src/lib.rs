@@ -479,7 +479,7 @@ fn compile_segment(
         let TextOp { id, op } = match optimized_op {
             OptimizedOp::Text(text_op) => text_op,
             OptimizedOp::Constant { id, value } => {
-                push_args!(id, Constant, value);
+                push_args!(id, Constant, sample_rate, value);
                 continue;
             }
             OptimizedOp::FixedOsc {
@@ -491,23 +491,23 @@ fn compile_segment(
                 continue;
             }
             OptimizedOp::AddConst { id, value } => {
-                push_args!(id, AddConst, value);
+                push_args!(id, AddConst, sample_rate, value);
                 continue;
             }
             OptimizedOp::PowConst { id, value } => {
-                push_args!(id, PowConst, value);
+                push_args!(id, PowConst, sample_rate, value);
                 continue;
             }
             OptimizedOp::MulConst { id, value } => {
-                push_args!(id, MulConst, value);
+                push_args!(id, MulConst, sample_rate, value);
                 continue;
             }
             OptimizedOp::SubConst { id, value } => {
-                push_args!(id, SubConst, value);
+                push_args!(id, SubConst, sample_rate, value);
                 continue;
             }
             OptimizedOp::DivConst { id, value } => {
-                push_args!(id, DivConst, value);
+                push_args!(id, DivConst, sample_rate, value);
                 continue;
             }
         };
@@ -615,7 +615,9 @@ fn compile_segment(
             "pan1" => push!(id, Pan1),
             "pan2" => push!(id, Pan2),
             "panx" => push!(id, Pan3),
-            "pi" | "tau" | "golden" => push_args!(id, Constant, named_constant(&op).unwrap()),
+            "pi" | "tau" | "golden" => {
+                push_args!(id, Constant, sample_rate, named_constant(&op).unwrap())
+            }
             "pitch" => push_args!(id, Yin, sample_rate, 1024, 64, 0.2),
             "pop" => push!(id, Pop),
             "prime" => push!(id, Prime),
@@ -636,7 +638,7 @@ fn compile_segment(
             "saw'" => push_args!(id, Phasor0, sample_rate),
             "sh" | "sample&hold" => push!(id, SampleAndHold),
             "ssh" => push!(id, SmoothSampleAndHold),
-            "silence" => push_args!(id, Constant, 0.0),
+            "silence" => push_args!(id, Constant, sample_rate, 0.0),
             "sin" => push_args!(id, Fn1, pure::sin),
             "sin'" => push_args!(id, Fn1, pure::sin_fast),
             "sinc" => push_args!(id, Fn1, pure::sinc),
@@ -682,7 +684,7 @@ fn compile_segment(
                 id,
                 op: Box::new(SpectralTransform::freeze(ctx.next_rng_seed())) as Box<dyn Op>,
             }),
-            "sr" => push_args!(id, Constant, sample_rate as _),
+            "sr" => push_args!(id, Constant, sample_rate, sample_rate as _),
             "swap" => push!(id, Swap),
             "t" => push_args!(id, PolyBlepTriangle, sample_rate),
             "t'" => push_args!(id, Osc, sample_rate, Shape::Triangle),
@@ -700,7 +702,7 @@ fn compile_segment(
             "width" => push!(id, Width),
             "wrap" => push_args!(id, Fn1, pure::wrap),
             _ => match op.parse::<Sample>() {
-                Ok(x) => push_args!(id, Constant, x),
+                Ok(x) => push_args!(id, Constant, sample_rate, x),
                 Err(_) => {
                     let tokens = op.split(':').collect::<Vec<_>>();
                     match tokens[0] {
@@ -851,7 +853,7 @@ fn compile_segment(
                                     compile_warn!(
                                         "{op}: expected cc:<0..127>:<DEFAULT 0..1>; outputting 0."
                                     );
-                                    push_args!(id, Constant, 0.0)
+                                    push_args!(id, Constant, sample_rate, 0.0)
                                 }
                             }
                         }

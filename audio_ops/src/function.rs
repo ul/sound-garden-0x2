@@ -58,9 +58,9 @@ macro_rules! const_op {
         }
 
         impl $name {
-            pub fn new(value: Sample) -> Self {
+            pub fn new(sample_rate: u32, value: Sample) -> Self {
                 Self {
-                    value: Glide::new(value),
+                    value: Glide::new(sample_rate, value),
                 }
             }
         }

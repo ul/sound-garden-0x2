@@ -12,8 +12,13 @@ const MIGRATION_INDEX_SIZE: usize = 128;
 /// Monitors are published once per this many frames. Readers poll every
 /// ~10 ms (~480 frames), so publishing every frame is wasted work.
 const MONITOR_INTERVAL: usize = 64;
-/// Default program reload declick duration in frames (~5 ms at 48 kHz).
-const DECLICK_DURATION: usize = 256;
+/// Sample rate the play/pause fade and declick are sized for until a host calls
+/// [`VM::set_sample_rate`].
+const DEFAULT_SAMPLE_RATE: u32 = 48_000;
+/// Play/pause fade duration.
+const XFADE_SECONDS: Sample = 0.17;
+/// Program reload declick duration.
+const DECLICK_SECONDS: Sample = 0.005;
 /// Residual level the declick correction decays to over its duration (-100 dB).
 const DECLICK_RESIDUAL: Sample = 1e-5;
 /// Reload steps below this level are inaudible; skip declicking to keep output bit-exact.
@@ -80,11 +85,11 @@ impl VM {
         // lock lazily on first use. Lock once here so that allocation happens on
         // the constructing thread, not on the audio thread's first try_lock.
         drop(pattern_monitor.lock());
-        Self {
+        let mut vm = Self {
             active_program: Default::default(),
             active_stack: Stack::new(),
-            xfade_duration: 8192,
-            xfade_duration_recip: 1.0 / 8192.0,
+            xfade_duration: 0,
+            xfade_duration_recip: 0.0,
             pause_countdown: 0,
             status: Status::Pause,
             monitor: Default::default(),
@@ -97,10 +102,27 @@ impl VM {
             earlier_frame: Default::default(),
             declick_offset: Default::default(),
             declick_countdown: 0,
-            declick_duration: DECLICK_DURATION,
-            declick_decay: declick_decay(DECLICK_DURATION),
+            declick_duration: 0,
+            declick_decay: 0.0,
             declick_pending: false,
-        }
+        };
+        vm.set_sample_rate(DEFAULT_SAMPLE_RATE);
+        vm
+    }
+
+    /// A VM whose play/pause fade and reload declick are sized for `sample_rate`.
+    pub fn with_sample_rate(sample_rate: u32) -> Self {
+        let mut vm = Self::new();
+        vm.set_sample_rate(sample_rate);
+        vm
+    }
+
+    /// Size the play/pause fade and the reload declick for `sample_rate`, so they last the
+    /// same time at any rate. Hosts call this once they know the device rate.
+    pub fn set_sample_rate(&mut self, sample_rate: u32) {
+        let sample_rate = Sample::from(sample_rate);
+        self.set_xfade_duration((XFADE_SECONDS * sample_rate).round());
+        self.set_declick_duration((DECLICK_SECONDS * sample_rate).round());
     }
 
     pub fn toggle_play(&mut self) {

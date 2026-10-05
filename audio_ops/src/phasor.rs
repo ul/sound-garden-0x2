@@ -73,7 +73,7 @@ impl Phasor {
         Phasor {
             phases: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }
@@ -124,7 +124,7 @@ impl Phasor0 {
             phases: [0.0; CHANNELS],
             phase0: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }
@@ -186,7 +186,7 @@ impl PolyBlepSawPhase {
             phase0: [0.0; CHANNELS],
             dts: [0.0; CHANNELS],
             sample_period: Sample::from(sample_rate).recip(),
-            morph: Morph::new(),
+            morph: Morph::new(sample_rate),
         }
     }
 }

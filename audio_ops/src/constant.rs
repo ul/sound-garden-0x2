@@ -6,9 +6,9 @@ pub struct Constant {
 }
 
 impl Constant {
-    pub fn new(x: Sample) -> Self {
+    pub fn new(sample_rate: u32, x: Sample) -> Self {
         Constant {
-            value: Glide::new(x),
+            value: Glide::new(sample_rate, x),
         }
     }
 }

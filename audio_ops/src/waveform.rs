@@ -3,11 +3,13 @@
 //! Every oscillator runs its phase over -1..1 per cycle, so a phase means the same point in the
 //! cycle to a sine, a triangle, a saw or a pulse. When a live edit replaces one oscillator with
 //! another (`s` to `t`, `440 s` to `lfo s`), the new oscillator continues the old one's cycle, and
-//! if the shape changed it crossfades from the old shape to its own over [`GLIDE_FRAMES`] at that
+//! if the shape changed it crossfades from the old shape to its own over [`GLIDE_SECONDS`] at that
 //! shared phase. Both shapes are continuous in time, so the morph is smooth however the shapes are
 //! aligned. Rationale in docs/adr/0010-waveform-edits-morph.md.
 
-use crate::glide::GLIDE_FRAMES;
+#[cfg(doc)]
+use crate::glide::GLIDE_SECONDS;
+use crate::glide::glide_frames;
 use crate::phasor::{poly_blep_saw_sample, wrap_phase};
 use crate::pulse::poly_blep_pulse_sample;
 use crate::pure;
@@ -150,13 +152,15 @@ pub(crate) fn perform_morphing<O: Draw>(oscillator: &mut O, stack: &mut Stack) {
 pub(crate) struct Morph {
     from: Cycle,
     remaining: u32,
+    frames: u32,
 }
 
 impl Morph {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(sample_rate: u32) -> Self {
         Morph {
             from: Cycle::new([0.0; CHANNELS], Shape::Sine),
             remaining: 0,
+            frames: glide_frames(sample_rate),
         }
     }
 
@@ -164,7 +168,7 @@ impl Morph {
     pub(crate) fn start(&mut self, previous: &Cycle, shape: Shape) {
         if previous.shape != shape {
             self.from = *previous;
-            self.remaining = GLIDE_FRAMES;
+            self.remaining = self.frames;
         }
     }
 
@@ -176,7 +180,7 @@ impl Morph {
     /// Blend the faded-out shape into `frame`, drawn at the oscillator's own `phases`.
     fn step(&mut self, phases: &Frame, frame: &mut Frame) {
         self.remaining -= 1;
-        let progress = (GLIDE_FRAMES - self.remaining) as Sample / GLIDE_FRAMES as Sample;
+        let progress = (self.frames - self.remaining) as Sample / self.frames as Sample;
         let old = 0.5 + 0.5 * (std::f64::consts::PI as Sample * progress).cos();
         for c in 0..CHANNELS {
             let from = &self.from;

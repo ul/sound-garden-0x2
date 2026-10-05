@@ -60,7 +60,7 @@ struct CallbackState {
 /// buffer size, clamped to what the device supports. `None` keeps the device
 /// default for either.
 pub fn main(
-    engine: Engine,
+    mut engine: Engine,
     sample_rate: Option<u32>,
     buffer_frames: Option<u32>,
     rx: Receiver<()>,
@@ -97,6 +97,7 @@ pub fn main(
     }
 
     let sample_rate = config.sample_rate();
+    engine.vm.set_sample_rate(sample_rate);
     engine.telemetry.set_sample_rate(sample_rate);
     tx.send(sample_rate)?;
 

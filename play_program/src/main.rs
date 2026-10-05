@@ -43,7 +43,7 @@ where
 {
     let channels = config.channels as usize;
 
-    let mut vm = VM::new();
+    let mut vm = VM::with_sample_rate(config.sample_rate);
     vm.load_program(parse_program(text, config.sample_rate));
     vm.play();
 

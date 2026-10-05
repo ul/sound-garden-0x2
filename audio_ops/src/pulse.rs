@@ -29,7 +29,7 @@ macro_rules! pulse_op {
                     widths: [0.5; CHANNELS],
                     dts: [0.0; CHANNELS],
                     sample_period: Sample::from(sample_rate).recip(),
-                    morph: Morph::new(),
+                    morph: Morph::new(sample_rate),
                 }
             }
         }

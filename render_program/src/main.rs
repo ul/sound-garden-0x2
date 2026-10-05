@@ -45,7 +45,7 @@ fn main() {
 
     let mut writer = WavWriter::create(output, spec).expect("Failed to create a file.");
 
-    let mut vm = VM::new();
+    let mut vm = VM::with_sample_rate(sample_rate);
     vm.load_program(parse_program(&text, sample_rate));
     vm.play();
 

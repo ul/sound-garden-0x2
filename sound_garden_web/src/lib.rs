@@ -46,7 +46,7 @@ pub struct Engine {
 impl Engine {
     pub fn new(sample_rate: u32) -> Self {
         Engine {
-            vm: VM::new(),
+            vm: VM::with_sample_rate(sample_rate),
             ctx: Context::new(),
             sample_rate,
             ids: ids::Ids::default(),
