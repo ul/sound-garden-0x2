@@ -793,15 +793,25 @@ impl SoundGardenApp {
         &self,
         old_monitors: HashMap<Id, PatternMonitor>,
     ) -> HashMap<Id, PatternMonitor> {
-        self.state
+        // The compiler drops comments and seed: words, so a pattern's input is
+        // the nearest preceding word that survives them.
+        let comment_node_ids = commented_node_ids(&self.state.nodes);
+        let live_nodes = self
+            .state
             .nodes
+            .iter()
+            .filter(|node| {
+                !comment_node_ids.contains(&node.id) && !node.text.starts_with("seed:")
+            })
+            .collect::<Vec<_>>();
+        live_nodes
             .iter()
             .enumerate()
             .filter_map(|(index, node)| {
                 if self.state.draft_nodes.contains(&node.id) {
                     return None;
                 }
-                let source_node = self.state.nodes.get(index.checked_sub(1)?)?;
+                let source_node = live_nodes.get(index.checked_sub(1)?)?;
                 if self.state.draft_nodes.contains(&source_node.id) {
                     return None;
                 }
@@ -1336,13 +1346,16 @@ impl SoundGardenApp {
         ) else {
             return;
         };
-        let pattern_start = node.text.chars().count() - pattern.chars().count();
-        let x = origin.x + (node.position.x as f32 + (pattern_start + start) as f32) * GRID_WIDTH;
+        // Spans are byte offsets into the pattern; the grid counts characters.
+        let pattern_start = node.text.len() - pattern.len();
+        let column = node.text[..pattern_start + start].chars().count();
+        let width = pattern[start..end].chars().count();
+        let x = origin.x + (node.position.x as f32 + column as f32) * GRID_WIDTH;
         let y = origin.y + node.position.y as f32 * GRID_HEIGHT;
         painter.rect_filled(
             Rect::from_min_size(
                 Pos2::new(x, y),
-                EVec2::new((end - start) as f32 * GRID_WIDTH, GRID_HEIGHT),
+                EVec2::new(width as f32 * GRID_WIDTH, GRID_HEIGHT),
             ),
             0.0,
             Color32::from_rgba_unmultiplied(0x55, 0xae, 0x39, 96),
@@ -2237,13 +2250,27 @@ impl<'a> VisualPatternParser<'a> {
     }
 
     fn item(&mut self) -> Option<Vec<VisualPatternElement>> {
-        let elements = match self.peek()? {
+        let start = self.index;
+        let mut elements = self.base()?;
+        // A random choice `a|b` takes one step; which branch the engine picked
+        // is unknown here, so the whole choice lights up.
+        if self.peek() == Some('|') {
+            while self.peek() == Some('|') {
+                self.bump();
+                self.base();
+            }
+            elements = vec![VisualPatternElement::Atom((start, self.index))];
+        }
+        let repeat = self.repeat();
+        Some((0..repeat).flat_map(|_| elements.clone()).collect())
+    }
+
+    fn base(&mut self) -> Option<Vec<VisualPatternElement>> {
+        Some(match self.peek()? {
             '[' => vec![self.group('[', ']')?],
             '<' => vec![self.alternate()?],
             _ => self.atom()?,
-        };
-        let repeat = self.repeat();
-        Some((0..repeat).flat_map(|_| elements.clone()).collect())
+        })
     }
 
     fn group(&mut self, open: char, close: char) -> Option<VisualPatternElement> {
@@ -2533,6 +2560,71 @@ mod tests {
             active_pattern_span("60(3,8),72", false, 0.95, 0),
             Some((8, 10))
         );
+    }
+
+    #[test]
+    fn active_pattern_span_treats_a_random_choice_as_one_step() {
+        assert_eq!(
+            active_pattern_span("60|64,72", false, 0.25, 0),
+            Some((0, 5))
+        );
+        assert_eq!(
+            active_pattern_span("60|64,72", false, 0.75, 0),
+            Some((6, 8))
+        );
+        assert_eq!(active_pattern_span("x|.x", true, 0.25, 0), Some((0, 3)));
+        assert_eq!(active_pattern_span("x|.x", true, 0.75, 0), Some((3, 4)));
+        assert_eq!(
+            active_pattern_span("[60,64]|<67;69>*2,72", false, 0.4, 0),
+            Some((0, 15))
+        );
+        assert_eq!(
+            active_pattern_span("[60,64]|<67;69>*2,72", false, 0.9, 0),
+            Some((18, 20))
+        );
+    }
+
+    #[test]
+    fn pattern_monitors_skip_comments_and_seeds_to_find_the_source() {
+        let mut app = app_with_nodes(
+            vec![
+                node(1, 0.0, 0.0, "1"),
+                node(2, 2.0, 0.0, "phasor"),
+                node(3, 9.0, 0.0, "(beat"),
+                node(4, 15.0, 0.0, "clock)"),
+                node(5, 22.0, 0.0, "seed:3"),
+                node(6, 29.0, 0.0, "gate:x."),
+            ],
+            Point::new(0.0, 0.0),
+        );
+        app.commit_program();
+        app.sync_from_repo();
+
+        let monitors = app.pattern_monitors(HashMap::new());
+
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[&Id::from(6)].source_id, 2);
+    }
+
+    #[test]
+    fn pattern_monitors_ignore_commented_out_patterns() {
+        let mut app = app_with_nodes(
+            vec![
+                node(1, 0.0, 0.0, "phasor"),
+                node(2, 7.0, 0.0, "("),
+                node(3, 9.0, 0.0, "gate:x."),
+                node(4, 17.0, 0.0, ")"),
+                node(5, 0.0, 1.0, "phasor"),
+                node(6, 7.0, 1.0, "[gate:x."),
+                node(7, 16.0, 1.0, "]"),
+                node(8, 18.0, 1.0, "--"),
+            ],
+            Point::new(0.0, 0.0),
+        );
+        app.commit_program();
+        app.sync_from_repo();
+
+        assert!(app.pattern_monitors(HashMap::new()).is_empty());
     }
 
     #[test]
